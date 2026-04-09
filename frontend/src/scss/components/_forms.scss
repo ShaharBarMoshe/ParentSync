@@ -1,0 +1,86 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as *;
+
+.form-field {
+  margin-bottom: $spacing-xl;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 6px;
+}
+
+.form-hint {
+  display: block;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: $spacing-xs;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  padding: 10px $spacing-md;
+  font-family: var(--sans);
+  font-size: 15px;
+  color: var(--text-h);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color $transition-fast, box-shadow $transition-fast;
+
+  &:hover:not(:disabled) {
+    border-color: var(--accent-border);
+  }
+
+  &:focus {
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px var(--accent-bg);
+  }
+}
+
+.form-input {
+  &::placeholder {
+    color: var(--text-muted);
+  }
+
+  &:disabled {
+    background: var(--code-bg);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  &--readonly {
+    background: var(--code-bg);
+    color: var(--text-muted);
+  }
+
+  &--error {
+    border-color: var(--error);
+
+    &:focus {
+      box-shadow: 0 0 0 3px var(--error-bg);
+    }
+  }
+}
+
+.form-error {
+  display: block;
+  font-size: 13px;
+  color: var(--error);
+  margin-top: $spacing-xs;
+  animation: slideDown $transition-fast;
+
+  @include reduced-motion {
+    animation: none;
+  }
+}

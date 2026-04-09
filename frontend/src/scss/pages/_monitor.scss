@@ -1,0 +1,331 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as *;
+
+.monitor-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: $spacing-3xl $spacing-2xl $spacing-4xl;
+
+  @include respond-to('md') {
+    padding: $spacing-xl $spacing-lg $spacing-3xl;
+  }
+}
+
+.monitor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: $spacing-2xl;
+
+  h1 {
+    margin-bottom: $spacing-xs;
+  }
+
+  p {
+    color: var(--text-muted);
+    font-size: 15px;
+  }
+
+  @include respond-to('md') {
+    flex-direction: column;
+    gap: $spacing-lg;
+  }
+}
+
+.monitor-filters {
+  display: flex;
+  gap: $spacing-lg;
+  flex-shrink: 0;
+
+  @include respond-to('md') {
+    width: 100%;
+  }
+}
+
+.monitor-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.monitor-filter-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.monitor-select {
+  padding: $spacing-sm $spacing-lg $spacing-sm $spacing-md;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--sans);
+  cursor: pointer;
+  transition: border-color $transition-fast;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+
+  &:hover {
+    border-color: var(--accent);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-bg);
+  }
+}
+
+// Summary cards
+.monitor-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: $spacing-lg;
+  margin-bottom: $spacing-xl;
+
+  @include respond-to('md') {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.monitor-summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: $spacing-xl;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow-sm);
+
+  &--loading {
+    min-height: 80px;
+  }
+
+  &-skeleton {
+    height: 20px;
+    width: 60%;
+    background: var(--border);
+    border-radius: 4px;
+    animation: pulse 1.5s infinite;
+  }
+
+  &-icon {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  &-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-h);
+    line-height: 1.2;
+
+    &--success {
+      color: var(--success);
+    }
+
+    &--warning {
+      color: var(--cta);
+    }
+
+    &--error {
+      color: var(--error);
+    }
+  }
+
+  &-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
+
+  &-detail {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+}
+
+.monitor-trend {
+  font-size: 12px;
+  font-weight: 600;
+
+  &--up {
+    color: var(--success);
+  }
+
+  &--down {
+    color: var(--error);
+  }
+
+  &--flat {
+    color: var(--text-muted);
+  }
+}
+
+// Chart cards
+.monitor-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-xl;
+  margin-bottom: $spacing-xl;
+
+  @include respond-to('md') {
+    grid-template-columns: 1fr;
+  }
+}
+
+.monitor-chart-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: $spacing-2xl;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: $spacing-xl;
+
+  .monitor-charts-grid & {
+    margin-bottom: 0;
+  }
+
+  @include respond-to('md') {
+    padding: $spacing-xl $spacing-lg;
+  }
+}
+
+.monitor-chart-title {
+  margin-bottom: $spacing-lg;
+  padding-bottom: $spacing-md;
+  border-bottom: 1px solid var(--border);
+}
+
+.monitor-chart-body {
+  position: relative;
+  min-height: 200px;
+}
+
+.monitor-chart-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.monitor-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+// Heatmap
+.monitor-heatmap-wrapper {
+  overflow-x: auto;
+}
+
+.monitor-heatmap {
+  display: inline-block;
+  min-width: 100%;
+}
+
+.monitor-heatmap-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+.monitor-heatmap-header {
+  margin-bottom: $spacing-xs;
+}
+
+.monitor-heatmap-label {
+  width: 140px;
+  min-width: 140px;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  padding-right: $spacing-sm;
+}
+
+.monitor-heatmap-col-label {
+  width: 28px;
+  min-width: 28px;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+  transform: rotate(-45deg);
+  transform-origin: center;
+  height: 28px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.monitor-heatmap-cell {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 3px;
+  cursor: default;
+  transition: opacity $transition-fast;
+
+  &:hover {
+    opacity: 0.8;
+    outline: 1px solid var(--text-muted);
+  }
+}
+
+.monitor-heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  margin-top: $spacing-lg;
+  padding-left: 148px;
+  font-size: 11px;
+  color: var(--text-muted);
+
+  .monitor-heatmap-cell {
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+
+    &:hover {
+      opacity: 1;
+      outline: none;
+    }
+  }
+}
+
+.monitor-heatmap-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: $spacing-sm $spacing-md;
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  z-index: 100;
+  white-space: nowrap;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}

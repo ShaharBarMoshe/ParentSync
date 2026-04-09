@@ -1,0 +1,250 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as *;
+
+.calendar-page {
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: $spacing-3xl $spacing-2xl $spacing-4xl;
+
+  @include respond-to('md') {
+    padding: $spacing-xl $spacing-lg $spacing-3xl;
+  }
+}
+
+.calendar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: $spacing-2xl;
+
+  h1 {
+    margin-bottom: $spacing-xs;
+  }
+
+  p {
+    color: var(--text-muted);
+    font-size: 15px;
+  }
+
+  @include respond-to('md') {
+    flex-direction: column;
+    gap: $spacing-lg;
+  }
+}
+
+// Filter chips
+.calendar-filters {
+  display: flex;
+  gap: $spacing-xs;
+  flex-shrink: 0;
+}
+
+.calendar-filter {
+  padding: 6px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    border-color: var(--accent-border);
+    color: var(--text-h);
+  }
+
+  &--active {
+    background: var(--accent-bg);
+    border-color: var(--accent-border);
+    color: var(--accent);
+  }
+}
+
+// Calendar container
+.calendar-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: $spacing-xl;
+  box-shadow: var(--shadow-sm);
+
+  // react-big-calendar overrides
+  .rbc-calendar {
+    font-family: var(--sans);
+    color: var(--text);
+  }
+
+  .rbc-toolbar {
+    margin-bottom: $spacing-lg;
+    flex-wrap: wrap;
+    gap: $spacing-sm;
+  }
+
+  .rbc-toolbar button {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    background: transparent;
+    cursor: pointer;
+    transition: all $transition-fast;
+
+    &:hover {
+      background: var(--accent-bg);
+      border-color: var(--accent-border);
+    }
+
+    &.rbc-active {
+      background: var(--accent-bg);
+      border-color: var(--accent-border);
+      color: var(--accent);
+    }
+  }
+
+  .rbc-header {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    padding: $spacing-sm 0;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .rbc-month-view,
+  .rbc-time-view {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  .rbc-day-bg {
+    transition: background $transition-fast;
+
+    &:hover {
+      background: var(--accent-bg);
+    }
+  }
+
+  .rbc-today {
+    background: var(--accent-bg);
+  }
+
+  .rbc-off-range-bg {
+    background: var(--bg);
+  }
+
+  .rbc-date-cell {
+    font-size: 13px;
+    padding: 4px 6px;
+    color: var(--text);
+  }
+
+  .rbc-off-range {
+    color: var(--text-muted);
+  }
+
+  .rbc-month-row + .rbc-month-row {
+    border-top: 1px solid var(--border);
+  }
+
+  .rbc-day-bg + .rbc-day-bg {
+    border-left: 1px solid var(--border);
+  }
+
+  .rbc-header + .rbc-header {
+    border-left: 1px solid var(--border);
+  }
+
+  @include respond-to('md') {
+    padding: $spacing-md;
+  }
+}
+
+// Event detail modal
+.calendar-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: $spacing-xl;
+}
+
+.calendar-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  width: 100%;
+  max-width: 480px;
+  animation: slideDown 200ms ease-out;
+
+  &-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: $spacing-xl $spacing-2xl;
+    border-bottom: 1px solid var(--border);
+
+    h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+  }
+
+  &-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color $transition-fast;
+
+    &:hover {
+      color: var(--text-h);
+    }
+  }
+
+  &-body {
+    padding: $spacing-xl $spacing-2xl $spacing-2xl;
+  }
+
+  &-row {
+    display: flex;
+    gap: $spacing-lg;
+    padding: $spacing-sm 0;
+
+    &:not(:last-child) {
+      border-bottom: 1px solid var(--border);
+    }
+  }
+
+  &-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    min-width: 100px;
+    flex-shrink: 0;
+  }
+}
+
+.calendar-synced {
+  color: var(--success);
+  font-weight: 500;
+}
+
+.calendar-unsynced {
+  color: var(--text-muted);
+}

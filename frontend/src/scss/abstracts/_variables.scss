@@ -1,0 +1,28 @@
+// Breakpoints
+$breakpoint-md: 768px;
+
+// Spacing
+$spacing-unit: 4px;
+$spacing-xs: $spacing-unit;          // 4px
+$spacing-sm: $spacing-unit * 2;      // 8px
+$spacing-md: $spacing-unit * 3;      // 12px
+$spacing-lg: $spacing-unit * 4;      // 16px
+$spacing-xl: $spacing-unit * 5;      // 20px
+$spacing-2xl: $spacing-unit * 6;     // 24px
+$spacing-3xl: $spacing-unit * 8;     // 32px
+$spacing-4xl: $spacing-unit * 12;    // 48px
+
+// Transitions
+$transition-fast: 150ms ease;
+$transition-base: 200ms ease;
+$transition-out: 200ms ease-out;
+
+// Navigation
+$nav-height: 56px;
+
+// Settings page
+$settings-max-width: 640px;
+
+// Spinner
+$spinner-size: 24px;
+$spinner-border-width: 2.5px;

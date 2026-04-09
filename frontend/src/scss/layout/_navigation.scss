@@ -1,0 +1,102 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as *;
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-main {
+  flex: 1;
+}
+
+.app-footer {
+  padding: $spacing-lg $spacing-2xl;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: $spacing-2xl;
+  padding: 0 $spacing-2xl;
+  height: $nav-height;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+
+  &-brand {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.02em;
+  }
+
+  &-links {
+    display: flex;
+    gap: $spacing-xs;
+    flex: 1;
+  }
+
+  &-refresh {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--text);
+    cursor: pointer;
+    transition: background $transition-fast, color $transition-fast, transform 0.6s ease;
+
+    &:hover {
+      background: var(--accent-bg);
+      color: var(--accent);
+    }
+
+    &--spinning {
+      animation: spin-once 0.6s ease;
+    }
+  }
+
+  &-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    text-decoration: none;
+    border-radius: 6px;
+    transition: background $transition-fast, color $transition-fast;
+
+    &:hover {
+      background: var(--accent-bg);
+      color: var(--text-h);
+    }
+
+    &--active {
+      background: var(--accent-bg);
+      color: var(--accent);
+      font-weight: 600;
+    }
+  }
+
+  @include respond-to('md') {
+    gap: $spacing-lg;
+    padding: 0 $spacing-lg;
+  }
+}
+
+@keyframes spin-once {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

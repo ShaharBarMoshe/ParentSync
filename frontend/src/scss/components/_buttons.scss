@@ -1,0 +1,73 @@
+@use '../abstracts/variables' as *;
+@use '../abstracts/mixins' as *;
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-sm;
+  padding: 10px $spacing-2xl;
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background $transition-fast, border-color $transition-fast, box-shadow $transition-fast, opacity $transition-fast;
+  outline: none;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 3px var(--accent-bg);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  &--primary {
+    background: var(--accent);
+    color: #ffffff;
+
+    &:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+  }
+
+  &--secondary {
+    background: transparent;
+    color: var(--text);
+    border-color: var(--border);
+
+    &:hover:not(:disabled) {
+      background: var(--bg);
+      border-color: var(--accent-border);
+      color: var(--text-h);
+    }
+  }
+
+  &--google {
+    background: #ffffff;
+    color: #3c4043;
+    border-color: #dadce0;
+    font-weight: 500;
+
+    &:hover:not(:disabled) {
+      background: #f8f9fa;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    }
+  }
+
+  &--sm {
+    padding: 6px $spacing-lg;
+    font-size: 13px;
+  }
+
+  &__icon {
+    flex-shrink: 0;
+  }
+
+  @include respond-to('md') {
+    width: 100%;
+  }
+}

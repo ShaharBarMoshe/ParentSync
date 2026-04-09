@@ -1,0 +1,162 @@
+@use '../abstracts/variables' as *;
+
+.qr-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.qr-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 420px;
+  max-width: 90vw;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: $spacing-lg $spacing-2xl;
+    border-bottom: 1px solid #e5e7eb;
+
+    h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+  }
+
+  &__close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #6b7280;
+    line-height: 1;
+    padding: 0;
+
+    &:hover {
+      color: #111827;
+    }
+  }
+
+  &__body {
+    padding: $spacing-2xl;
+    text-align: center;
+    min-height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: $spacing-md;
+
+    p {
+      margin: 0;
+      font-size: 16px;
+      color: #374151;
+    }
+  }
+
+  &__check {
+    font-size: 48px;
+    color: #10b981;
+  }
+
+  &__status--connected {
+    color: #10b981;
+  }
+
+  &__status--disconnected p {
+    color: #6b7280;
+  }
+
+  &__spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #e5e7eb;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: qr-spin 0.8s linear infinite;
+  }
+
+  &__qr-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: $spacing-lg;
+
+    p {
+      margin: 0;
+      color: #374151;
+    }
+  }
+
+  &__qr-image {
+    border-radius: 8px;
+    border: 2px solid #e5e7eb;
+  }
+
+  &__hint {
+    font-size: 13px;
+    color: #9ca3af;
+  }
+
+  &__footer {
+    padding: $spacing-lg $spacing-2xl;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: center;
+    gap: $spacing-md;
+  }
+
+  &__btn {
+    padding: $spacing-sm $spacing-2xl;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: background $transition-fast;
+
+    &--primary {
+      background: #667eea;
+      color: #fff;
+
+      &:hover:not(:disabled) {
+        background: #5a6fd6;
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    }
+
+    &--secondary {
+      background: #f3f4f6;
+      color: #374151;
+
+      &:hover {
+        background: #e5e7eb;
+      }
+    }
+  }
+}
+
+@keyframes qr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
