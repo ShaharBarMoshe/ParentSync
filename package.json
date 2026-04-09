@@ -1,0 +1,94 @@
+{
+  "name": "parentsync",
+  "version": "1.0.1",
+  "description": "ParentSync - Family task manager with WhatsApp & Gmail integration",
+  "author": {
+    "name": "Shahar Bar-Moshe",
+    "email": "shahar@parentsync.local"
+  },
+  "homepage": "https://github.com/shaharb/ParentSync",
+  "main": "electron/dist/main.js",
+  "private": true,
+  "scripts": {
+    "rebuild:native": "npx @electron/rebuild -m backend",
+    "electron:dev": "npm run build:electron && concurrently \"cd frontend && npm run dev\" \"cd backend && npm run start:dev\" \"wait-on http://localhost:5173 http://localhost:3000/api/health && ELECTRON_DEV=1 electron .\"",
+    "electron:start": "npm run build:all && npm run rebuild:native && electron .",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "build:all": "npm run build:backend && npm run build:frontend && npm run build:electron",
+    "package:win": "npm run build:all && npm run rebuild:native && electron-builder --win",
+    "package:mac": "npm run build:all && npm run rebuild:native && electron-builder --mac",
+    "package:linux": "npm run build:all && npm run rebuild:native && electron-builder --linux",
+    "package": "npm run build:all && npm run rebuild:native && electron-builder",
+    "test": "bash scripts/run-all-tests.sh",
+    "test:backend": "cd backend && npm test",
+    "test:backend:e2e": "cd backend && npx jest --config test/jest-e2e.json",
+    "test:frontend": "cd frontend && npx vitest run"
+  },
+  "build": {
+    "appId": "com.parentsync.app",
+    "productName": "ParentSync",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/dist/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/",
+        "to": "assets",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "backend/dist/",
+        "to": "backend/dist"
+      },
+      {
+        "from": "backend/node_modules/",
+        "to": "backend/node_modules"
+      },
+      {
+        "from": "backend/package.json",
+        "to": "backend/package.json"
+      },
+      {
+        "from": "frontend/dist/",
+        "to": "frontend/dist"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Office"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
+    "concurrently": "^9.1.2",
+    "electron": "^35.2.1",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.7.3",
+    "wait-on": "^8.0.3"
+  }
+}

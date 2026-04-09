@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+electron/dist/
+release/
+
+# Environment & secrets
+.env
+.env.local
+*.sqlite
+client_secret.json
+.encryption_key
+
+# WhatsApp Web session & cache
+backend/.wwebjs_auth/
+backend/.wwebjs_cache/
+
+# Coverage reports
+backend/coverage/
+
+# Logs
+backend/logs/
+
+# Test reports
+test-reports/
+
+# IDE
+.idea/
+.vscode/
+backend/.vscode/
+*.swp
+*.swo
+
+# Claude Code / Skills (local tooling)
+.agents/
+skills-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
