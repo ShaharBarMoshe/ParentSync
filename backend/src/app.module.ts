@@ -7,6 +7,10 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { TerminusModule } from '@nestjs/terminus';
 import * as Joi from 'joi';
+import * as os from 'os';
+import * as path from 'path';
+
+const defaultDbPath = path.join(os.homedir(), '.parentsync', 'parentsync.sqlite');
 import { SettingsModule } from './settings/settings.module';
 import { MessagesModule } from './messages/messages.module';
 import { CalendarModule } from './calendar/calendar.module';
@@ -26,7 +30,7 @@ import { HealthController } from './health/health.controller';
           .valid('development', 'test')
           .default('development'),
         PORT: Joi.number().default(3000),
-        DATABASE_URL: Joi.string().default('./parentsync.sqlite'),
+        DATABASE_URL: Joi.string().default(defaultDbPath),
         FRONTEND_URL: Joi.string().default('http://localhost:5173'),
       }),
     }),
@@ -35,7 +39,7 @@ import { HealthController } from './health/health.controller';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'better-sqlite3',
-        database: config.get<string>('DATABASE_URL', './parentsync.sqlite'),
+        database: config.get<string>('DATABASE_URL', defaultDbPath),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: true,
         logging: config.get<string>('NODE_ENV') !== 'test',

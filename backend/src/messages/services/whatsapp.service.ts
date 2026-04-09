@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { Client, Chat, Message, MessageMedia, LocalAuth } from 'whatsapp-web.js';
 import * as qrcode from 'qrcode-terminal';
@@ -50,7 +51,7 @@ export class WhatsAppService
   }
 
   private getWhatsAppDataDir(): string {
-    return process.env.WHATSAPP_DATA_DIR || path.join(process.cwd(), '.wwebjs_auth');
+    return process.env.WHATSAPP_DATA_DIR || path.join(os.homedir(), '.parentsync', 'whatsapp-session');
   }
 
   private removeStaleLocks(): void {

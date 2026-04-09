@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -22,7 +23,7 @@ export class CryptoService {
   }
 
   private getKeyPath(): string {
-    const dbUrl = process.env.DATABASE_URL || './parentsync.sqlite';
+    const dbUrl = process.env.DATABASE_URL || path.join(os.homedir(), '.parentsync', 'parentsync.sqlite');
     const dbDir = path.dirname(path.resolve(dbUrl));
     return path.join(dbDir, KEY_FILE_NAME);
   }

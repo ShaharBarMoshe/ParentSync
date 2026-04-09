@@ -1,6 +1,7 @@
 import { ConsoleLogger, Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 @Injectable()
@@ -10,7 +11,7 @@ export class FileLoggerService extends ConsoleLogger {
 
   constructor() {
     super();
-    const logDir = process.env.LOG_DIR || path.join(process.cwd(), 'logs');
+    const logDir = process.env.LOG_DIR || path.join(os.homedir(), '.parentsync', 'logs');
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true });
     }
