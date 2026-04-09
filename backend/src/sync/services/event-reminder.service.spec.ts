@@ -1,0 +1,154 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { EventReminderService } from './event-reminder.service';
+import { SettingsService } from '../../settings/settings.service';
+import {
+  EVENT_REPOSITORY,
+  WHATSAPP_SERVICE,
+  MESSAGE_REPOSITORY,
+  GOOGLE_CALENDAR_SERVICE,
+} from '../../shared/constants/injection-tokens';
+import { MessageSource } from '../../shared/enums/message-source.enum';
+import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
+
+describe('EventReminderService', () => {
+  let service: EventReminderService;
+  let eventRepository: any;
+  let whatsappService: any;
+  let messageRepository: any;
+  let googleCalendarService: any;
+  let settingsService: any;
+
+  const now = new Date('2026-04-08T12:00:00Z');
+
+  const baseEvent = {
+    id: 'event-1',
+    title: 'School Meeting',
+    description: 'Parent-teacher conference',
+    date: '2026-04-09',
+    time: '12:00',
+    location: 'School Hall',
+    source: MessageSource.WHATSAPP,
+    sourceId: 'msg-1',
+    childId: 'child-1',
+    calendarColorId: null,
+    approvalStatus: ApprovalStatus.APPROVED,
+    syncedToGoogle: true,
+    googleEventId: 'g-1',
+    reminderSent: false,
+    createdAt: new Date('2026-04-05T08:00:00Z'),
+  };
+
+  beforeEach(async () => {
+    eventRepository = {
+      findDueForReminder: jest.fn().mockResolvedValue([baseEvent]),
+      update: jest.fn().mockResolvedValue(baseEvent),
+    };
+
+    whatsappService = {
+      isConnected: jest.fn().mockReturnValue(true),
+      sendMessage: jest.fn().mockResolvedValue('wa-msg-1'),
+    };
+
+    messageRepository = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'msg-1',
+        channel: 'Grade 3A Parents',
+      }),
+    };
+
+    googleCalendarService = {
+      eventExists: jest.fn().mockResolvedValue(true),
+    };
+
+    settingsService = {
+      findByKey: jest.fn().mockImplementation((key: string) => {
+        if (key === 'approval_channel') {
+          return Promise.resolve({ value: 'Family Reminders' });
+        }
+        if (key === 'google_calendar_id') {
+          return Promise.resolve({ value: 'cal-123' });
+        }
+        return Promise.reject(new Error('Not found'));
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        EventReminderService,
+        { provide: EVENT_REPOSITORY, useValue: eventRepository },
+        { provide: WHATSAPP_SERVICE, useValue: whatsappService },
+        { provide: MESSAGE_REPOSITORY, useValue: messageRepository },
+        { provide: GOOGLE_CALENDAR_SERVICE, useValue: googleCalendarService },
+        { provide: SettingsService, useValue: settingsService },
+      ],
+    }).compile();
+
+    service = module.get(EventReminderService);
+  });
+
+  it('sends a reminder for due events that exist in Google Calendar', async () => {
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(1);
+    expect(googleCalendarService.eventExists).toHaveBeenCalledWith('g-1', 'cal-123');
+    expect(whatsappService.sendMessage).toHaveBeenCalledTimes(1);
+    const [channel, text] = whatsappService.sendMessage.mock.calls[0];
+    expect(channel).toBe('Family Reminders');
+    expect(text).toContain('School Meeting');
+    expect(text).toContain('2026-04-09');
+    expect(text).toContain('12:00');
+    expect(text).toContain('School Hall');
+    expect(text).toContain('Grade 3A Parents');
+    expect(eventRepository.update).toHaveBeenCalledWith('event-1', {
+      reminderSent: true,
+    });
+  });
+
+  it('does not send when the event no longer exists in Google Calendar', async () => {
+    googleCalendarService.eventExists.mockResolvedValue(false);
+
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(0);
+    expect(whatsappService.sendMessage).not.toHaveBeenCalled();
+    // marked as sent so we don't keep checking it
+    expect(eventRepository.update).toHaveBeenCalledWith('event-1', {
+      reminderSent: true,
+    });
+  });
+
+  it('skips when no reminder channel configured', async () => {
+    settingsService.findByKey.mockImplementation(() =>
+      Promise.reject(new Error('Not found')),
+    );
+
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(0);
+    expect(eventRepository.findDueForReminder).not.toHaveBeenCalled();
+  });
+
+  it('skips when WhatsApp is not connected', async () => {
+    whatsappService.isConnected.mockReturnValue(false);
+
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(0);
+    expect(whatsappService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('logs and continues when sending one reminder fails', async () => {
+    eventRepository.findDueForReminder.mockResolvedValue([
+      baseEvent,
+      { ...baseEvent, id: 'event-2', googleEventId: 'g-2' },
+    ]);
+    whatsappService.sendMessage
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce('wa-msg-2');
+
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(1);
+    expect(whatsappService.sendMessage).toHaveBeenCalledTimes(2);
+  });
+});
