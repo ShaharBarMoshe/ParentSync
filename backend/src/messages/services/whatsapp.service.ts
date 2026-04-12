@@ -232,7 +232,16 @@ export class WhatsAppService
     limit = 50,
   ): Promise<WhatsAppMessage[]> {
     const targetChat = await this.findChatByName(channelName);
-    const messages: Message[] = await targetChat.fetchMessages({ limit });
+
+    let messages: Message[];
+    try {
+      messages = await targetChat.fetchMessages({ limit });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to fetch messages from "${channelName}" (channel may be empty): ${error.message}`,
+      );
+      return [];
+    }
 
     return messages.map((msg) => ({
       content: msg.body,

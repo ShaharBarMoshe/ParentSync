@@ -66,4 +66,22 @@ describe('WhatsAppService', () => {
     await service.disconnect();
     expect(service.isConnected()).toBe(false);
   });
+
+  it('should return empty array when fetchMessages throws (empty channel)', async () => {
+    await service.initialize();
+
+    const mockChat = {
+      name: 'empty-channel',
+      fetchMessages: jest.fn().mockRejectedValue(
+        new Error("Cannot read properties of undefined (reading 'waitForChatLoading')"),
+      ),
+    };
+
+    const { Client } = require('whatsapp-web.js');
+    const mockClient = new Client();
+    mockClient.getChats.mockResolvedValue([mockChat]);
+
+    const result = await service.getChannelMessages('empty-channel');
+    expect(result).toEqual([]);
+  });
 });
