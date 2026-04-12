@@ -10,6 +10,8 @@ import * as Joi from 'joi';
 import * as os from 'os';
 import * as path from 'path';
 
+import * as fs from 'fs';
+
 const defaultDbPath = path.join(os.homedir(), '.parentsync', 'parentsync.sqlite');
 import { SettingsModule } from './settings/settings.module';
 import { MessagesModule } from './messages/messages.module';
@@ -37,13 +39,20 @@ import { HealthController } from './health/health.controller';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'better-sqlite3',
-        database: config.get<string>('DATABASE_URL', defaultDbPath),
+      useFactory: (config: ConfigService) => {
+        const dbPath = config.get<string>('DATABASE_URL', defaultDbPath);
+        const dir = path.dirname(path.resolve(dbPath));
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+        return {
+        type: 'better-sqlite3' as const,
+        database: dbPath,
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
         synchronize: true,
         logging: config.get<string>('NODE_ENV') !== 'test',
-      }),
+        };
+      },
     }),
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60000, limit: 100 }],

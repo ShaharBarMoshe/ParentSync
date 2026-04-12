@@ -37,6 +37,7 @@ export class CryptoService {
     }
 
     const key = crypto.randomBytes(KEY_LENGTH);
+    fs.mkdirSync(path.dirname(keyPath), { recursive: true });
     fs.writeFileSync(keyPath, key.toString('hex'), { mode: 0o600 });
     this.logger.log('Generated new encryption key');
     return key;
