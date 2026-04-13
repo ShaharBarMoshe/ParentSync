@@ -801,7 +801,7 @@ export default function SettingsPage() {
               <h3 className="settings-section-title"><Icon name="key-round" size={16} /> OpenRouter</h3>
               <div className="form-field">
                 <label htmlFor="openrouterApiKey" className="form-label">API Key</label>
-                <input id="openrouterApiKey" type="text" className="form-input" value={form.openrouterApiKey} onChange={(e) => handleChange('openrouterApiKey', e.target.value)} placeholder="sk-or-v1-..." />
+                <input id="openrouterApiKey" type="text" className="form-input" value={form.openrouterApiKey} onChange={(e) => handleChange('openrouterApiKey', e.target.value)} placeholder="sk-or-v1-..." autoComplete="off" data-lpignore="true" data-1p-ignore="true" />
                 <span className="form-hint">Your OpenRouter API key. <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">Get one here</a></span>
               </div>
               <div className="form-field">
@@ -821,7 +821,7 @@ export default function SettingsPage() {
               </div>
               <div className="form-field">
                 <label htmlFor="googleClientSecret" className="form-label">Client Secret</label>
-                <input id="googleClientSecret" type="text" className="form-input" value={form.googleClientSecret} onChange={(e) => handleChange('googleClientSecret', e.target.value)} placeholder="GOCSPX-..." />
+                <input id="googleClientSecret" type="text" className="form-input" value={form.googleClientSecret} onChange={(e) => handleChange('googleClientSecret', e.target.value)} placeholder="GOCSPX-..." autoComplete="off" data-lpignore="true" data-1p-ignore="true" />
               </div>
               <div className="form-field">
                 <label htmlFor="googleRedirectUri" className="form-label">Redirect URI</label>
