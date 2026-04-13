@@ -166,6 +166,22 @@ export class MessageParserService {
       return result;
     }
 
+    // Split large batches into chunks to avoid rate limits on free-tier models
+    const MAX_BATCH_SIZE = 8;
+    if (uncached.length > MAX_BATCH_SIZE) {
+      this.logger.log(
+        `Splitting ${uncached.length} groups into chunks of ${MAX_BATCH_SIZE}`,
+      );
+      for (let i = 0; i < uncached.length; i += MAX_BATCH_SIZE) {
+        const chunk = uncached.slice(i, i + MAX_BATCH_SIZE);
+        const chunkResult = await this.parseMessageBatch(chunk, currentDate);
+        for (const [id, events] of chunkResult) {
+          result.set(id, events);
+        }
+      }
+      return result;
+    }
+
     this.logger.log(
       `Batch parsing ${uncached.length} message groups in a single LLM call`,
     );
