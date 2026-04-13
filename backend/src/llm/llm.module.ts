@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { HttpModule } from '@nestjs/axios';
 import { CacheModule } from '@nestjs/cache-manager';
 import { GeminiService } from './services/gemini.service';
 import { MessageParserService } from './services/message-parser.service';
@@ -11,10 +10,6 @@ import { SettingsModule } from '../settings/settings.module';
 @Module({
   imports: [
     SettingsModule,
-    HttpModule.register({
-      timeout: 60000,
-      maxRedirects: 3,
-    }),
     CacheModule.register({
       ttl: 86400, // 24 hours default
       max: 1000,
