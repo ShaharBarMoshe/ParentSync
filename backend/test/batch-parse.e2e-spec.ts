@@ -40,6 +40,7 @@ describe('Batch Parse Flow (e2e)', () => {
     initialize: jest.fn().mockResolvedValue(undefined),
     isConnected: jest.fn().mockReturnValue(false),
     getConnectionStatus: jest.fn().mockReturnValue('disconnected'),
+    resetReconnectFlag: jest.fn(),
     getChannelMessages: jest.fn().mockResolvedValue([]),
     sendMessage: jest.fn().mockResolvedValue('mock-msg-id'),
     disconnect: jest.fn().mockResolvedValue(undefined),

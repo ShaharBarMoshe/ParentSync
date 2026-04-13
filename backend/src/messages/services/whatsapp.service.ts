@@ -228,6 +228,13 @@ export class WhatsAppService
     return targetChat;
   }
 
+  private reconnectedThisCycle = false;
+
+  /** Call at the start of each sync cycle to allow one reconnect attempt. */
+  resetReconnectFlag(): void {
+    this.reconnectedThisCycle = false;
+  }
+
   async getChannelMessages(
     channelName: string,
     limit = 50,
@@ -238,10 +245,15 @@ export class WhatsAppService
     try {
       messages = await targetChat.fetchMessages({ limit });
     } catch (error) {
-      // Detect stale puppeteer page — reconnect once and retry
-      if (error.message?.includes('waitForChatLoading') || error.message?.includes('Cannot read properties of undefined')) {
+      const isStaleSession =
+        error.message?.includes('waitForChatLoading') ||
+        error.message?.includes('Cannot read properties of undefined');
+
+      // Try reconnecting once per sync cycle if the session looks stale
+      if (isStaleSession && !this.reconnectedThisCycle) {
+        this.reconnectedThisCycle = true;
         this.logger.warn(
-          `WhatsApp session appears stale for "${channelName}" — reinitializing client`,
+          `WhatsApp session appears stale for "${channelName}" — reinitializing client (once per sync)`,
         );
         this.connected = false;
         try {
@@ -255,9 +267,15 @@ export class WhatsAppService
           return [];
         }
       } else {
-        this.logger.warn(
-          `Failed to fetch messages from "${channelName}" (channel may be empty): ${error.message}`,
-        );
+        if (isStaleSession) {
+          this.logger.warn(
+            `Skipping "${channelName}" — fetchMessages failed (already reconnected this sync cycle)`,
+          );
+        } else {
+          this.logger.warn(
+            `Failed to fetch messages from "${channelName}" (channel may be empty): ${error.message}`,
+          );
+        }
         return [];
       }
     }

@@ -54,6 +54,7 @@ describe('SyncService', () => {
 
     mockWhatsappService = {
       isConnected: jest.fn().mockReturnValue(true),
+      resetReconnectFlag: jest.fn(),
       getChannelMessages: jest.fn().mockResolvedValue([]),
     };
 

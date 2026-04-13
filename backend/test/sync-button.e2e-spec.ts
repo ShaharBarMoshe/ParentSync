@@ -42,6 +42,7 @@ describe('Sync Button (e2e)', () => {
     initialize: jest.fn().mockResolvedValue(undefined),
     isConnected: jest.fn().mockReturnValue(true),
     getConnectionStatus: jest.fn().mockReturnValue('connected'),
+    resetReconnectFlag: jest.fn(),
     getChannelMessages: jest.fn().mockResolvedValue(whatsappMessages),
     sendMessage: jest.fn().mockResolvedValue('msg-id'),
     disconnect: jest.fn().mockResolvedValue(undefined),

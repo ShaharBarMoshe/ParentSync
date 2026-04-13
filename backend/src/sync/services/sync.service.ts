@@ -113,6 +113,9 @@ export class SyncService {
     const startedAt = new Date();
     this.logger.log('Starting sync...');
 
+    // Allow one WhatsApp reconnect attempt per sync cycle
+    this.whatsappService.resetReconnectFlag();
+
     const children = await this.childService.findAll();
 
     if (children.length === 0) {

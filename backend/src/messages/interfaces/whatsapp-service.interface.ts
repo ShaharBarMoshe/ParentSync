@@ -29,6 +29,7 @@ export interface IWhatsAppService {
   initialize(): Promise<void>;
   isConnected(): boolean;
   getConnectionStatus(): WhatsAppConnectionStatus;
+  resetReconnectFlag(): void;
   getChannelMessages(
     channelName: string,
     limit?: number,
