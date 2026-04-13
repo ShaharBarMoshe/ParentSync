@@ -318,6 +318,10 @@ export class SyncService {
         let channelMessageCount = 0;
         const channelMessages: { sender: string; content: string; timestamp: string }[] = [];
         for (const msg of messages) {
+          // Skip messages sent by this app (approval/reminder messages)
+          if (msg.content.includes('— ParentSync')) {
+            continue;
+          }
           // Only store messages newer than the last scanned message
           if (msg.timestamp > cutoff) {
             await this.messageRepository.create({

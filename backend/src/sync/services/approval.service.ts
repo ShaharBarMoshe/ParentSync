@@ -13,6 +13,7 @@ import type { IGoogleCalendarService } from '../../calendar/interfaces/google-ca
 import { SettingsService } from '../../settings/settings.service';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
+import { APP_MESSAGE_MARKER } from '../../shared/constants/app-marker';
 import type { WhatsAppReaction } from '../../messages/interfaces/whatsapp-service.interface';
 import { generateICS } from '../../calendar/utils/ics-generator';
 
@@ -199,6 +200,6 @@ export class ApprovalService {
     lines.push(``);
     lines.push(`React 👍 to approve or 😢 to reject`);
 
-    return lines.join('\n');
+    return lines.join('\n') + APP_MESSAGE_MARKER;
   }
 }

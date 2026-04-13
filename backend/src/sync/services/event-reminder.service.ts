@@ -14,6 +14,7 @@ import type { IGoogleCalendarService } from '../../calendar/interfaces/google-ca
 import type { IGoogleTasksService } from '../../calendar/interfaces/google-tasks-service.interface';
 import { SettingsService } from '../../settings/settings.service';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
+import { APP_MESSAGE_MARKER } from '../../shared/constants/app-marker';
 
 @Injectable()
 export class EventReminderService {
@@ -162,6 +163,6 @@ export class EventReminderService {
       lines.push(``, `Details: ${event.description}`);
     }
     lines.push(`Source: ${event.source} — ${sourceChannel}`);
-    return lines.join('\n');
+    return lines.join('\n') + APP_MESSAGE_MARKER;
   }
 }
