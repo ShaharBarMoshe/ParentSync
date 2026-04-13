@@ -60,7 +60,7 @@ export class SyncController {
   @ApiOperation({ summary: 'SSE stream for critical app errors' })
   errors(): Observable<MessageEvent> {
     return fromEvent(this.eventEmitter, 'app.error').pipe(
-      map((error: unknown) => ({ data: error })),
+      map((error: unknown) => ({ data: error as object })),
     );
   }
 }
