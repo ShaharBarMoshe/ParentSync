@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { CacheModule } from '@nestjs/cache-manager';
-import { OpenRouterService } from './services/openrouter.service';
+import { GeminiService } from './services/gemini.service';
 import { MessageParserService } from './services/message-parser.service';
 import { LlmRateLimiter } from './guards/llm-throttle.guard';
 import { LlmQueueProcessor } from './queue/llm-queue.processor';
@@ -12,7 +12,7 @@ import { SettingsModule } from '../settings/settings.module';
   imports: [
     SettingsModule,
     HttpModule.register({
-      timeout: 30000,
+      timeout: 60000,
       maxRedirects: 3,
     }),
     CacheModule.register({
@@ -23,7 +23,7 @@ import { SettingsModule } from '../settings/settings.module';
   providers: [
     {
       provide: LLM_SERVICE,
-      useClass: OpenRouterService,
+      useClass: GeminiService,
     },
     MessageParserService,
     LlmRateLimiter,

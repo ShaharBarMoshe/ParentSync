@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-const MAX_REQUESTS_PER_MINUTE = 5;
+const MAX_REQUESTS_PER_MINUTE = 14; // Gemini free tier allows 15 RPM, leave 1 buffer
 const WINDOW_MS = 60_000;
 
 @Injectable()

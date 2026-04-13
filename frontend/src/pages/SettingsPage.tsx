@@ -21,8 +21,8 @@ const CALENDAR_COLORS: { id: string; name: string; hex: string }[] = [
 
 interface SettingsForm {
   checkSchedule: string;
-  openrouterApiKey: string;
-  openrouterModel: string;
+  geminiApiKey: string;
+  geminiModel: string;
   googleClientId: string;
   googleClientSecret: string;
   googleRedirectUri: string;
@@ -31,8 +31,8 @@ interface SettingsForm {
 
 const SETTING_KEYS = {
   checkSchedule: 'check_schedule',
-  openrouterApiKey: 'openrouter_api_key',
-  openrouterModel: 'openrouter_model',
+  geminiApiKey: 'gemini_api_key',
+  geminiModel: 'gemini_model',
   googleClientId: 'google_client_id',
   googleClientSecret: 'google_client_secret',
   googleRedirectUri: 'google_redirect_uri',
@@ -124,8 +124,8 @@ function HourPicker({ value, onChange, error }: { value: string; onChange: (valu
 
 const DEFAULT_FORM: SettingsForm = {
   checkSchedule: '9,14,18',
-  openrouterApiKey: '',
-  openrouterModel: 'google/gemma-3-27b-it:free',
+  geminiApiKey: '',
+  geminiModel: 'gemini-2.0-flash',
   googleClientId: '',
   googleClientSecret: '',
   googleRedirectUri: 'http://localhost:3000/api/auth/google/callback',
@@ -566,8 +566,8 @@ export default function SettingsPage() {
     const map = new Map(settings.map((s) => [s.key, s.value]));
     return {
       checkSchedule: map.get(SETTING_KEYS.checkSchedule) ?? DEFAULT_FORM.checkSchedule,
-      openrouterApiKey: map.get(SETTING_KEYS.openrouterApiKey) ?? DEFAULT_FORM.openrouterApiKey,
-      openrouterModel: map.get(SETTING_KEYS.openrouterModel) ?? DEFAULT_FORM.openrouterModel,
+      geminiApiKey: map.get(SETTING_KEYS.geminiApiKey) ?? DEFAULT_FORM.geminiApiKey,
+      geminiModel: map.get(SETTING_KEYS.geminiModel) ?? DEFAULT_FORM.geminiModel,
       googleClientId: map.get(SETTING_KEYS.googleClientId) ?? DEFAULT_FORM.googleClientId,
       googleClientSecret: map.get(SETTING_KEYS.googleClientSecret) ?? DEFAULT_FORM.googleClientSecret,
       googleRedirectUri: map.get(SETTING_KEYS.googleRedirectUri) ?? DEFAULT_FORM.googleRedirectUri,
@@ -796,18 +796,18 @@ export default function SettingsPage() {
 
           {/* Settings Form */}
           <form onSubmit={handleSubmit}>
-            {/* OpenRouter */}
+            {/* Gemini */}
             <div className="settings-section">
-              <h3 className="settings-section-title"><Icon name="key-round" size={16} /> OpenRouter</h3>
+              <h3 className="settings-section-title"><Icon name="key-round" size={16} /> Gemini AI</h3>
               <div className="form-field">
-                <label htmlFor="openrouterApiKey" className="form-label">API Key</label>
-                <input id="openrouterApiKey" type="text" className="form-input" value={form.openrouterApiKey} onChange={(e) => handleChange('openrouterApiKey', e.target.value)} placeholder="sk-or-v1-..." autoComplete="off" data-lpignore="true" data-1p-ignore="true" />
-                <span className="form-hint">Your OpenRouter API key. <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">Get one here</a></span>
+                <label htmlFor="geminiApiKey" className="form-label">API Key</label>
+                <input id="geminiApiKey" type="text" className="form-input" value={form.geminiApiKey} onChange={(e) => handleChange('geminiApiKey', e.target.value)} placeholder="AIza..." autoComplete="off" data-lpignore="true" data-1p-ignore="true" />
+                <span className="form-hint">Your Gemini API key. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Get one here</a> (free)</span>
               </div>
               <div className="form-field">
-                <label htmlFor="openrouterModel" className="form-label">Model</label>
-                <input id="openrouterModel" type="text" className="form-input" value={form.openrouterModel} onChange={(e) => handleChange('openrouterModel', e.target.value)} placeholder="google/gemma-3-27b-it:free" />
-                <span className="form-hint">OpenRouter model identifier (e.g., google/gemma-3-27b-it:free)</span>
+                <label htmlFor="geminiModel" className="form-label">Model</label>
+                <input id="geminiModel" type="text" className="form-input" value={form.geminiModel} onChange={(e) => handleChange('geminiModel', e.target.value)} placeholder="gemini-2.0-flash" />
+                <span className="form-hint">Gemini model (e.g., gemini-2.0-flash, gemini-2.5-flash-preview-05-20)</span>
               </div>
             </div>
 
