@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SETTINGS_REPOSITORY } from '../shared/constants/injection-tokens';
 import type { ISettingsRepository } from './interfaces/settings-repository.interface';
@@ -10,6 +10,8 @@ import { SENSITIVE_SETTING_KEYS } from './constants/setting-keys';
 
 @Injectable()
 export class SettingsService {
+  private readonly logger = new Logger(SettingsService.name);
+
   constructor(
     @Inject(SETTINGS_REPOSITORY)
     private readonly settingsRepository: ISettingsRepository,
@@ -46,7 +48,17 @@ export class SettingsService {
     return this.findByKey(key);
   }
 
+  private containsInvalidChars(value: string): boolean {
+    return /[•\u2022]/.test(value);
+  }
+
   async create(dto: CreateSettingDto): Promise<UserSettingEntity> {
+    if (this.isSensitive(dto.key) && this.containsInvalidChars(dto.value)) {
+      this.logger.warn(`Rejected saving "${dto.key}" — value contains invalid characters (masked placeholder)`);
+      const existing = await this.settingsRepository.findByKey(dto.key);
+      if (existing) return this.decryptEntity(existing);
+      throw new Error(`Cannot save "${dto.key}" with masked/invalid characters`);
+    }
     const storedValue = this.isSensitive(dto.key)
       ? this.cryptoService.encrypt(dto.value)
       : dto.value;
@@ -60,6 +72,10 @@ export class SettingsService {
     const existing = await this.settingsRepository.findByKey(key);
     if (!existing) {
       throw new NotFoundException(`Setting with key "${key}" not found`);
+    }
+    if (this.isSensitive(key) && this.containsInvalidChars(dto.value)) {
+      this.logger.warn(`Rejected saving "${key}" — value contains invalid characters (masked placeholder)`);
+      return this.decryptEntity(existing);
     }
     const storedValue = this.isSensitive(key)
       ? this.cryptoService.encrypt(dto.value)
