@@ -13,6 +13,7 @@ import type { IGoogleCalendarService } from '../../calendar/interfaces/google-ca
 import type { IGoogleTasksService } from '../../calendar/interfaces/google-tasks-service.interface';
 import { GoogleTasksScopeError } from '../../calendar/services/google-tasks.service';
 import { MessageParserService } from '../../llm/services/message-parser.service';
+import type { ParsedEvent } from '../../llm/dto/parsed-event.dto';
 import { SettingsService } from '../../settings/settings.service';
 import { ChildService } from '../../settings/child.service';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
@@ -64,35 +65,68 @@ export class EventSyncService {
       `Grouped ${unparsedMessages.length} messages into ${messageGroups.length} groups`,
     );
 
+    // Prepare batch: merge each group's content and look up child info
+    const groupMeta: {
+      group: MessageEntity[];
+      childName?: string;
+      childId?: string;
+      calendarColorId?: string;
+      mergedContent: string;
+    }[] = [];
+
     for (const group of messageGroups) {
-      try {
-        // Look up child info from the first message in the group
-        const firstMessage = group[0];
-        let childName: string | undefined;
-        let calendarColorId: string | undefined;
+      const firstMessage = group[0];
+      let childName: string | undefined;
+      let calendarColorId: string | undefined;
 
-        if (firstMessage.childId) {
-          try {
-            const child = await this.childService.findById(firstMessage.childId);
-            childName = child.name;
-            calendarColorId = child.calendarColor || undefined;
-          } catch {
-            this.logger.warn(
-              `Child with id "${firstMessage.childId}" not found for message ${firstMessage.id}`,
-            );
-          }
+      if (firstMessage.childId) {
+        try {
+          const child = await this.childService.findById(firstMessage.childId);
+          childName = child.name;
+          calendarColorId = child.calendarColor || undefined;
+        } catch {
+          this.logger.warn(
+            `Child with id "${firstMessage.childId}" not found for message ${firstMessage.id}`,
+          );
         }
+      }
 
-        const approvalEnabled = await this.approvalService.isApprovalEnabled();
-        const result = await this.parseMessageGroupInTransaction(
-          group,
-          currentDate,
-          childName,
-          firstMessage.childId,
-          calendarColorId,
+      groupMeta.push({
+        group,
+        childName,
+        childId: firstMessage.childId,
+        calendarColorId,
+        mergedContent: this.mergeGroupContent(group),
+      });
+    }
+
+    // Batch parse all groups in a single LLM call
+    const batchInput = groupMeta.map((meta, i) => ({
+      id: String(i),
+      content: meta.mergedContent,
+    }));
+    const batchResult = await this.messageParserService.parseMessageBatch(
+      batchInput,
+      currentDate,
+    );
+
+    const approvalEnabled = await this.approvalService.isApprovalEnabled();
+
+    // Process each group's parsed events
+    for (let i = 0; i < groupMeta.length; i++) {
+      const meta = groupMeta[i];
+      const parsedEvents = batchResult.get(String(i)) || [];
+
+      try {
+        const result = await this.createEventsInTransaction(
+          meta.group,
+          parsedEvents,
+          meta.childName,
+          meta.childId,
+          meta.calendarColorId,
           approvalEnabled,
         );
-        messagesParsed += group.length;
+        messagesParsed += meta.group.length;
         eventsCreated += result.eventsCreated;
 
         // Send newly created events for approval if enabled (skip past events)
@@ -103,7 +137,6 @@ export class EventSyncService {
               this.logger.log(
                 `Skipping approval for past event "${savedEvent.title}" (${savedEvent.date}${savedEvent.time ? ' ' + savedEvent.time : ''}) — auto-approving`,
               );
-              // Auto-approve past events so they sync directly without waiting
               await this.eventRepository.update(savedEvent.id, {
                 approvalStatus: ApprovalStatus.NONE,
               });
@@ -114,10 +147,10 @@ export class EventSyncService {
         }
       } catch (error) {
         this.logger.error(
-          `Failed to parse message group (${group.length} messages): ${error.message}`,
+          `Failed to process message group (${meta.group.length} messages): ${error.message}`,
         );
         // Mark all as parsed to avoid infinite retry
-        for (const msg of group) {
+        for (const msg of meta.group) {
           await this.messageRepository.update(msg.id, { parsed: true });
         }
       }
@@ -224,9 +257,9 @@ export class EventSyncService {
       .join('\n');
   }
 
-  private async parseMessageGroupInTransaction(
+  private async createEventsInTransaction(
     group: MessageEntity[],
-    currentDate: string,
+    parsedEvents: ParsedEvent[],
     childName?: string,
     childId?: string,
     calendarColorId?: string,
@@ -240,12 +273,6 @@ export class EventSyncService {
     const savedEvents: CalendarEventEntity[] = [];
 
     try {
-      const mergedContent = this.mergeGroupContent(group);
-      const parsedEvents = await this.messageParserService.parseMessage(
-        mergedContent,
-        currentDate,
-      );
-
       for (const msg of group) {
         this.eventEmitter.emit('message.parsed', {
           messageId: msg.id,

@@ -128,6 +128,151 @@ export class MessageParserService {
     }
   }
 
+  /**
+   * Parse multiple message groups in a single LLM call. Each group is tagged
+   * with a numeric ID so the LLM can return events keyed by group.
+   * Falls back to individual parsing if the batch response can't be parsed.
+   */
+  async parseMessageBatch(
+    groups: { id: string; content: string }[],
+    currentDate?: string,
+  ): Promise<Map<string, ParsedEvent[]>> {
+    const result = new Map<string, ParsedEvent[]>();
+
+    if (groups.length === 0) return result;
+
+    // Check cache for each group; separate cached vs uncached
+    const uncached: { id: string; content: string }[] = [];
+    for (const group of groups) {
+      const cacheKey = this.getCacheKey(group.content);
+      const cached = await this.cacheManager.get<ParsedEvent[]>(cacheKey);
+      if (cached) {
+        result.set(group.id, cached);
+      } else {
+        uncached.push(group);
+      }
+    }
+
+    if (uncached.length === 0) {
+      this.logger.debug(`Batch: all ${groups.length} groups served from cache`);
+      return result;
+    }
+
+    // Single group — use the simpler single-message flow
+    if (uncached.length === 1) {
+      const events = await this.parseMessage(uncached[0].content, currentDate);
+      result.set(uncached[0].id, events);
+      return result;
+    }
+
+    this.logger.log(
+      `Batch parsing ${uncached.length} message groups in a single LLM call`,
+    );
+
+    try {
+      const dateContext = currentDate ?? new Date().toISOString().split('T')[0];
+
+      const numberedMessages = uncached
+        .map((g, i) => `===MESSAGE_${i + 1}===\n${g.content}`)
+        .join('\n\n');
+
+      const userMessage =
+        `Current date: ${dateContext}\n\n` +
+        `Parse the following ${uncached.length} messages. ` +
+        `Return a JSON object where each key is the message number (as a string) and each value is an array of events extracted from that message. ` +
+        `Example format: {"1": [{"title":"...", "date":"..."}], "2": [], "3": [{"title":"...", "date":"...", "time":"..."}]}\n\n` +
+        numberedMessages;
+
+      const response = await this.llmService.callLLM([
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage },
+      ]);
+
+      const parsed = this.extractBatchJsonFromResponse(response, uncached.length);
+
+      if (parsed) {
+        for (let i = 0; i < uncached.length; i++) {
+          const key = String(i + 1);
+          const events = parsed[key] || [];
+          const validated = this.validateEvents(events);
+          result.set(uncached[i].id, validated);
+          // Cache each group individually
+          const cacheKey = this.getCacheKey(uncached[i].content);
+          await this.cacheManager.set(cacheKey, validated, CACHE_TTL_SECONDS);
+        }
+        return result;
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Batch parse failed, falling back to individual parsing: ${error.message}`,
+      );
+    }
+
+    // Fallback: parse each group individually
+    for (const group of uncached) {
+      const events = await this.parseMessage(group.content, currentDate);
+      result.set(group.id, events);
+    }
+    return result;
+  }
+
+  private extractBatchJsonFromResponse(
+    response: string,
+    expectedCount: number,
+  ): Record<string, unknown[]> | null {
+    const trimmed = response.trim();
+
+    // Try direct parse
+    let obj: unknown;
+    try {
+      obj = JSON.parse(trimmed);
+    } catch {
+      // Try extracting from code blocks
+      const jsonMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        try {
+          obj = JSON.parse(jsonMatch[1].trim());
+        } catch {
+          // fall through
+        }
+      }
+      // Try finding object braces
+      if (!obj) {
+        const braceMatch = trimmed.match(/\{[\s\S]*\}/);
+        if (braceMatch) {
+          try {
+            obj = JSON.parse(braceMatch[0]);
+          } catch {
+            // fall through
+          }
+        }
+      }
+    }
+
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+      this.logger.warn('Batch response is not a JSON object — falling back');
+      return null;
+    }
+
+    const record = obj as Record<string, unknown>;
+    // Verify at least some expected keys exist
+    const hasAnyKey = Array.from({ length: expectedCount }, (_, i) =>
+      String(i + 1),
+    ).some((k) => k in record);
+
+    if (!hasAnyKey) {
+      this.logger.warn('Batch response has no expected message keys — falling back');
+      return null;
+    }
+
+    // Normalize: ensure each value is an array
+    const result: Record<string, unknown[]> = {};
+    for (const [key, value] of Object.entries(record)) {
+      result[key] = Array.isArray(value) ? value : [];
+    }
+    return result;
+  }
+
   private extractJsonFromResponse(response: string): unknown[] {
     // Try direct JSON parse first
     const trimmed = response.trim();

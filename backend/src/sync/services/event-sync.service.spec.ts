@@ -68,6 +68,16 @@ describe('EventSyncService', () => {
 
     messageParserService = {
       parseMessage: jest.fn().mockResolvedValue([]),
+      parseMessageBatch: jest.fn().mockImplementation(
+        async (groups: { id: string; content: string }[], currentDate?: string) => {
+          const result = new Map<string, any[]>();
+          for (const group of groups) {
+            const events = await messageParserService.parseMessage(group.content, currentDate);
+            result.set(group.id, events);
+          }
+          return result;
+        },
+      ),
     };
 
     settingsService = {
@@ -315,19 +325,16 @@ describe('EventSyncService', () => {
     const msg2 = makeMessage({ id: 'msg-2', timestamp: new Date('2026-04-04T10:05:00Z') });
 
     messageRepository.findUnparsed.mockResolvedValue([msg1, msg2]);
-    messageParserService.parseMessage.mockRejectedValue(
-      new Error('LLM API error'),
+    // Batch parsing fails — returns empty results (batch has internal fallback)
+    messageParserService.parseMessageBatch.mockResolvedValue(
+      new Map([['0', []]]),
     );
 
     const result = await service.syncEvents();
 
-    // Transaction should be rolled back
-    expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
-    expect(queryRunner.release).toHaveBeenCalled();
-    // Both messages should be marked as parsed to avoid infinite retry
-    expect(messageRepository.update).toHaveBeenCalledWith('msg-1', { parsed: true });
-    expect(messageRepository.update).toHaveBeenCalledWith('msg-2', { parsed: true });
+    // Messages should be marked as parsed even with empty results
     expect(result.eventsCreated).toBe(0);
+    expect(result.messagesParsed).toBe(2);
   });
 
   it('should handle Google Calendar sync failure without marking as synced', async () => {
