@@ -74,8 +74,8 @@ describe('SettingsService', () => {
     });
   });
 
-  describe('findByKey — sensitive masking', () => {
-    it('should mask sensitive setting values', async () => {
+  describe('findByKey — sensitive decryption', () => {
+    it('should decrypt sensitive setting values', async () => {
       const sensitiveKey = {
         id: '2',
         key: 'openrouter_api_key',
@@ -84,14 +84,12 @@ describe('SettingsService', () => {
       };
       repository.findByKey.mockResolvedValue(sensitiveKey);
       const result = await service.findByKey('openrouter_api_key');
-      // Mock decrypt strips "enc:" prefix → "sk-or-v1-abcdef1234567890"
-      // Masked: first 4 + •••• + last 4
-      expect(result.value).toBe('sk-o••••7890');
+      expect(result.value).toBe('sk-or-v1-abcdef1234567890');
     });
   });
 
   describe('findByKeyDecrypted', () => {
-    it('should return full decrypted value for sensitive keys', async () => {
+    it('should return full decrypted value (alias for findByKey)', async () => {
       const sensitiveKey = {
         id: '2',
         key: 'openrouter_api_key',
@@ -116,23 +114,6 @@ describe('SettingsService', () => {
         'whatsapp_channels',
         'parents-group',
       );
-    });
-
-    it('should skip saving masked placeholder for sensitive keys', async () => {
-      const existing = {
-        id: '2',
-        key: 'openrouter_api_key',
-        value: 'enc:real-key',
-        updatedAt: new Date(),
-      };
-      repository.findByKey.mockResolvedValue(existing);
-      const result = await service.create({
-        key: 'openrouter_api_key',
-        value: 'sk-o••••7890',
-      });
-      // Should NOT call upsert — returns masked existing
-      expect(repository.upsert).not.toHaveBeenCalled();
-      expect(result.value).toContain('••••');
     });
   });
 
