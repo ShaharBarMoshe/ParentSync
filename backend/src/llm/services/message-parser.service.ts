@@ -27,13 +27,53 @@ WhatsApp chat format:
 - Messages may appear as "[HH:MM, M/D/YYYY] phone: text". The timestamp in brackets is when the message was SENT, not necessarily when an event occurs.
 - Extract event times ONLY from the message TEXT content, not from the WhatsApp message timestamps.
 - Casual conversation, status updates (e.g., "we'll arrive in 20 minutes", "there's an alert"), and coordination messages are NOT calendar events — return [].
-- Only extract events that describe a planned activity with a clear subject (e.g., a trip, appointment, birthday, meeting).
+- Only extract events that describe a planned activity with a clear subject (e.g., a trip, appointment, birthday, meeting, gathering) OR an actionable task (payment, form to fill, document to sign, item to bring).
+- If a message describes a planned activity with a clear DATE but NO specific time, still create the event WITHOUT the "time" field. These will be created as calendar tasks (to-do items). A clear date is enough — a specific time is NOT required.
+
+Action items (payments, forms, documents, things to bring/wear):
+- Messages asking to pay, fill a form, sign a document, bring an item, wear specific clothing, or complete any action are actionable tasks — extract them as events WITHOUT a time field.
+- If the message contains a URL or link, include it in the "description" field.
+- If no specific deadline date is mentioned, use the current date as the date (treat it as "today").
+- The "description" field should include the FULL relevant details: amount, link, instructions, deadline, what to bring/wear — everything the parent needs to act on.
 
 Example input: "יום הולדת למיקי 12.3.26 בפארק הג׳ונגל מודיעין"
 Example output: [{"title":"יום הולדת של מיקי","date":"2026-03-12","location":"פארק הג׳ונגל, מודיעין"}]
 
 Example input: "תור לרופא ביום שלישי ב-15:00 עם ד״ר כהן"
 Example output: [{"title":"תור לרופא","date":"2026-03-17","time":"15:00","description":"תור אצל ד״ר כהן"}]
+
+Example input: "טיול שנתי ביום חמישי הקרוב"
+Example output: [{"title":"טיול שנתי","date":"2026-03-19"}]
+
+Example input: "הזכרה: להביא תחפושת ביום שלישי"
+Example output: [{"title":"להביא תחפושת","date":"2026-03-17","description":"להביא תחפושת"}]
+
+Example input: "מבחן במתמטיקה ביום ראשון"
+Example output: [{"title":"מבחן במתמטיקה","date":"2026-03-15"}]
+
+Example input: "טיול שנתי ב-15 לחודש"
+Example output: [{"title":"טיול שנתי","date":"2026-03-15"}]
+
+Example input: "ניפגש מחר בגינה"
+Example output: [{"title":"מפגש בגינה","date":"2026-03-14","location":"גינה"}]
+
+Example input: "הורים יקרים, נא להעביר תשלום עבור טיול שנתי בסך 120 ש״ח דרך הלינק: https://pay.school.co.il/trip2026 עד ה-20 לחודש"
+Example output: [{"title":"תשלום עבור טיול שנתי","date":"2026-03-20","description":"סכום: 120 ש״ח\\nלינק לתשלום: https://pay.school.co.il/trip2026"}]
+
+Example input: "נא למלא שאלון בריאות לקראת הטיול https://forms.google.com/abc123"
+Example output: [{"title":"מילוי שאלון בריאות","date":"2026-03-13","description":"שאלון בריאות לקראת הטיול\\nלינק: https://forms.google.com/abc123"}]
+
+Example input: "יש להחזיר טופס הרשאה חתום עד יום רביעי"
+Example output: [{"title":"החזרת טופס הרשאה חתום","date":"2026-03-18","description":"יש להחזיר טופס הרשאה חתום"}]
+
+Example input: "ביום שלישי יום לבן — נא להלביש את הילדים בלבן"
+Example output: [{"title":"יום לבן","date":"2026-03-17","description":"להלביש בלבן"}]
+
+Example input: "מחר יום ספורט, נא להביא ביגוד ספורטיבי ונעלי ספורט"
+Example output: [{"title":"יום ספורט","date":"2026-03-14","description":"להביא: ביגוד ספורטיבי, נעלי ספורט"}]
+
+Example input: "תזכורת: להביא מחברת מתמטיקה ומספריים ליום ראשון"
+Example output: [{"title":"להביא ציוד","date":"2026-03-15","description":"להביא: מחברת מתמטיקה, מספריים"}]
 
 Example input: "[15:47, 4/3/2026] +972 50-408-8090: דניאל הולך לגינה ליד גן לילי בסביבות השעה 16:00\\n[15:54, 4/3/2026] +972 54-722-1506: נגיע עוד 20 דקות\\n[15:59, 4/3/2026] +972 50-389-7893: נגיע עוד 20 דקות"
 Example output: []

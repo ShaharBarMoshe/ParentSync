@@ -47,6 +47,8 @@ describe('GoogleCalendarService', () => {
     source: MessageSource.WHATSAPP,
     sourceId: 'msg-1',
     googleEventId: null as unknown as string,
+    syncType: 'event',
+    googleTaskListId: null as unknown as string,
     syncedToGoogle: false,
     childId: null as unknown as string,
     calendarColorId: null as unknown as string,

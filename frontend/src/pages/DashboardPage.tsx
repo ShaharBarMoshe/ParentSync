@@ -308,11 +308,14 @@ export default function DashboardPage() {
           ) : (
             <ul className="dashboard-events">
               {events.map((evt) => (
-                <li key={evt.id} className="dashboard-event">
+                <li key={evt.id} className={`dashboard-event${evt.syncType === 'task' ? ' dashboard-event--task' : ''}`}>
                   <div className="dashboard-event-header">
+                    <span className="dashboard-event-type" title={evt.syncType === 'task' ? 'Task' : 'Event'}>
+                      <Icon name={evt.syncType === 'task' ? 'square-check' : 'calendar'} size={14} />
+                    </span>
                     <span className="dashboard-event-title">{evt.title}</span>
                     {evt.syncedToGoogle && (
-                      <span className="dashboard-event-synced" title="Synced to Google Calendar">
+                      <span className="dashboard-event-synced" title={evt.syncType === 'task' ? 'Synced to Google Tasks' : 'Synced to Google Calendar'}>
                         <Icon name="circle-check" size={16} />
                       </span>
                     )}

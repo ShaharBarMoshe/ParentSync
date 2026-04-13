@@ -56,6 +56,11 @@ export class TypeOrmMessageRepository implements IMessageRepository {
     await this.repo.delete(id);
   }
 
+  async resetAllParsed(): Promise<number> {
+    const result = await this.repo.update({ parsed: true }, { parsed: false });
+    return result.affected ?? 0;
+  }
+
   async pruneOldest(maxCount: number): Promise<number> {
     const total = await this.repo.count();
     if (total <= maxCount) return 0;

@@ -5,11 +5,13 @@ import {
   WHATSAPP_SERVICE,
   MESSAGE_REPOSITORY,
   GOOGLE_CALENDAR_SERVICE,
+  GOOGLE_TASKS_SERVICE,
 } from '../../shared/constants/injection-tokens';
 import type { IEventRepository } from '../../calendar/interfaces/event-repository.interface';
 import type { IWhatsAppService } from '../../messages/interfaces/whatsapp-service.interface';
 import type { IMessageRepository } from '../../messages/interfaces/message-repository.interface';
 import type { IGoogleCalendarService } from '../../calendar/interfaces/google-calendar-service.interface';
+import type { IGoogleTasksService } from '../../calendar/interfaces/google-tasks-service.interface';
 import { SettingsService } from '../../settings/settings.service';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
 
@@ -26,6 +28,8 @@ export class EventReminderService {
     private readonly messageRepository: IMessageRepository,
     @Inject(GOOGLE_CALENDAR_SERVICE)
     private readonly googleCalendarService: IGoogleCalendarService,
+    @Inject(GOOGLE_TASKS_SERVICE)
+    private readonly googleTasksService: IGoogleTasksService,
     private readonly settingsService: SettingsService,
   ) {}
 
@@ -67,16 +71,20 @@ export class EventReminderService {
     let sent = 0;
     for (const event of due) {
       try {
-        const exists = await this.googleCalendarService.eventExists(
-          event.googleEventId,
-          calendarId,
-        );
-        if (!exists) {
-          this.logger.log(
-            `Event "${event.title}" (${event.id}) no longer exists in Google Calendar; marking reminder as sent to skip`,
+        // For calendar events, verify they still exist in Google Calendar
+        // For tasks, skip this check (tasks are managed via Google Tasks API)
+        if (event.syncType !== 'task') {
+          const exists = await this.googleCalendarService.eventExists(
+            event.googleEventId,
+            calendarId,
           );
-          await this.eventRepository.update(event.id, { reminderSent: true });
-          continue;
+          if (!exists) {
+            this.logger.log(
+              `Event "${event.title}" (${event.id}) no longer exists in Google Calendar; marking reminder as sent to skip`,
+            );
+            await this.eventRepository.update(event.id, { reminderSent: true });
+            continue;
+          }
         }
 
         const text = await this.formatReminderMessage(event);
@@ -84,7 +92,7 @@ export class EventReminderService {
         await this.eventRepository.update(event.id, { reminderSent: true });
         sent++;
         this.logger.log(
-          `Sent reminder for event "${event.title}" (${event.id}) to "${channel}"`,
+          `Sent reminder for ${event.syncType || 'event'} "${event.title}" (${event.id}) to "${channel}"`,
         );
       } catch (error) {
         this.logger.error(
@@ -133,18 +141,25 @@ export class EventReminderService {
       }
     }
 
+    const isTask = event.syncType === 'task';
+    const header = isTask
+      ? `📋 Reminder: task due tomorrow`
+      : `⏰ Reminder: event in ~24 hours`;
+
     const lines = [
-      `⏰ Reminder: event in ~24 hours`,
+      header,
       ``,
       `Title: ${event.title}`,
       `Date: ${event.date}`,
-      `Time: ${event.time || 'All day'}`,
     ];
+    if (event.time) {
+      lines.push(`Time: ${event.time}`);
+    }
     if (event.location) {
       lines.push(`Location: ${event.location}`);
     }
     if (event.description) {
-      lines.push(`Description: ${event.description}`);
+      lines.push(``, `Details: ${event.description}`);
     }
     lines.push(`Source: ${event.source} — ${sourceChannel}`);
     return lines.join('\n');

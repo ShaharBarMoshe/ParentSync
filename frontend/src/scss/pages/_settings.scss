@@ -78,6 +78,23 @@
   }
 }
 
+.settings-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: $spacing-md;
+  margin-bottom: $spacing-md;
+
+  .settings-section-title {
+    margin-bottom: $spacing-xs;
+  }
+
+  .settings-section-hint {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
+
 .settings-section-hint {
   font-size: 13px;
   color: var(--text-muted);

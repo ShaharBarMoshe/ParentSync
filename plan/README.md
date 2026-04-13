@@ -40,6 +40,7 @@
 | Phase 13 | WhatsApp Approval Channel (👍/😢 reactions) | Done |
 | [Phase 14](phase14-api-security.md) | API Security Hardening (14 findings) | Done |
 | [Phase 15](phase15-qa-test-plan.md) | QA Test Plan Execution (91 test cases) | Done |
+| [Phase 16](phase16-google-tasks.md) | Google Tasks Integration (date-only → Tasks, timed → Events) | Done |
 
 ## Architecture
 

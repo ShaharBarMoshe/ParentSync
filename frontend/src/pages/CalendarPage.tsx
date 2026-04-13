@@ -75,6 +75,7 @@ export default function CalendarPage() {
 
   function eventStyleGetter(event: CalendarEntry) {
     const source = event.resource.source;
+    const isTask = event.resource.syncType === 'task';
     let backgroundColor = 'var(--accent)';
     if (source === 'whatsapp') backgroundColor = '#25D366';
     else if (source === 'email') backgroundColor = '#EA4335';
@@ -83,7 +84,7 @@ export default function CalendarPage() {
       style: {
         backgroundColor,
         borderRadius: '4px',
-        border: 'none',
+        border: isTask ? '2px dashed rgba(255,255,255,0.5)' : 'none',
         color: '#fff',
         fontSize: '13px',
         padding: '2px 6px',
@@ -150,7 +151,10 @@ export default function CalendarPage() {
         <div className="calendar-modal-backdrop" onClick={() => setSelectedEvent(null)}>
           <div className="calendar-modal" onClick={(e) => e.stopPropagation()}>
             <div className="calendar-modal-header">
-              <h3>{selectedEvent.title}</h3>
+              <h3>
+                <Icon name={selectedEvent.syncType === 'task' ? 'square-check' : 'calendar'} size={16} />
+                {' '}{selectedEvent.title}
+              </h3>
               <button
                 className="calendar-modal-close"
                 onClick={() => setSelectedEvent(null)}
@@ -191,9 +195,15 @@ export default function CalendarPage() {
                 </div>
               )}
               <div className="calendar-modal-row">
+                <span className="calendar-modal-label">Type</span>
+                <span>{selectedEvent.syncType === 'task' ? 'Task' : 'Event'}</span>
+              </div>
+              <div className="calendar-modal-row">
                 <span className="calendar-modal-label">Synced</span>
                 <span className={selectedEvent.syncedToGoogle ? 'calendar-synced' : 'calendar-unsynced'}>
-                  {selectedEvent.syncedToGoogle ? 'Synced to Google' : 'Not synced'}
+                  {selectedEvent.syncedToGoogle
+                    ? selectedEvent.syncType === 'task' ? 'Synced to Google Tasks' : 'Synced to Google Calendar'
+                    : 'Not synced'}
                 </span>
               </div>
             </div>

@@ -11,4 +11,5 @@ export interface IMessageRepository {
   update(id: string, message: Partial<MessageEntity>): Promise<MessageEntity>;
   delete(id: string): Promise<void>;
   pruneOldest(maxCount: number): Promise<number>;
+  resetAllParsed(): Promise<number>;
 }

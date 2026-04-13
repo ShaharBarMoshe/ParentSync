@@ -6,6 +6,7 @@ import {
   WHATSAPP_SERVICE,
   MESSAGE_REPOSITORY,
   GOOGLE_CALENDAR_SERVICE,
+  GOOGLE_TASKS_SERVICE,
 } from '../../shared/constants/injection-tokens';
 import { MessageSource } from '../../shared/enums/message-source.enum';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
@@ -16,6 +17,7 @@ describe('EventReminderService', () => {
   let whatsappService: any;
   let messageRepository: any;
   let googleCalendarService: any;
+  let googleTasksService: any;
   let settingsService: any;
 
   const now = new Date('2026-04-08T12:00:00Z');
@@ -31,6 +33,7 @@ describe('EventReminderService', () => {
     sourceId: 'msg-1',
     childId: 'child-1',
     calendarColorId: null,
+    syncType: 'event',
     approvalStatus: ApprovalStatus.APPROVED,
     syncedToGoogle: true,
     googleEventId: 'g-1',
@@ -60,6 +63,8 @@ describe('EventReminderService', () => {
       eventExists: jest.fn().mockResolvedValue(true),
     };
 
+    googleTasksService = {};
+
     settingsService = {
       findByKey: jest.fn().mockImplementation((key: string) => {
         if (key === 'approval_channel') {
@@ -79,6 +84,7 @@ describe('EventReminderService', () => {
         { provide: WHATSAPP_SERVICE, useValue: whatsappService },
         { provide: MESSAGE_REPOSITORY, useValue: messageRepository },
         { provide: GOOGLE_CALENDAR_SERVICE, useValue: googleCalendarService },
+        { provide: GOOGLE_TASKS_SERVICE, useValue: googleTasksService },
         { provide: SettingsService, useValue: settingsService },
       ],
     }).compile();
@@ -94,9 +100,10 @@ describe('EventReminderService', () => {
     expect(whatsappService.sendMessage).toHaveBeenCalledTimes(1);
     const [channel, text] = whatsappService.sendMessage.mock.calls[0];
     expect(channel).toBe('Family Reminders');
+    expect(text).toContain('⏰ Reminder: event in ~24 hours');
     expect(text).toContain('School Meeting');
     expect(text).toContain('2026-04-09');
-    expect(text).toContain('12:00');
+    expect(text).toContain('Time: 12:00');
     expect(text).toContain('School Hall');
     expect(text).toContain('Grade 3A Parents');
     expect(eventRepository.update).toHaveBeenCalledWith('event-1', {
@@ -135,6 +142,116 @@ describe('EventReminderService', () => {
 
     expect(sent).toBe(0);
     expect(whatsappService.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('sends a task reminder with task header and description for date-only items', async () => {
+    const taskEvent = {
+      ...baseEvent,
+      id: 'task-1',
+      title: 'תשלום עבור טיול שנתי',
+      time: null,
+      location: null,
+      syncType: 'task',
+      description: 'סכום: 120 ש״ח\nלינק לתשלום: https://pay.school.co.il/trip2026',
+    };
+    eventRepository.findDueForReminder.mockResolvedValue([taskEvent]);
+
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(1);
+    const [, text] = whatsappService.sendMessage.mock.calls[0];
+    expect(text).toContain('📋 Reminder: task due tomorrow');
+    expect(text).toContain('תשלום עבור טיול שנתי');
+    expect(text).not.toContain('Time:');
+    expect(text).toContain('https://pay.school.co.il/trip2026');
+    expect(text).toContain('120 ש״ח');
+  });
+
+  it('sends a task reminder for bring-item tasks with full details', async () => {
+    const bringEvent = {
+      ...baseEvent,
+      id: 'task-2',
+      title: 'יום ספורט',
+      time: null,
+      location: null,
+      syncType: 'task',
+      description: 'להביא: ביגוד ספורטיבי, נעלי ספורט',
+    };
+    eventRepository.findDueForReminder.mockResolvedValue([bringEvent]);
+
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(1);
+    const [, text] = whatsappService.sendMessage.mock.calls[0];
+    expect(text).toContain('📋 Reminder: task due tomorrow');
+    expect(text).toContain('יום ספורט');
+    expect(text).toContain('להביא: ביגוד ספורטיבי, נעלי ספורט');
+    expect(text).not.toContain('Time:');
+  });
+
+  it('sends a task reminder for dress-code tasks', async () => {
+    const dressEvent = {
+      ...baseEvent,
+      id: 'task-3',
+      title: 'יום לבן',
+      time: null,
+      location: null,
+      syncType: 'task',
+      description: 'להלביש בלבן',
+    };
+    eventRepository.findDueForReminder.mockResolvedValue([dressEvent]);
+
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(1);
+    const [, text] = whatsappService.sendMessage.mock.calls[0];
+    expect(text).toContain('📋 Reminder: task due tomorrow');
+    expect(text).toContain('יום לבן');
+    expect(text).toContain('להלביש בלבן');
+  });
+
+  it('skips Google Calendar existence check for task reminders', async () => {
+    const taskEvent = {
+      ...baseEvent,
+      id: 'task-skip',
+      title: 'להביא ציוד',
+      time: null,
+      location: null,
+      syncType: 'task',
+      description: 'להביא מחברת',
+      googleEventId: 'gtask-1',
+    };
+    eventRepository.findDueForReminder.mockResolvedValue([taskEvent]);
+
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(1);
+    // Should NOT check Google Calendar for tasks
+    expect(googleCalendarService.eventExists).not.toHaveBeenCalled();
+    expect(whatsappService.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends both event and task reminders in the same batch', async () => {
+    const taskEvent = {
+      ...baseEvent,
+      id: 'task-4',
+      title: 'להביא מחברת',
+      time: null,
+      location: null,
+      syncType: 'task',
+      description: 'להביא: מחברת מתמטיקה, מספריים',
+      googleEventId: 'g-4',
+    };
+    eventRepository.findDueForReminder.mockResolvedValue([baseEvent, taskEvent]);
+
+    const sent = await service.sendDueReminders(now);
+
+    expect(sent).toBe(2);
+    expect(whatsappService.sendMessage).toHaveBeenCalledTimes(2);
+    const [, eventText] = whatsappService.sendMessage.mock.calls[0];
+    const [, taskText] = whatsappService.sendMessage.mock.calls[1];
+    expect(eventText).toContain('⏰ Reminder: event in ~24 hours');
+    expect(taskText).toContain('📋 Reminder: task due tomorrow');
   });
 
   it('logs and continues when sending one reminder fails', async () => {

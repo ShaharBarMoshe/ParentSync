@@ -117,6 +117,7 @@ export interface CalendarEvent {
   source: 'whatsapp' | 'email' | null;
   sourceId: string | null;
   googleEventId: string | null;
+  syncType: 'event' | 'task';
   syncedToGoogle: boolean;
   createdAt: string;
   updatedAt: string;
@@ -160,8 +161,12 @@ export const syncApi = {
     api.post('/sync/manual').then((r) => r.data),
   syncEvents: () =>
     api.post('/sync/events').then((r) => r.data),
+  resetSyncState: () =>
+    api.post<{ childrenReset: number; messagesReset: number }>('/sync/reset').then((r) => r.data),
   getLogs: (limit?: number) =>
     api.get<SyncLog[]>('/sync/logs', { params: limit ? { limit } : undefined }).then((r) => r.data),
+  getErrorsUrl: () =>
+    `${api.defaults.baseURL}/sync/errors`,
 };
 
 // Monitor API

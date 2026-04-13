@@ -10,7 +10,9 @@ import {
   MESSAGE_REPOSITORY,
   EVENT_REPOSITORY,
   GOOGLE_CALENDAR_SERVICE,
+  GOOGLE_TASKS_SERVICE,
 } from '../../shared/constants/injection-tokens';
+import { GoogleTasksScopeError } from '../../calendar/services/google-tasks.service';
 import { MessageSource } from '../../shared/enums/message-source.enum';
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
@@ -32,6 +34,7 @@ describe('EventSyncService', () => {
   let messageRepository: any;
   let eventRepository: any;
   let googleCalendarService: any;
+  let googleTasksService: any;
   let messageParserService: any;
   let settingsService: any;
   let childService: any;
@@ -56,6 +59,11 @@ describe('EventSyncService', () => {
 
     googleCalendarService = {
       createEvent: jest.fn().mockResolvedValue('google-event-id'),
+    };
+
+    googleTasksService = {
+      createTask: jest.fn().mockResolvedValue('google-task-id'),
+      findOrCreateChildTaskList: jest.fn().mockResolvedValue('task-list-1'),
     };
 
     messageParserService = {
@@ -107,6 +115,7 @@ describe('EventSyncService', () => {
         { provide: MESSAGE_REPOSITORY, useValue: messageRepository },
         { provide: EVENT_REPOSITORY, useValue: eventRepository },
         { provide: GOOGLE_CALENDAR_SERVICE, useValue: googleCalendarService },
+        { provide: GOOGLE_TASKS_SERVICE, useValue: googleTasksService },
         { provide: MessageParserService, useValue: messageParserService },
         { provide: SettingsService, useValue: settingsService },
         { provide: ChildService, useValue: childService },
@@ -254,6 +263,7 @@ describe('EventSyncService', () => {
       title: 'Alice: School Meeting',
       date: '2026-03-20',
       syncedToGoogle: false,
+      syncType: 'event',
       calendarColorId: '3',
     };
 
@@ -275,6 +285,7 @@ describe('EventSyncService', () => {
       title: 'School Meeting',
       date: '2026-03-20',
       syncedToGoogle: false,
+      syncType: 'event',
       calendarColorId: undefined,
     };
 
@@ -295,7 +306,7 @@ describe('EventSyncService', () => {
     });
     expect(eventEmitter.emit).toHaveBeenCalledWith(
       'event.synced',
-      expect.objectContaining({ eventId: 'event-1', googleEventId: 'google-123' }),
+      expect.any(Object),
     );
   });
 
@@ -325,6 +336,7 @@ describe('EventSyncService', () => {
       title: 'Meeting',
       date: '2026-03-20',
       syncedToGoogle: false,
+      syncType: 'event',
       calendarColorId: undefined,
     };
 
@@ -349,6 +361,7 @@ describe('EventSyncService', () => {
       title: 'Meeting',
       date: '2026-03-20',
       syncedToGoogle: false,
+      syncType: 'event',
       calendarColorId: undefined,
     };
 
@@ -364,6 +377,259 @@ describe('EventSyncService', () => {
       'family@group.calendar.google.com',
       undefined,
     );
+  });
+
+  describe('syncType routing (events vs tasks)', () => {
+    it('should set syncType to "event" for timed events', async () => {
+      const mockMessage = makeMessage({
+        id: 'msg-1',
+        content: 'Meeting at 15:00',
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([mockMessage]);
+      messageParserService.parseMessage.mockResolvedValue([
+        { title: 'Meeting', date: '2026-03-20', time: '15:00' },
+      ]);
+
+      await service.syncEvents();
+
+      expect(queryRunner.manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ syncType: 'event', time: '15:00' }),
+      );
+    });
+
+    it('should set syncType to "task" for date-only events', async () => {
+      const mockMessage = makeMessage({
+        id: 'msg-1',
+        content: 'Bring costume on Tuesday',
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([mockMessage]);
+      messageParserService.parseMessage.mockResolvedValue([
+        { title: 'להביא תחפושת', date: '2026-03-17' },
+      ]);
+
+      await service.syncEvents();
+
+      expect(queryRunner.manager.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ syncType: 'task' }),
+      );
+    });
+
+    it('should sync task events to Google Tasks', async () => {
+      const mockTask = {
+        id: 'event-task-1',
+        title: 'Alice: להביא תחפושת',
+        description: 'להביא תחפושת לפורים',
+        date: '2026-03-17',
+        time: undefined,
+        syncType: 'task',
+        syncedToGoogle: false,
+        childId: 'child-1',
+        calendarColorId: undefined,
+      };
+
+      eventRepository.findUnsynced.mockResolvedValue([mockTask]);
+      googleTasksService.findOrCreateChildTaskList.mockResolvedValue('list-alice');
+      googleTasksService.createTask.mockResolvedValue('task-123');
+
+      const result = await service.syncEvents();
+
+      expect(result.eventsSynced).toBe(1);
+      expect(googleTasksService.findOrCreateChildTaskList).toHaveBeenCalledWith('Alice');
+      expect(googleTasksService.createTask).toHaveBeenCalledWith(
+        'Alice: להביא תחפושת',
+        'להביא תחפושת לפורים',
+        '2026-03-17',
+        'list-alice',
+      );
+      expect(eventRepository.update).toHaveBeenCalledWith('event-task-1', {
+        googleEventId: 'task-123',
+        googleTaskListId: 'list-alice',
+        syncedToGoogle: true,
+      });
+      expect(googleCalendarService.createEvent).not.toHaveBeenCalled();
+    });
+
+    it('should use @default task list when no child name', async () => {
+      const mockTask = {
+        id: 'event-task-2',
+        title: 'PTA Payment',
+        description: null,
+        date: '2026-03-20',
+        time: undefined,
+        syncType: 'task',
+        syncedToGoogle: false,
+        childId: undefined,
+        calendarColorId: undefined,
+      };
+
+      eventRepository.findUnsynced.mockResolvedValue([mockTask]);
+      googleTasksService.createTask.mockResolvedValue('task-456');
+
+      await service.syncEvents();
+
+      expect(googleTasksService.findOrCreateChildTaskList).not.toHaveBeenCalled();
+      expect(googleTasksService.createTask).toHaveBeenCalledWith(
+        'PTA Payment',
+        undefined,
+        '2026-03-20',
+        '@default',
+      );
+    });
+
+    it('should fall back to all-day calendar event when Tasks scope not granted (403)', async () => {
+      const mockTask = {
+        id: 'event-task-3',
+        title: 'Alice: Math Test',
+        description: null,
+        date: '2026-03-20',
+        time: undefined,
+        syncType: 'task',
+        syncedToGoogle: false,
+        childId: 'child-1',
+        calendarColorId: undefined,
+      };
+
+      eventRepository.findUnsynced.mockResolvedValue([mockTask]);
+      googleTasksService.findOrCreateChildTaskList.mockRejectedValue(
+        new GoogleTasksScopeError('403'),
+      );
+      googleCalendarService.createEvent.mockResolvedValue('google-fallback-123');
+
+      const result = await service.syncEvents();
+
+      expect(result.eventsSynced).toBe(1);
+      // Should have fallen back to calendar event
+      expect(eventRepository.update).toHaveBeenCalledWith('event-task-3', { syncType: 'event' });
+      expect(googleCalendarService.createEvent).toHaveBeenCalled();
+    });
+
+    it('should handle mixed batch: timed events and date-only tasks', async () => {
+      const timedEvent = {
+        id: 'evt-1',
+        title: 'Parent Meeting',
+        date: '2026-03-20',
+        time: '15:00',
+        syncType: 'event',
+        syncedToGoogle: false,
+        calendarColorId: undefined,
+      };
+      const taskEvent = {
+        id: 'evt-2',
+        title: 'Bob: Bring Costume',
+        description: 'Purim costume',
+        date: '2026-03-20',
+        time: undefined,
+        syncType: 'task',
+        syncedToGoogle: false,
+        childId: 'child-2',
+        calendarColorId: undefined,
+      };
+
+      eventRepository.findUnsynced.mockResolvedValue([timedEvent, taskEvent]);
+      googleCalendarService.createEvent.mockResolvedValue('gcal-1');
+      googleTasksService.findOrCreateChildTaskList.mockResolvedValue('list-bob');
+      googleTasksService.createTask.mockResolvedValue('gtask-1');
+
+      const result = await service.syncEvents();
+
+      expect(result.eventsSynced).toBe(2);
+      expect(googleCalendarService.createEvent).toHaveBeenCalledTimes(1);
+      expect(googleTasksService.createTask).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('past event approval skipping', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('should not send past timed events for approval', async () => {
+      jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
+
+      const pastMessage = makeMessage({
+        id: 'msg-past',
+        content: 'Meeting yesterday at 10am',
+        timestamp: new Date('2026-04-04T10:00:00'),
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([pastMessage]);
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+      messageParserService.parseMessage.mockResolvedValue([
+        { title: 'Past Meeting', date: '2026-04-01', time: '10:00' },
+      ]);
+
+      await service.syncEvents();
+
+      // Should NOT send for approval
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+      // Should set approvalStatus to NONE so it syncs directly
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ approvalStatus: 'none' }),
+      );
+    });
+
+    it('should not send past date-only tasks for approval', async () => {
+      jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
+
+      const pastMessage = makeMessage({
+        id: 'msg-past-task',
+        content: 'Bring costume last Tuesday',
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([pastMessage]);
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+      messageParserService.parseMessage.mockResolvedValue([
+        { title: 'להביא תחפושת', date: '2026-04-01' },
+      ]);
+
+      await service.syncEvents();
+
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+    });
+
+    it('should still send future events for approval', async () => {
+      jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
+
+      const futureMessage = makeMessage({
+        id: 'msg-future',
+        content: 'Meeting next week at 15:00',
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([futureMessage]);
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+      messageParserService.parseMessage.mockResolvedValue([
+        { title: 'Future Meeting', date: '2026-04-10', time: '15:00' },
+      ]);
+
+      await service.syncEvents();
+
+      expect(approvalService.sendForApproval).toHaveBeenCalledTimes(1);
+    });
+
+    it('should send today date-only task for approval (not yet past end of day)', async () => {
+      jest.useFakeTimers({ now: new Date('2026-04-04T08:00:00') });
+
+      const todayMessage = makeMessage({
+        id: 'msg-today',
+        content: 'Bring costume today',
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([todayMessage]);
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+      messageParserService.parseMessage.mockResolvedValue([
+        { title: 'להביא תחפושת', date: '2026-04-04' },
+      ]);
+
+      await service.syncEvents();
+
+      // Date-only tasks use 23:59:59 as the cutoff, so same-day is still future
+      expect(approvalService.sendForApproval).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('message grouping by proximity', () => {

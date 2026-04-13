@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SyncController } from './sync.controller';
 import { SyncService } from '../services/sync.service';
 import { EventSyncService } from '../services/event-sync.service';
+import { ChildService } from '../../settings/child.service';
+import { MESSAGE_REPOSITORY } from '../../shared/constants/injection-tokens';
 import { SyncLogEntity } from '../entities/sync-log.entity';
 import { SyncStatus } from '../../shared/enums/sync-status.enum';
 
@@ -9,6 +12,8 @@ describe('SyncController', () => {
   let controller: SyncController;
   let syncService: jest.Mocked<SyncService>;
   let eventSyncService: jest.Mocked<EventSyncService>;
+  let childService: any;
+  let messageRepository: any;
 
   const mockSyncLog: SyncLogEntity = {
     id: 'log-uuid-1',
@@ -31,11 +36,22 @@ describe('SyncController', () => {
       syncEvents: jest.fn(),
     };
 
+    childService = {
+      resetAllLastScan: jest.fn().mockResolvedValue(2),
+    };
+
+    messageRepository = {
+      resetAllParsed: jest.fn().mockResolvedValue(5),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SyncController],
       providers: [
         { provide: SyncService, useValue: mockSyncService },
         { provide: EventSyncService, useValue: mockEventSyncService },
+        { provide: ChildService, useValue: childService },
+        { provide: MESSAGE_REPOSITORY, useValue: messageRepository },
+        EventEmitter2,
       ],
     }).compile();
 
@@ -84,6 +100,27 @@ describe('SyncController', () => {
     });
   });
 
+  describe('errors SSE', () => {
+    it('should return an observable that emits app.error events', (done) => {
+      const eventEmitter = controller['eventEmitter'];
+      const observable = controller.errors();
+
+      const testError = {
+        source: 'llm',
+        code: 'LLM_CLIENT_ERROR_404',
+        message: 'Model not found',
+        timestamp: new Date().toISOString(),
+      };
+
+      observable.subscribe((event) => {
+        expect(event.data).toEqual(testError);
+        done();
+      });
+
+      eventEmitter.emit('app.error', testError);
+    });
+  });
+
   describe('getSyncLogs', () => {
     it('should return sync logs with default limit', async () => {
       syncService.getSyncLogs.mockResolvedValue([mockSyncLog]);
@@ -109,6 +146,16 @@ describe('SyncController', () => {
       const result = await controller.getSyncLogs();
 
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('resetSyncState', () => {
+    it('should reset children lastScanAt and messages parsed status', async () => {
+      const result = await controller.resetSyncState();
+
+      expect(childService.resetAllLastScan).toHaveBeenCalled();
+      expect(messageRepository.resetAllParsed).toHaveBeenCalled();
+      expect(result).toEqual({ childrenReset: 2, messagesReset: 5 });
     });
   });
 });

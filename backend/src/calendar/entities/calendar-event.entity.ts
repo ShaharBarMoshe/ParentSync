@@ -9,6 +9,8 @@ import {
 import { MessageSource } from '../../shared/enums/message-source.enum';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 
+export type SyncType = 'event' | 'task';
+
 @Entity('calendar_events')
 export class CalendarEventEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -46,6 +48,12 @@ export class CalendarEventEntity {
 
   @Column({ type: 'varchar', nullable: true, unique: true })
   googleEventId: string;
+
+  @Column({ type: 'varchar', default: 'event' })
+  syncType: SyncType;
+
+  @Column({ type: 'varchar', nullable: true })
+  googleTaskListId: string;
 
   @Column({ type: 'boolean', default: false })
   @Index()

@@ -5,10 +5,13 @@ import {
   MESSAGE_REPOSITORY,
   EVENT_REPOSITORY,
   GOOGLE_CALENDAR_SERVICE,
+  GOOGLE_TASKS_SERVICE,
 } from '../../shared/constants/injection-tokens';
 import type { IMessageRepository } from '../../messages/interfaces/message-repository.interface';
 import type { IEventRepository } from '../../calendar/interfaces/event-repository.interface';
 import type { IGoogleCalendarService } from '../../calendar/interfaces/google-calendar-service.interface';
+import type { IGoogleTasksService } from '../../calendar/interfaces/google-tasks-service.interface';
+import { GoogleTasksScopeError } from '../../calendar/services/google-tasks.service';
 import { MessageParserService } from '../../llm/services/message-parser.service';
 import { SettingsService } from '../../settings/settings.service';
 import { ChildService } from '../../settings/child.service';
@@ -28,6 +31,8 @@ export class EventSyncService {
     private readonly eventRepository: IEventRepository,
     @Inject(GOOGLE_CALENDAR_SERVICE)
     private readonly googleCalendarService: IGoogleCalendarService,
+    @Inject(GOOGLE_TASKS_SERVICE)
+    private readonly googleTasksService: IGoogleTasksService,
     private readonly messageParserService: MessageParserService,
     private readonly settingsService: SettingsService,
     private readonly childService: ChildService,
@@ -90,9 +95,20 @@ export class EventSyncService {
         messagesParsed += group.length;
         eventsCreated += result.eventsCreated;
 
-        // Send newly created events for approval if enabled
+        // Send newly created events for approval if enabled (skip past events)
         if (approvalEnabled) {
+          const now = new Date();
           for (const savedEvent of result.savedEvents) {
+            if (this.isEventInPast(savedEvent, now)) {
+              this.logger.log(
+                `Skipping approval for past event "${savedEvent.title}" (${savedEvent.date}${savedEvent.time ? ' ' + savedEvent.time : ''}) — auto-approving`,
+              );
+              // Auto-approve past events so they sync directly without waiting
+              await this.eventRepository.update(savedEvent.id, {
+                approvalStatus: ApprovalStatus.NONE,
+              });
+              continue;
+            }
             await this.approvalService.sendForApproval(savedEvent);
           }
         }
@@ -107,33 +123,27 @@ export class EventSyncService {
       }
     }
 
-    // Step 2: Sync unsynced events to Google Calendar
+    // Step 2: Sync unsynced events to Google Calendar / Google Tasks
     const calendarId = await this.getCalendarId();
     const unsyncedEvents = await this.eventRepository.findUnsynced();
     this.logger.log(`Found ${unsyncedEvents.length} unsynced events`);
 
     for (const event of unsyncedEvents) {
       try {
-        const googleEventId =
-          await this.googleCalendarService.createEvent(
-            event,
-            calendarId,
-            event.calendarColorId || undefined,
-          );
-
-        await this.eventRepository.update(event.id, {
-          googleEventId,
-          syncedToGoogle: true,
-        });
+        if (event.syncType === 'task') {
+          await this.syncAsTask(event, calendarId);
+        } else {
+          await this.syncAsCalendarEvent(event, calendarId);
+        }
 
         eventsSynced++;
         this.eventEmitter.emit('event.synced', {
           eventId: event.id,
-          googleEventId,
+          googleEventId: event.googleEventId,
         });
       } catch (error) {
         this.logger.error(
-          `Failed to sync event ${event.id} to Google Calendar: ${error.message}`,
+          `Failed to sync event ${event.id} to Google: ${error.message}`,
         );
         // Don't mark as synced - will retry on next run
       }
@@ -274,6 +284,7 @@ export class EventSyncService {
           sourceId: firstMessage.id,
           childId: childId || undefined,
           calendarColorId: calendarColorId || undefined,
+          syncType: parsed.time ? 'event' : 'task',
           syncedToGoogle: false,
           approvalStatus: approvalEnabled
             ? ApprovalStatus.PENDING
@@ -310,6 +321,78 @@ export class EventSyncService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  private async syncAsCalendarEvent(
+    event: CalendarEventEntity,
+    calendarId: string,
+  ): Promise<void> {
+    const googleEventId = await this.googleCalendarService.createEvent(
+      event,
+      calendarId,
+      event.calendarColorId || undefined,
+    );
+
+    await this.eventRepository.update(event.id, {
+      googleEventId,
+      syncedToGoogle: true,
+    });
+  }
+
+  private async syncAsTask(
+    event: CalendarEventEntity,
+    calendarId: string,
+  ): Promise<void> {
+    try {
+      // Determine the child name from the event title (format: "ChildName: title")
+      const childName = this.extractChildName(event);
+      const taskListId = childName
+        ? await this.googleTasksService.findOrCreateChildTaskList(childName)
+        : '@default';
+
+      const googleTaskId = await this.googleTasksService.createTask(
+        event.title,
+        event.description || undefined,
+        event.date,
+        taskListId,
+      );
+
+      await this.eventRepository.update(event.id, {
+        googleEventId: googleTaskId,
+        googleTaskListId: taskListId,
+        syncedToGoogle: true,
+      });
+    } catch (error) {
+      if (error instanceof GoogleTasksScopeError) {
+        this.logger.warn(
+          `Tasks scope not granted for event ${event.id}, falling back to all-day calendar event`,
+        );
+        // Fallback: create as all-day calendar event instead
+        await this.eventRepository.update(event.id, { syncType: 'event' });
+        await this.syncAsCalendarEvent(event, calendarId);
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private extractChildName(event: CalendarEventEntity): string | null {
+    // Event titles are formatted as "ChildName: actual title" when child is set
+    if (event.childId && event.title.includes(': ')) {
+      return event.title.split(': ')[0];
+    }
+    return null;
+  }
+
+  private isEventInPast(
+    event: CalendarEventEntity,
+    now: Date,
+  ): boolean {
+    const eventDateStr = event.time
+      ? `${event.date}T${event.time}:00`
+      : `${event.date}T23:59:59`;
+    const eventDate = new Date(eventDateStr);
+    return eventDate.getTime() < now.getTime();
   }
 
   private async getCalendarId(): Promise<string> {

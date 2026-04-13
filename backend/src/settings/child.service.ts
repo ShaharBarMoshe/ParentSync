@@ -45,6 +45,14 @@ export class ChildService {
     return this.childRepository.delete(id);
   }
 
+  async resetAllLastScan(): Promise<number> {
+    const children = await this.childRepository.findAll();
+    for (const child of children) {
+      await this.childRepository.update(child.id, { lastScanAt: null as any });
+    }
+    return children.length;
+  }
+
   async reorder(ids: string[]): Promise<ChildEntity[]> {
     for (let i = 0; i < ids.length; i++) {
       await this.childRepository.update(ids[i], { order: i });

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react';
-import { settingsApi, authApi, childrenApi, whatsappApi } from '../services/api';
+import { settingsApi, authApi, childrenApi, whatsappApi, syncApi } from '../services/api';
 import type { Setting, AuthStatus, AuthPurpose, AccountStatus, Child } from '../services/api';
 import WhatsAppQRModal from '../components/WhatsAppQRModal';
 import Icon from '../components/icons/Icon';
@@ -687,6 +687,24 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const [resetting, setResetting] = useState(false);
+
+  const handleResetSync = useCallback(async () => {
+    setResetting(true);
+    try {
+      const result = await syncApi.resetSyncState();
+      await loadChildren();
+      setStatus({
+        type: 'success',
+        message: `Sync state reset: ${result.childrenReset} children, ${result.messagesReset} messages marked for re-evaluation`,
+      });
+    } catch {
+      setStatus({ type: 'error', message: 'Failed to reset sync state' });
+    } finally {
+      setResetting(false);
+    }
+  }, []);
+
   const isLoading = status.type === 'loading';
   const isSaving = status.type === 'saving';
 
@@ -752,10 +770,27 @@ export default function SettingsPage() {
 
           {/* Children */}
           <div className="settings-section">
-            <h3 className="settings-section-title"><Icon name="users" size={16} /> Children</h3>
-            <p className="settings-section-hint">
-              Add your children and configure their WhatsApp channels, teacher emails, and calendar colors.
-            </p>
+            <div className="settings-section-header">
+              <div>
+                <h3 className="settings-section-title"><Icon name="users" size={16} /> Children</h3>
+                <p className="settings-section-hint">
+                  Add your children and configure their WhatsApp channels, teacher emails, and calendar colors.
+                </p>
+              </div>
+              {children.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--sm"
+                  onClick={handleResetSync}
+                  disabled={resetting}
+                  title="Reset scan timestamps and re-parse all messages on next sync"
+                >
+                  {resetting
+                    ? <><Icon name="loader" size={14} className="icon-spin" /> Resetting...</>
+                    : <><Icon name="refresh-cw" size={14} /> Reset Sync State</>}
+                </button>
+              )}
+            </div>
             <ChildList children={children} onSave={handleSaveChild} onDelete={handleDeleteChild} onAdd={handleAddChild} saving={childSaving} onPendingChange={handleChildPendingChange} />
           </div>
 

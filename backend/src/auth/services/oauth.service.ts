@@ -24,6 +24,7 @@ const SCOPES_BY_PURPOSE: Record<OAuthPurpose, string[]> = {
   ],
   calendar: [
     'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/tasks',
     'https://www.googleapis.com/auth/userinfo.email',
   ],
 };
