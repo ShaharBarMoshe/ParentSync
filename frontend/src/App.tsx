@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { HashRouter, BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import Icon from './components/icons/Icon';
+import ErrorModal from './components/ErrorModal';
 import DashboardPage from './pages/DashboardPage';
 import CalendarPage from './pages/CalendarPage';
 import SettingsPage from './pages/SettingsPage';
@@ -58,6 +59,7 @@ function App() {
         <footer className="app-footer">
           <span>ParentSync v1.0</span>
         </footer>
+        <ErrorModal />
       </div>
     </Router>
   );

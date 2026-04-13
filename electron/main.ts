@@ -94,6 +94,7 @@ function ensureDirectories(): void {
     userData,
     path.join(userData, 'chrome-profile'),
     path.join(userData, 'tokens'),
+    path.join(userData, 'logs'),
   ];
   for (const dir of dirs) {
     if (!fs.existsSync(dir)) {
