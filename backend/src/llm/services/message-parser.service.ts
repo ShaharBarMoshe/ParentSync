@@ -11,7 +11,8 @@ const SYSTEM_PROMPT = `You are a calendar event extractor. Extract calendar even
 CRITICAL RULES:
 - ONLY extract information that is EXPLICITLY stated in the message text. NEVER invent, guess, or hallucinate details (names, times, locations, descriptions) that are not present in the text.
 - If a detail is not mentioned, DO NOT include that field. Leave optional fields out entirely rather than guessing.
-- Return a JSON array of events. If no actionable event is detected, return an empty array: []
+- For a single message: return a JSON array of events. If no actionable event is detected, return an empty array: []
+- For multiple numbered messages: return a JSON object where each key is the message number (as a string) and each value is an array of events. Example: {"1": [...], "2": [], "3": [...]}
 - Each event object must have these fields:
   - "title" (string, required): A clear, concise event title in Hebrew, based ONLY on what the message says
   - "description" (string, optional): Brief description in Hebrew ONLY if relevant details are explicitly mentioned
@@ -183,10 +184,17 @@ export class MessageParserService {
         `Example format: {"1": [{"title":"...", "date":"..."}], "2": [], "3": [{"title":"...", "date":"...", "time":"..."}]}\n\n` +
         numberedMessages;
 
-      const response = await this.llmService.callLLM([
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userMessage },
-      ]);
+      // Use higher token limit for batch — more groups = more output
+      const maxTokens = Math.min(2048 + uncached.length * 512, 8192);
+      const response = await this.llmService.callLLM(
+        [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userMessage },
+        ],
+        undefined,
+        undefined,
+        maxTokens,
+      );
 
       const parsed = this.extractBatchJsonFromResponse(response, uncached.length);
 

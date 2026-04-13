@@ -173,4 +173,261 @@ describe('MessageParserService', () => {
     const calls = mockCacheManager.get.mock.calls;
     expect(calls[0][0]).toBe(calls[1][0]);
   });
+
+  describe('parseMessageBatch', () => {
+    it('should return empty Map for empty input', async () => {
+      const result = await service.parseMessageBatch([], '2026-04-13');
+      expect(result.size).toBe(0);
+      expect(mockLlmService.callLLM).not.toHaveBeenCalled();
+    });
+
+    it('should delegate to parseMessage for a single uncached group', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([{ title: 'Trip', date: '2026-04-20' }]),
+      );
+
+      const result = await service.parseMessageBatch(
+        [{ id: 'g1', content: 'טיול שנתי ביום חמישי' }],
+        '2026-04-13',
+      );
+
+      expect(result.size).toBe(1);
+      expect(result.get('g1')).toHaveLength(1);
+      expect(result.get('g1')![0].title).toBe('Trip');
+      // Single group should call LLM once (via parseMessage, not batch format)
+      expect(mockLlmService.callLLM).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return all groups from cache without LLM call', async () => {
+      const cached1 = [{ title: 'Event 1', date: '2026-04-15' }];
+      const cached2 = [{ title: 'Event 2', date: '2026-04-16' }];
+      mockCacheManager.get
+        .mockResolvedValueOnce(cached1)
+        .mockResolvedValueOnce(cached2);
+
+      const result = await service.parseMessageBatch(
+        [
+          { id: 'g1', content: 'message 1' },
+          { id: 'g2', content: 'message 2' },
+        ],
+        '2026-04-13',
+      );
+
+      expect(result.size).toBe(2);
+      expect(result.get('g1')).toEqual(cached1);
+      expect(result.get('g2')).toEqual(cached2);
+      expect(mockLlmService.callLLM).not.toHaveBeenCalled();
+    });
+
+    it('should batch uncached groups in a single LLM call', async () => {
+      mockCacheManager.get.mockResolvedValue(null); // nothing cached
+
+      const batchResponse = JSON.stringify({
+        '1': [{ title: 'Birthday', date: '2026-04-20' }],
+        '2': [],
+        '3': [{ title: 'Meeting', date: '2026-04-21', time: '15:00' }],
+      });
+      mockLlmService.callLLM.mockResolvedValue(batchResponse);
+
+      const result = await service.parseMessageBatch(
+        [
+          { id: 'a', content: 'birthday party' },
+          { id: 'b', content: 'hello how are you' },
+          { id: 'c', content: 'meeting at 3pm' },
+        ],
+        '2026-04-13',
+      );
+
+      expect(mockLlmService.callLLM).toHaveBeenCalledTimes(1);
+      expect(result.size).toBe(3);
+      expect(result.get('a')).toHaveLength(1);
+      expect(result.get('a')![0].title).toBe('Birthday');
+      expect(result.get('b')).toHaveLength(0);
+      expect(result.get('c')).toHaveLength(1);
+      expect(result.get('c')![0].time).toBe('15:00');
+    });
+
+    it('should mix cached and uncached groups', async () => {
+      const cached = [{ title: 'Cached Event', date: '2026-04-15' }];
+      mockCacheManager.get
+        .mockResolvedValueOnce(cached)   // g1 cached
+        .mockResolvedValueOnce(null)     // g2 not cached
+        .mockResolvedValueOnce(null);    // g3 not cached
+
+      // Batch call for 2 uncached groups
+      const batchResponse = JSON.stringify({
+        '1': [{ title: 'Event 2', date: '2026-04-16' }],
+        '2': [],
+      });
+      mockLlmService.callLLM.mockResolvedValue(batchResponse);
+
+      const result = await service.parseMessageBatch(
+        [
+          { id: 'g1', content: 'cached content' },
+          { id: 'g2', content: 'new content 1' },
+          { id: 'g3', content: 'new content 2' },
+        ],
+        '2026-04-13',
+      );
+
+      expect(result.size).toBe(3);
+      expect(result.get('g1')).toEqual(cached);
+      expect(result.get('g2')).toHaveLength(1);
+      expect(result.get('g3')).toHaveLength(0);
+      expect(mockLlmService.callLLM).toHaveBeenCalledTimes(1);
+    });
+
+    it('should cache each group individually after batch parse', async () => {
+      mockCacheManager.get.mockResolvedValue(null);
+
+      const batchResponse = JSON.stringify({
+        '1': [{ title: 'A', date: '2026-04-20' }],
+        '2': [{ title: 'B', date: '2026-04-21' }],
+      });
+      mockLlmService.callLLM.mockResolvedValue(batchResponse);
+
+      await service.parseMessageBatch(
+        [
+          { id: 'x', content: 'msg one' },
+          { id: 'y', content: 'msg two' },
+        ],
+        '2026-04-13',
+      );
+
+      // Should cache each group separately
+      expect(mockCacheManager.set).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle missing keys in batch response with empty arrays', async () => {
+      mockCacheManager.get.mockResolvedValue(null);
+
+      // Response only has key "1", missing "2"
+      const batchResponse = JSON.stringify({
+        '1': [{ title: 'Only Event', date: '2026-04-20' }],
+      });
+      mockLlmService.callLLM.mockResolvedValue(batchResponse);
+
+      const result = await service.parseMessageBatch(
+        [
+          { id: 'a', content: 'has events' },
+          { id: 'b', content: 'missing in response' },
+        ],
+        '2026-04-13',
+      );
+
+      expect(result.get('a')).toHaveLength(1);
+      expect(result.get('b')).toHaveLength(0);
+    });
+
+    it('should fall back to individual parsing when batch response is an array', async () => {
+      mockCacheManager.get.mockResolvedValue(null);
+
+      // LLM returns array instead of object (wrong format for batch)
+      mockLlmService.callLLM
+        .mockResolvedValueOnce('[{"title":"X","date":"2026-04-20"}]')  // batch attempt
+        .mockResolvedValueOnce('[{"title":"A","date":"2026-04-20"}]')  // fallback group 1
+        .mockResolvedValueOnce('[]');                                   // fallback group 2
+
+      const result = await service.parseMessageBatch(
+        [
+          { id: 'a', content: 'msg 1' },
+          { id: 'b', content: 'msg 2' },
+        ],
+        '2026-04-13',
+      );
+
+      // Should have made 3 LLM calls: 1 batch (failed) + 2 individual fallbacks
+      expect(mockLlmService.callLLM).toHaveBeenCalledTimes(3);
+      expect(result.get('a')).toHaveLength(1);
+      expect(result.get('b')).toHaveLength(0);
+    });
+
+    it('should fall back to individual parsing when LLM throws error', async () => {
+      mockCacheManager.get.mockResolvedValue(null);
+
+      mockLlmService.callLLM
+        .mockRejectedValueOnce(new Error('LLM error'))    // batch fails
+        .mockResolvedValueOnce('[]')                       // fallback group 1
+        .mockResolvedValueOnce('[]');                       // fallback group 2
+
+      const result = await service.parseMessageBatch(
+        [
+          { id: 'a', content: 'msg 1' },
+          { id: 'b', content: 'msg 2' },
+        ],
+        '2026-04-13',
+      );
+
+      expect(result.size).toBe(2);
+      expect(result.get('a')).toHaveLength(0);
+      expect(result.get('b')).toHaveLength(0);
+    });
+
+    it('should validate events in batch response', async () => {
+      mockCacheManager.get.mockResolvedValue(null);
+
+      const batchResponse = JSON.stringify({
+        '1': [
+          { title: 'Valid', date: '2026-04-20' },
+          { title: '', date: '2026-04-20' },      // empty title — filtered
+          { title: 'No Date' },                     // missing date — filtered
+        ],
+        '2': [
+          { title: 'Bad Time', date: '2026-04-21', time: 'noon' }, // invalid time — filtered
+        ],
+      });
+      mockLlmService.callLLM.mockResolvedValue(batchResponse);
+
+      const result = await service.parseMessageBatch(
+        [
+          { id: 'a', content: 'msg 1' },
+          { id: 'b', content: 'msg 2' },
+        ],
+        '2026-04-13',
+      );
+
+      expect(result.get('a')).toHaveLength(1);
+      expect(result.get('a')![0].title).toBe('Valid');
+      expect(result.get('b')).toHaveLength(0);
+    });
+
+    it('should include ===MESSAGE_N=== delimiters in batch LLM call', async () => {
+      mockCacheManager.get.mockResolvedValue(null);
+      mockLlmService.callLLM.mockResolvedValue('{"1":[],"2":[]}');
+
+      await service.parseMessageBatch(
+        [
+          { id: 'a', content: 'first message' },
+          { id: 'b', content: 'second message' },
+        ],
+        '2026-04-13',
+      );
+
+      const userMessage = mockLlmService.callLLM.mock.calls[0][0][1].content;
+      expect(userMessage).toContain('===MESSAGE_1===');
+      expect(userMessage).toContain('===MESSAGE_2===');
+      expect(userMessage).toContain('first message');
+      expect(userMessage).toContain('second message');
+      expect(userMessage).toContain('Current date: 2026-04-13');
+    });
+
+    it('should extract batch JSON from markdown code blocks', async () => {
+      mockCacheManager.get.mockResolvedValue(null);
+
+      mockLlmService.callLLM.mockResolvedValue(
+        '```json\n{"1": [{"title":"Event","date":"2026-04-20"}], "2": []}\n```',
+      );
+
+      const result = await service.parseMessageBatch(
+        [
+          { id: 'a', content: 'msg 1' },
+          { id: 'b', content: 'msg 2' },
+        ],
+        '2026-04-13',
+      );
+
+      expect(result.get('a')).toHaveLength(1);
+      expect(result.get('b')).toHaveLength(0);
+    });
+  });
 });
