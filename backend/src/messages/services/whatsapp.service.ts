@@ -237,10 +237,28 @@ export class WhatsAppService
     try {
       messages = await targetChat.fetchMessages({ limit });
     } catch (error) {
-      this.logger.warn(
-        `Failed to fetch messages from "${channelName}" (channel may be empty): ${error.message}`,
-      );
-      return [];
+      // Detect stale puppeteer page — reconnect once and retry
+      if (error.message?.includes('waitForChatLoading') || error.message?.includes('Cannot read properties of undefined')) {
+        this.logger.warn(
+          `WhatsApp session appears stale for "${channelName}" — reinitializing client`,
+        );
+        this.connected = false;
+        try {
+          await this.initialize();
+          const retryChat = await this.findChatByName(channelName);
+          messages = await retryChat.fetchMessages({ limit });
+        } catch (retryError) {
+          this.logger.warn(
+            `Failed to fetch messages from "${channelName}" after reconnect: ${retryError.message}`,
+          );
+          return [];
+        }
+      } else {
+        this.logger.warn(
+          `Failed to fetch messages from "${channelName}" (channel may be empty): ${error.message}`,
+        );
+        return [];
+      }
     }
 
     return messages.map((msg) => ({

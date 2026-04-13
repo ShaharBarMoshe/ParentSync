@@ -28,12 +28,36 @@ export class SettingsService {
     return entity;
   }
 
+  private maskEntity(entity: UserSettingEntity): UserSettingEntity {
+    if (this.isSensitive(entity.key) && entity.value) {
+      const decrypted = this.cryptoService.decrypt(entity.value);
+      if (decrypted.length <= 8) {
+        entity.value = '••••••••';
+      } else {
+        entity.value = decrypted.slice(0, 4) + '••••' + decrypted.slice(-4);
+      }
+    }
+    return entity;
+  }
+
   async findAll(): Promise<UserSettingEntity[]> {
     const settings = await this.settingsRepository.findAll();
-    return settings.map((s) => this.decryptEntity(s));
+    return settings.map((s) => this.maskEntity(s));
   }
 
   async findByKey(key: string): Promise<UserSettingEntity> {
+    const setting = await this.settingsRepository.findByKey(key);
+    if (!setting) {
+      throw new NotFoundException(`Setting with key "${key}" not found`);
+    }
+    if (this.isSensitive(key)) {
+      return this.maskEntity(setting);
+    }
+    return setting;
+  }
+
+  /** Internal use only — returns decrypted value for sensitive keys (not exposed via API). */
+  async findByKeyDecrypted(key: string): Promise<UserSettingEntity> {
     const setting = await this.settingsRepository.findByKey(key);
     if (!setting) {
       throw new NotFoundException(`Setting with key "${key}" not found`);
@@ -42,6 +66,13 @@ export class SettingsService {
   }
 
   async create(dto: CreateSettingDto): Promise<UserSettingEntity> {
+    // Skip saving masked placeholder values for sensitive keys
+    if (this.isSensitive(dto.key) && dto.value.includes('••••')) {
+      const existing = await this.settingsRepository.findByKey(dto.key);
+      if (existing) {
+        return this.maskEntity(existing);
+      }
+    }
     const storedValue = this.isSensitive(dto.key)
       ? this.cryptoService.encrypt(dto.value)
       : dto.value;
@@ -55,6 +86,10 @@ export class SettingsService {
     const existing = await this.settingsRepository.findByKey(key);
     if (!existing) {
       throw new NotFoundException(`Setting with key "${key}" not found`);
+    }
+    // Skip saving masked placeholder values for sensitive keys
+    if (this.isSensitive(key) && dto.value.includes('••••')) {
+      return this.maskEntity(existing);
     }
     const storedValue = this.isSensitive(key)
       ? this.cryptoService.encrypt(dto.value)

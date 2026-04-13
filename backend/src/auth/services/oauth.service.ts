@@ -73,7 +73,7 @@ export class OAuthService implements OnModuleInit {
 
   private async getSetting(key: string): Promise<string | null> {
     try {
-      const setting = await this.settingsService.findByKey(key);
+      const setting = await this.settingsService.findByKeyDecrypted(key);
       return setting.value;
     } catch {
       return null;

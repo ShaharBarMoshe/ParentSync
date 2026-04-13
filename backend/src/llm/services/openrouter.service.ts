@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { firstValueFrom } from 'rxjs';
 import { ILLMService, LlmMessage } from '../interfaces/llm-service.interface';
 import { OpenRouterResponse } from '../dto/llm-response.dto';
@@ -10,7 +10,7 @@ import { SettingsService } from '../../settings/settings.service';
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
-const DEFAULT_MODEL = 'trinity-large-preview:free';
+const DEFAULT_MODEL = 'google/gemma-3-27b-it:free';
 
 @Injectable()
 export class OpenRouterService implements ILLMService, OnModuleInit {
@@ -22,6 +22,7 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
     private readonly httpService: HttpService,
     private readonly settingsService: SettingsService,
     private readonly rateLimiter: LlmRateLimiter,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   async onModuleInit() {
@@ -30,7 +31,7 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
 
   private async loadSettings() {
     try {
-      const apiKeySetting = await this.settingsService.findByKey('openrouter_api_key');
+      const apiKeySetting = await this.settingsService.findByKeyDecrypted('openrouter_api_key');
       this.apiKey = apiKeySetting.value.trim();
     } catch {
       this.logger.warn('OpenRouter API key not configured in settings');
@@ -116,6 +117,7 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
           this.logger.error(
             `LLM call failed with client error ${status} (${duration}ms): ${this.sanitizeError(error.message)}`,
           );
+          this.emitCriticalError(status, model);
           throw error;
         }
 
@@ -139,6 +141,22 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
       `LLM call failed after ${MAX_RETRIES} retries (${duration}ms): ${this.sanitizeError(lastError?.message)}`,
     );
     throw lastError;
+  }
+
+  private emitCriticalError(status: number, model: string) {
+    const messages: Record<number, string> = {
+      401: 'OpenRouter API key is invalid or missing. Please update it in Settings.',
+      403: 'OpenRouter API key does not have access to this model. Please check your API key permissions in Settings.',
+      404: `LLM model "${model}" was not found on OpenRouter. Please select a valid model in Settings.`,
+    };
+    const message = messages[status] || `OpenRouter API returned error ${status}. Please check your LLM settings.`;
+
+    this.eventEmitter.emit('app.error', {
+      source: 'llm',
+      code: `LLM_CLIENT_ERROR_${status}`,
+      message,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   private sanitizeError(message?: string): string {

@@ -125,7 +125,7 @@ function HourPicker({ value, onChange, error }: { value: string; onChange: (valu
 const DEFAULT_FORM: SettingsForm = {
   checkSchedule: '9,14,18',
   openrouterApiKey: '',
-  openrouterModel: 'arcee-ai/trinity-large-preview:free',
+  openrouterModel: 'google/gemma-3-27b-it:free',
   googleClientId: '',
   googleClientSecret: '',
   googleRedirectUri: 'http://localhost:3000/api/auth/google/callback',
@@ -806,8 +806,8 @@ export default function SettingsPage() {
               </div>
               <div className="form-field">
                 <label htmlFor="openrouterModel" className="form-label">Model</label>
-                <input id="openrouterModel" type="text" className="form-input" value={form.openrouterModel} onChange={(e) => handleChange('openrouterModel', e.target.value)} placeholder="arcee-ai/trinity-large-preview:free" />
-                <span className="form-hint">OpenRouter model identifier (e.g., arcee-ai/trinity-large-preview:free)</span>
+                <input id="openrouterModel" type="text" className="form-input" value={form.openrouterModel} onChange={(e) => handleChange('openrouterModel', e.target.value)} placeholder="google/gemma-3-27b-it:free" />
+                <span className="form-hint">OpenRouter model identifier (e.g., google/gemma-3-27b-it:free)</span>
               </div>
             </div>
 

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpService } from '@nestjs/axios';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { of, throwError } from 'rxjs';
 import { AxiosResponse, AxiosHeaders } from 'axios';
 import { OpenRouterService } from './openrouter.service';
@@ -10,6 +11,7 @@ describe('OpenRouterService', () => {
   let service: OpenRouterService;
   let httpService: jest.Mocked<HttpService>;
   let rateLimiter: jest.Mocked<LlmRateLimiter>;
+  let eventEmitter: EventEmitter2;
 
   const mockSuccessResponse: AxiosResponse = {
     data: {
@@ -48,6 +50,13 @@ describe('OpenRouterService', () => {
                 return Promise.resolve({ value: 'test-model' });
               return Promise.reject(new Error('Not found'));
             }),
+            findByKeyDecrypted: jest.fn().mockImplementation((key: string) => {
+              if (key === 'openrouter_api_key')
+                return Promise.resolve({ value: 'test-api-key' });
+              if (key === 'openrouter_model')
+                return Promise.resolve({ value: 'test-model' });
+              return Promise.reject(new Error('Not found'));
+            }),
           },
         },
         {
@@ -56,12 +65,14 @@ describe('OpenRouterService', () => {
             acquire: jest.fn().mockResolvedValue(undefined),
           },
         },
+        EventEmitter2,
       ],
     }).compile();
 
     service = module.get<OpenRouterService>(OpenRouterService);
     httpService = module.get(HttpService);
     rateLimiter = module.get(LlmRateLimiter);
+    eventEmitter = module.get(EventEmitter2);
 
     // Trigger onModuleInit to load API key from settings
     await service.onModuleInit();
@@ -173,6 +184,50 @@ describe('OpenRouterService', () => {
         max_tokens: 4096,
       }),
       expect.any(Object),
+    );
+  });
+
+  it('should emit app.error event on 404 client error', async () => {
+    const emitSpy = jest.spyOn(eventEmitter, 'emit');
+    const error = {
+      response: { status: 404 },
+      message: 'Request failed with status code 404',
+    };
+    httpService.post.mockReturnValue(throwError(() => error));
+
+    await expect(
+      service.callLLM([{ role: 'user', content: 'Hello' }]),
+    ).rejects.toBeDefined();
+
+    expect(emitSpy).toHaveBeenCalledWith(
+      'app.error',
+      expect.objectContaining({
+        source: 'llm',
+        code: 'LLM_CLIENT_ERROR_404',
+        message: expect.stringContaining('not found on OpenRouter'),
+      }),
+    );
+  });
+
+  it('should emit app.error event on 401 client error', async () => {
+    const emitSpy = jest.spyOn(eventEmitter, 'emit');
+    const error = {
+      response: { status: 401 },
+      message: 'Unauthorized',
+    };
+    httpService.post.mockReturnValue(throwError(() => error));
+
+    await expect(
+      service.callLLM([{ role: 'user', content: 'Hello' }]),
+    ).rejects.toBeDefined();
+
+    expect(emitSpy).toHaveBeenCalledWith(
+      'app.error',
+      expect.objectContaining({
+        source: 'llm',
+        code: 'LLM_CLIENT_ERROR_401',
+        message: expect.stringContaining('invalid or missing'),
+      }),
     );
   });
 

@@ -50,18 +50,21 @@ describe('OAuthService', () => {
       remove: jest.fn().mockResolvedValue(undefined),
     };
 
+    const settingsLookup = (key: string) => {
+      const settings: Record<string, string> = {
+        google_client_id: 'mock-client-id',
+        google_client_secret: 'mock-client-secret',
+        google_redirect_uri: 'http://localhost:3000/api/auth/google/callback',
+      };
+      if (settings[key]) {
+        return Promise.resolve({ key, value: settings[key] });
+      }
+      return Promise.reject(new Error('Not found'));
+    };
+
     mockSettingsService = {
-      findByKey: jest.fn().mockImplementation((key: string) => {
-        const settings: Record<string, string> = {
-          google_client_id: 'mock-client-id',
-          google_client_secret: 'mock-client-secret',
-          google_redirect_uri: 'http://localhost:3000/api/auth/google/callback',
-        };
-        if (settings[key]) {
-          return Promise.resolve({ key, value: settings[key] });
-        }
-        return Promise.reject(new Error('Not found'));
-      }),
+      findByKey: jest.fn().mockImplementation(settingsLookup),
+      findByKeyDecrypted: jest.fn().mockImplementation(settingsLookup),
     };
 
     const module: TestingModule = await Test.createTestingModule({
