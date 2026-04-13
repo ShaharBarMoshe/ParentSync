@@ -9,7 +9,9 @@ import { SettingsService } from '../../settings/settings.service';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const MAX_RETRIES = 3;
+const MAX_RETRIES_RATE_LIMIT = 5;
 const BASE_DELAY_MS = 1000;
+const RATE_LIMIT_DELAY_MS = 20_000;
 const DEFAULT_MODEL = 'google/gemma-3-27b-it:free';
 
 @Injectable()
@@ -66,8 +68,10 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
 
     const startTime = Date.now();
     let lastError: Error | undefined;
+    const maxAttempts = MAX_RETRIES;
+    let rateLimitRetries = 0;
 
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts + rateLimitRetries; attempt++) {
       try {
         const body = {
           model,
@@ -77,7 +81,7 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
         };
 
         this.logger.log(
-          `LLM request POST ${OPENROUTER_API_URL} (attempt: ${attempt}/${MAX_RETRIES})\n` +
+          `LLM request POST ${OPENROUTER_API_URL} (attempt: ${attempt})\n` +
           JSON.stringify(body, null, 2),
         );
 
@@ -121,15 +125,26 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
           throw error;
         }
 
+        // For 429, allow extra retries with longer delays
+        if (status === 429 && rateLimitRetries < MAX_RETRIES_RATE_LIMIT) {
+          rateLimitRetries++;
+          const retryAfter = error.response?.headers?.['retry-after'];
+          const delay = retryAfter
+            ? Math.min(parseInt(retryAfter, 10) * 1000 || RATE_LIMIT_DELAY_MS, 60_000)
+            : RATE_LIMIT_DELAY_MS;
+          this.logger.warn(
+            `Rate limited (429). Waiting ${delay}ms before retry ${rateLimitRetries}/${MAX_RETRIES_RATE_LIMIT}...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
         this.logger.warn(
-          `LLM call attempt ${attempt}/${MAX_RETRIES} failed: ${this.sanitizeError(error.message)}`,
+          `LLM call attempt ${attempt} failed: ${this.sanitizeError(error.message)}`,
         );
 
-        if (attempt < MAX_RETRIES) {
-          const retryAfter = error.response?.headers?.['retry-after'];
-          const delay = status === 429 && retryAfter
-            ? Math.min(parseInt(retryAfter, 10) * 1000 || 10_000, 60_000)
-            : BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        if (attempt < maxAttempts + rateLimitRetries) {
+          const delay = BASE_DELAY_MS * Math.pow(2, attempt - 1);
           this.logger.warn(`Retrying in ${delay}ms...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
@@ -138,7 +153,7 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
 
     const duration = Date.now() - startTime;
     this.logger.error(
-      `LLM call failed after ${MAX_RETRIES} retries (${duration}ms): ${this.sanitizeError(lastError?.message)}`,
+      `LLM call failed after retries (${duration}ms): ${this.sanitizeError(lastError?.message)}`,
     );
     throw lastError;
   }

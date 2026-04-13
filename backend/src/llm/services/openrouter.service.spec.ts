@@ -153,17 +153,24 @@ describe('OpenRouterService', () => {
   });
 
   it('should retry on 429 rate limit errors', async () => {
-    const error = { response: { status: 429 }, message: 'Rate limited' };
+    jest.useFakeTimers();
+    const error = { response: { status: 429, headers: { 'retry-after': '1' } }, message: 'Rate limited' };
     httpService.post
       .mockReturnValueOnce(throwError(() => error))
       .mockReturnValueOnce(of(mockSuccessResponse));
 
-    const result = await service.callLLM([
+    const callPromise = service.callLLM([
       { role: 'user', content: 'Hello' },
     ]);
 
+    // Advance past the retry-after delay
+    await jest.advanceTimersByTimeAsync(2000);
+
+    const result = await callPromise;
+
     expect(result).toBe('Hello, world!');
     expect(httpService.post).toHaveBeenCalledTimes(2);
+    jest.useRealTimers();
   });
 
   it('should accept custom model and parameters', async () => {
