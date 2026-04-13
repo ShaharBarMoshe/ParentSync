@@ -12,6 +12,7 @@ const MAX_ERROR_MSG_LENGTH = 200;
 @Controller('auth')
 export class AuthController {
   private readonly frontendUrl: string;
+  private readonly useHashRouting: boolean;
   constructor(
     private readonly oauthService: OAuthService,
     private readonly configService: ConfigService,
@@ -20,6 +21,15 @@ export class AuthController {
       'FRONTEND_URL',
       'http://localhost:5173',
     );
+    // Electron serves frontend from same origin — uses HashRouter
+    this.useHashRouting = !!this.configService.get<string>('FRONTEND_DIST_PATH');
+  }
+
+  private buildRedirectUrl(path: string, params: string): string {
+    if (this.useHashRouting) {
+      return `${this.frontendUrl}/#${path}?${params}`;
+    }
+    return `${this.frontendUrl}${path}?${params}`;
   }
 
   // Static routes must be declared before parameterized routes
@@ -36,13 +46,11 @@ export class AuthController {
       const purpose = await this.oauthService.handleCallback(code, state);
 
       res.clearCookie('oauth_state');
-      res.redirect(`${this.frontendUrl}/settings?auth=success&purpose=${purpose}`);
+      res.redirect(this.buildRedirectUrl('/settings', `auth=success&purpose=${purpose}`));
     } catch (error) {
       res.clearCookie('oauth_state');
       const safeMessage = this.sanitizeErrorMessage(error.message);
-      res.redirect(
-        `${this.frontendUrl}/settings?auth=error&message=${encodeURIComponent(safeMessage)}`,
-      );
+      res.redirect(this.buildRedirectUrl('/settings', `auth=error&message=${encodeURIComponent(safeMessage)}`));
     }
   }
 
