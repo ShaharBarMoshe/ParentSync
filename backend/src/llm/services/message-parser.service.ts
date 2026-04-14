@@ -28,8 +28,9 @@ WhatsApp chat format:
 - Messages may appear as "[HH:MM, M/D/YYYY] phone: text". The timestamp in brackets is when the message was SENT, not necessarily when an event occurs.
 - Extract event times ONLY from the message TEXT content, not from the WhatsApp message timestamps.
 - Casual conversation, status updates (e.g., "we'll arrive in 20 minutes", "there's an alert"), and vague messages without a date are NOT calendar events — return [].
-- Only extract events that describe a planned activity with a clear subject (e.g., a trip, appointment, birthday, meeting, gathering, playdate, visit, pickup/dropoff) OR an actionable task (payment, form to fill, document to sign, item to bring).
-- Playdates, visits, and kids coming over ARE calendar events — extract them with the child's name, date, and time if mentioned.
+- KEY RULE: If a message mentions a SPECIFIC DAY or DATE when something will happen, it IS an event — extract it. The bar is low: any future plan with a date counts.
+- Examples of events: trips, appointments, birthdays, meetings, gatherings, playdates, visits, someone coming over, lessons, classes, pickups, dropoffs, tests, ceremonies, performances, parties, sports activities, doctor visits, errands with a date.
+- An actionable task (payment, form to fill, document to sign, item to bring) is also an event.
 - If a message describes a planned activity with a clear DATE but NO specific time, still create the event WITHOUT the "time" field. These will be created as calendar tasks (to-do items). A clear date is enough — a specific time is NOT required.
 
 Action items (payments, forms, documents, things to bring/wear):
