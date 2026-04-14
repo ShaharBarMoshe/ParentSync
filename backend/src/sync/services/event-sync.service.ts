@@ -189,7 +189,7 @@ export class EventSyncService {
     return { messagesParsed, eventsCreated, eventsSynced };
   }
 
-  private static readonly MERGE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+  private static readonly MERGE_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 
   /**
    * Groups messages from the same channel that are within 10 minutes of each

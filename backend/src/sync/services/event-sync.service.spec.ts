@@ -640,7 +640,7 @@ describe('EventSyncService', () => {
   });
 
   describe('message grouping by proximity', () => {
-    it('should merge messages from the same channel within 10 minutes', async () => {
+    it('should merge messages from the same channel within 2 hours', async () => {
       const msg1 = makeMessage({
         id: 'msg-1',
         channel: 'class-a',
@@ -672,7 +672,7 @@ describe('EventSyncService', () => {
       expect(messageParserService.parseMessage).toHaveBeenCalledTimes(1);
     });
 
-    it('should split messages into separate groups when gap exceeds 10 minutes', async () => {
+    it('should split messages into separate groups when gap exceeds 2 hours', async () => {
       const msg1 = makeMessage({
         id: 'msg-1',
         channel: 'class-a',
@@ -683,13 +683,13 @@ describe('EventSyncService', () => {
         id: 'msg-2',
         channel: 'class-a',
         content: 'הודעה שנייה',
-        timestamp: new Date('2026-04-04T10:05:00Z'),
+        timestamp: new Date('2026-04-04T10:30:00Z'),
       });
       const msg3 = makeMessage({
         id: 'msg-3',
         channel: 'class-a',
         content: 'הודעה שלישית',
-        timestamp: new Date('2026-04-04T10:30:00Z'),
+        timestamp: new Date('2026-04-04T13:00:00Z'),
       });
 
       messageRepository.findUnparsed.mockResolvedValue([msg1, msg2, msg3]);
@@ -697,7 +697,7 @@ describe('EventSyncService', () => {
 
       const result = await service.syncEvents();
 
-      // msg1+msg2 in one group, msg3 in another
+      // msg1+msg2 in one group (30min gap), msg3 in another (2.5h gap)
       expect(messageParserService.parseMessage).toHaveBeenCalledTimes(2);
       expect(result.messagesParsed).toBe(3);
     });
@@ -803,7 +803,7 @@ describe('EventSyncService', () => {
       );
     });
 
-    it('should handle messages at exactly 10-minute boundary as same group', async () => {
+    it('should handle messages at exactly 2-hour boundary as same group', async () => {
       const msg1 = makeMessage({
         id: 'msg-1',
         channel: 'class-a',
@@ -812,7 +812,7 @@ describe('EventSyncService', () => {
       const msg2 = makeMessage({
         id: 'msg-2',
         channel: 'class-a',
-        timestamp: new Date('2026-04-04T10:10:00Z'),
+        timestamp: new Date('2026-04-04T12:00:00Z'),
       });
 
       messageRepository.findUnparsed.mockResolvedValue([msg1, msg2]);
@@ -820,11 +820,11 @@ describe('EventSyncService', () => {
 
       await service.syncEvents();
 
-      // Exactly 10 minutes apart — should be in the same group
+      // Exactly 2 hours apart — should be in the same group
       expect(messageParserService.parseMessage).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle messages just over 10-minute boundary as separate groups', async () => {
+    it('should handle messages just over 2-hour boundary as separate groups', async () => {
       const msg1 = makeMessage({
         id: 'msg-1',
         channel: 'class-a',
@@ -833,7 +833,7 @@ describe('EventSyncService', () => {
       const msg2 = makeMessage({
         id: 'msg-2',
         channel: 'class-a',
-        timestamp: new Date('2026-04-04T10:10:01Z'),
+        timestamp: new Date('2026-04-04T12:00:01Z'),
       });
 
       messageRepository.findUnparsed.mockResolvedValue([msg1, msg2]);
@@ -841,7 +841,7 @@ describe('EventSyncService', () => {
 
       await service.syncEvents();
 
-      // 10 minutes + 1 second — should be separate groups
+      // 2 hours + 1 second — should be separate groups
       expect(messageParserService.parseMessage).toHaveBeenCalledTimes(2);
     });
 
