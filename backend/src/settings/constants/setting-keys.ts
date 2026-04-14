@@ -13,8 +13,4 @@ export const ALLOWED_SETTING_KEYS = [
 ] as const;
 
 /** Keys whose values must never be returned in full via the API. */
-export const SENSITIVE_SETTING_KEYS = new Set<string>([
-  'gemini_api_key',
-  'openrouter_api_key',
-  'google_client_secret',
-]);
+export const SENSITIVE_SETTING_KEYS = new Set<string>([]);
