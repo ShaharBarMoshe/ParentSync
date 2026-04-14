@@ -255,10 +255,11 @@ export class WhatsAppService
 
     return page.evaluate(
       async (serializedChatId: string, msgLimit: number) => {
-        const chatWid = window.Store.WidFactory.createWid(serializedChatId);
+        const win = window as any;
+        const chatWid = win.Store.WidFactory.createWid(serializedChatId);
         const chat =
-          window.Store.Chat.get(chatWid) ||
-          (await window.Store.FindOrCreateChat.findOrCreateLatestChat(chatWid))?.chat;
+          win.Store.Chat.get(chatWid) ||
+          (await win.Store.FindOrCreateChat.findOrCreateLatestChat(chatWid))?.chat;
 
         if (!chat || !chat.msgs) return [];
 
