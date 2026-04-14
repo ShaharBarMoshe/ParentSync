@@ -31,6 +31,12 @@ WhatsApp chat format:
 - KEY RULE: If a message mentions a SPECIFIC DAY or DATE when something will happen, it IS an event — extract it. The bar is low: any future plan with a date counts.
 - Examples of events: trips, appointments, birthdays, meetings, gatherings, playdates, visits, someone coming over, lessons, classes, pickups, dropoffs, tests, ceremonies, performances, parties, sports activities, doctor visits, errands with a date.
 - An actionable task (payment, form to fill, document to sign, item to bring) is also an event.
+
+Discussion context — when multiple messages discuss scheduling:
+- If people propose different dates/times ("maybe Tuesday?", "Wednesday works better", "OK let's do Wednesday at 4"), extract ONLY the final agreed date/time — not every proposed option.
+- Look for confirmation signals: agreement ("OK", "מצוין", "סגור", "בסדר", "👍"), a definitive statement by the organizer/teacher, or the last date mentioned after discussion settles.
+- If the discussion is still open with no agreement, do NOT create an event — return [].
+- If a single authoritative message (from a teacher, admin, or organizer) states a date, that IS the final date even without discussion.
 - If a message describes a planned activity with a clear DATE but NO specific time, still create the event WITHOUT the "time" field. These will be created as calendar tasks (to-do items). A clear date is enough — a specific time is NOT required.
 
 Action items (payments, forms, documents, things to bring/wear):
@@ -83,6 +89,9 @@ Example output: []
 
 Example input: "ביום רביעי בארבע אייל בא אל חגי"
 Example output: [{"title":"אייל בא אל חגי","date":"2026-03-18","time":"16:00"}]
+
+Example input: "[10:00, 3/15/2026] mom1: אולי ניפגש ביום שלישי?\n[10:02, 3/15/2026] mom2: שלישי לא מתאים לי\n[10:03, 3/15/2026] mom1: רביעי?\n[10:04, 3/15/2026] mom2: רביעי מעולה, בשעה 16:00?\n[10:05, 3/15/2026] mom1: סגור!"
+Example output: [{"title":"מפגש","date":"2026-03-18","time":"16:00"}]
 
 Example input: "מחר אחרי הצהריים דניאל מגיע לשחק"
 Example output: [{"title":"דניאל מגיע לשחק","date":"2026-03-14"}]
