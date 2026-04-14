@@ -249,8 +249,15 @@ export class WhatsAppService
         error.message?.includes('waitForChatLoading') ||
         error.message?.includes('Cannot read properties of undefined');
 
+      if (!isStaleSession) {
+        this.logger.warn(
+          `Failed to fetch messages from "${channelName}" (channel may be empty): ${error.message}`,
+        );
+        return [];
+      }
+
       // Try reconnecting once per sync cycle if the session looks stale
-      if (isStaleSession && !this.reconnectedThisCycle) {
+      if (!this.reconnectedThisCycle) {
         this.reconnectedThisCycle = true;
         this.logger.warn(
           `WhatsApp session appears stale for "${channelName}" — reinitializing client (once per sync)`,
@@ -260,25 +267,24 @@ export class WhatsAppService
           await this.initialize();
           // Wait for WhatsApp Web to fully load chat data after reconnect;
           // the 'ready' event fires before internal chat loading completes.
-          await new Promise((resolve) => setTimeout(resolve, 10_000));
-          const retryChat = await this.findChatByName(channelName);
-          messages = await retryChat.fetchMessages({ limit });
-        } catch (retryError) {
+          await new Promise((resolve) => setTimeout(resolve, 15_000));
+        } catch (reconnectError) {
           this.logger.warn(
-            `Failed to fetch messages from "${channelName}" after reconnect: ${retryError.message}`,
+            `Failed to reconnect WhatsApp: ${reconnectError.message}`,
           );
           return [];
         }
-      } else {
-        if (isStaleSession) {
-          this.logger.warn(
-            `Skipping "${channelName}" — fetchMessages failed (already reconnected this sync cycle)`,
-          );
-        } else {
-          this.logger.warn(
-            `Failed to fetch messages from "${channelName}" (channel may be empty): ${error.message}`,
-          );
-        }
+      }
+
+      // Retry with a fresh chat reference (whether we just reconnected or
+      // a previous channel already triggered the reconnect this cycle)
+      try {
+        const retryChat = await this.findChatByName(channelName);
+        messages = await retryChat.fetchMessages({ limit });
+      } catch (retryError) {
+        this.logger.warn(
+          `Failed to fetch messages from "${channelName}" after reconnect: ${retryError.message}`,
+        );
         return [];
       }
     }
