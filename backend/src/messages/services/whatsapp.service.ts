@@ -243,7 +243,7 @@ export class WhatsAppService
   private async fetchMessagesDirectly(
     chatId: string,
     limit: number,
-  ): Promise<Array<{ body: string; timestamp: number; author?: string; from: string }>> {
+  ): Promise<Array<{ body: string; timestamp: number; author?: string; from: string; hasMedia: boolean }>> {
     if (!this.client) {
       throw new Error('WhatsApp client is not connected.');
     }
@@ -265,16 +265,30 @@ export class WhatsAppService
 
         const msgs = chat.msgs
           .getModelsArray()
-          .filter((m: any) => !m.isNotification)
+          .filter((m: any) => !m.isNotification && !m.isSentByMe)
           .sort((a: any, b: any) => b.t - a.t)
           .slice(0, msgLimit);
 
-        return msgs.map((m: any) => ({
-          body: m.body || '',
-          timestamp: m.t,
-          author: m.author || undefined,
-          from: m.id?.remote?._serialized || m.id?.remote || '',
-        }));
+        return msgs.map((m: any) => {
+          // Serialize sender to a string — may be an object with _serialized
+          const rawAuthor = m.author;
+          const rawFrom = m.id?.remote;
+          const author = typeof rawAuthor === 'object' && rawAuthor?._serialized
+            ? rawAuthor._serialized
+            : (typeof rawAuthor === 'string' ? rawAuthor : undefined);
+          const from = typeof rawFrom === 'object' && rawFrom?._serialized
+            ? rawFrom._serialized
+            : (typeof rawFrom === 'string' ? rawFrom : '');
+
+          return {
+            body: m.body || '',
+            timestamp: m.t,
+            author,
+            from,
+            hasMedia: !!(m.mediaData || m.type === 'image' || m.type === 'video'
+              || m.type === 'audio' || m.type === 'document' || m.type === 'sticker'),
+          };
+        });
       },
       chatId,
       limit,
@@ -288,7 +302,7 @@ export class WhatsAppService
     const targetChat = await this.findChatByName(channelName);
     const chatId = (targetChat as any).id?._serialized;
 
-    let rawMessages: Array<{ body: string; timestamp: number; author?: string; from: string }>;
+    let rawMessages: Array<{ body: string; timestamp: number; author?: string; from: string; hasMedia: boolean }>;
     try {
       rawMessages = await this.fetchMessagesDirectly(chatId, limit);
     } catch (error) {
@@ -312,7 +326,15 @@ export class WhatsAppService
       }
     }
 
-    return rawMessages.map((msg) => ({
+    // Filter out media-only messages (images, videos, etc.) with no meaningful text
+    return rawMessages
+      .filter((msg) => {
+        if (!msg.body || msg.body.trim().length === 0) return false;
+        // Skip media messages where body is raw base64 data (not user text)
+        if (msg.hasMedia && msg.body.length > 200 && !/\s/.test(msg.body.slice(0, 100))) return false;
+        return true;
+      })
+      .map((msg) => ({
       content: msg.body,
       timestamp: new Date(msg.timestamp * 1000),
       sender: msg.author || msg.from,
