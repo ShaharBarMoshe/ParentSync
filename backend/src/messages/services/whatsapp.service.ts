@@ -258,6 +258,9 @@ export class WhatsAppService
         this.connected = false;
         try {
           await this.initialize();
+          // Wait for WhatsApp Web to fully load chat data after reconnect;
+          // the 'ready' event fires before internal chat loading completes.
+          await new Promise((resolve) => setTimeout(resolve, 10_000));
           const retryChat = await this.findChatByName(channelName);
           messages = await retryChat.fetchMessages({ limit });
         } catch (retryError) {

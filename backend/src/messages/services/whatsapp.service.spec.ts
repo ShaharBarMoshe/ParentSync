@@ -81,6 +81,10 @@ describe('WhatsAppService', () => {
     const mockClient = new Client();
     mockClient.getChats.mockResolvedValue([mockChat]);
 
+    // Simulate that a reconnect already happened this cycle,
+    // so getChannelMessages takes the skip path without the 10s delay.
+    (service as any).reconnectedThisCycle = true;
+
     const result = await service.getChannelMessages('empty-channel');
     expect(result).toEqual([]);
   });
