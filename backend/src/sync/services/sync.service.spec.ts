@@ -507,11 +507,12 @@ describe('SyncService', () => {
     const result = await service.syncAll();
 
     // Only the new message (11:00) should be stored, old (09:00) skipped
-    expect(result.messageCount).toBe(1);
     expect(mockMessageRepo.create).toHaveBeenCalledTimes(1);
     expect(mockMessageRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ content: 'New message' }),
     );
+    // messageCount reflects total fetched messages (not just new)
+    expect(result.messageCount).toBe(2);
   });
 
   it('should skip Gmail messages older than last scanned timestamp per label', async () => {
@@ -532,11 +533,12 @@ describe('SyncService', () => {
     const result = await service.syncAll();
 
     // Only the new email should be stored
-    expect(result.messageCount).toBe(1);
     expect(mockMessageRepo.create).toHaveBeenCalledTimes(1);
     expect(mockMessageRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ content: expect.stringContaining('New') }),
     );
+    // messageCount reflects total fetched emails (not just new)
+    expect(result.messageCount).toBe(2);
   });
 
   it('should scan all messages when channel has no previous scans', async () => {
@@ -575,7 +577,8 @@ describe('SyncService', () => {
 
     const result = await service.syncAll();
 
-    expect(result.messageCount).toBe(0);
+    // messageCount reflects total fetched messages (1 fetched, 0 new)
+    expect(result.messageCount).toBe(1);
     expect(mockMessageRepo.create).not.toHaveBeenCalled();
   });
 });

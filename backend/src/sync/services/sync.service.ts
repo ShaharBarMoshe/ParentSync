@@ -317,11 +317,11 @@ export class SyncService {
 
         let channelMessageCount = 0;
         const channelMessages: { sender: string; content: string; timestamp: string }[] = [];
-        for (const msg of messages) {
-          // Skip messages sent by this app (approval/reminder messages)
-          if (msg.content.includes('— ParentSync')) {
-            continue;
-          }
+        // Count all relevant messages fetched (excluding app messages)
+        const relevantMessages = messages.filter(
+          (msg) => !msg.content.includes('— ParentSync'),
+        );
+        for (const msg of relevantMessages) {
           // Only store messages newer than the cutoff
           if (msg.timestamp < cutoff) {
             continue;
@@ -352,11 +352,11 @@ export class SyncService {
           }
         }
 
-        totalMessages += channelMessageCount;
+        totalMessages += relevantMessages.length;
         channelDetails.push({
           childName: child.name,
           channelName: channel,
-          messagesFound: channelMessageCount,
+          messagesFound: relevantMessages.length,
           skipped: false,
           startedAt: channelStartedAt,
           endedAt: new Date().toISOString(),
@@ -442,11 +442,11 @@ export class SyncService {
       }
     }
 
-    if (totalMessages > 0 || emails.length > 0) {
+    if (fetchedEmails.length > 0 || emails.length > 0) {
       channelDetails.push({
         childName: child.name,
         channelName: `Gmail (${emails.join(', ')})`,
-        messagesFound: totalMessages,
+        messagesFound: fetchedEmails.length,
         skipped: false,
         startedAt: channelStartedAt,
         endedAt: new Date().toISOString(),
@@ -454,7 +454,7 @@ export class SyncService {
       });
     }
 
-    return { messageCount: totalMessages, channelDetails };
+    return { messageCount: fetchedEmails.length, channelDetails };
   }
 
   async getSyncLogs(limit = 20) {

@@ -96,7 +96,13 @@ else
 fi
 
 echo "=> Packaging for Linux..."
-npx electron-builder --linux
+if [[ "${BUILD_DEB:-false}" == "true" ]]; then
+  echo "   Targets: AppImage + deb"
+  npx electron-builder --linux
+else
+  echo "   Target: AppImage only (set BUILD_DEB=true for deb)"
+  npx electron-builder --linux AppImage
+fi
 
 echo "$CURRENT_SHA" > "$MARKER"
 echo "=> Done! Packaged at SHA: $CURRENT_SHA"
