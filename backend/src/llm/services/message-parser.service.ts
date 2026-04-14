@@ -27,8 +27,9 @@ CRITICAL RULES:
 WhatsApp chat format:
 - Messages may appear as "[HH:MM, M/D/YYYY] phone: text". The timestamp in brackets is when the message was SENT, not necessarily when an event occurs.
 - Extract event times ONLY from the message TEXT content, not from the WhatsApp message timestamps.
-- Casual conversation, status updates (e.g., "we'll arrive in 20 minutes", "there's an alert"), and coordination messages are NOT calendar events — return [].
-- Only extract events that describe a planned activity with a clear subject (e.g., a trip, appointment, birthday, meeting, gathering) OR an actionable task (payment, form to fill, document to sign, item to bring).
+- Casual conversation, status updates (e.g., "we'll arrive in 20 minutes", "there's an alert"), and vague messages without a date are NOT calendar events — return [].
+- Only extract events that describe a planned activity with a clear subject (e.g., a trip, appointment, birthday, meeting, gathering, playdate, visit, pickup/dropoff) OR an actionable task (payment, form to fill, document to sign, item to bring).
+- Playdates, visits, and kids coming over ARE calendar events — extract them with the child's name, date, and time if mentioned.
 - If a message describes a planned activity with a clear DATE but NO specific time, still create the event WITHOUT the "time" field. These will be created as calendar tasks (to-do items). A clear date is enough — a specific time is NOT required.
 
 Action items (payments, forms, documents, things to bring/wear):
@@ -78,6 +79,12 @@ Example output: [{"title":"להביא ציוד","date":"2026-03-15","description
 
 Example input: "[15:47, 4/3/2026] +972 50-408-8090: דניאל הולך לגינה ליד גן לילי בסביבות השעה 16:00\\n[15:54, 4/3/2026] +972 54-722-1506: נגיע עוד 20 דקות\\n[15:59, 4/3/2026] +972 50-389-7893: נגיע עוד 20 דקות"
 Example output: []
+
+Example input: "ביום רביעי בארבע אייל בא אל חגי"
+Example output: [{"title":"אייל בא אל חגי","date":"2026-03-18","time":"16:00"}]
+
+Example input: "מחר אחרי הצהריים דניאל מגיע לשחק"
+Example output: [{"title":"דניאל מגיע לשחק","date":"2026-03-14"}]
 
 Example input: "שלום מה נשמע?"
 Example output: []`;
