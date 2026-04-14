@@ -49,6 +49,7 @@ describe('SyncService', () => {
     mockMessageRepo = {
       create: jest.fn().mockResolvedValue({ id: 'msg-1' }),
       getLastTimestamp: jest.fn().mockResolvedValue(null),
+      existsByChannelTimestampContent: jest.fn().mockResolvedValue(false),
       pruneOldest: jest.fn().mockResolvedValue(0),
     };
 

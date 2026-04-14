@@ -322,8 +322,18 @@ export class SyncService {
           if (msg.content.includes('— ParentSync')) {
             continue;
           }
-          // Only store messages newer than the last scanned message
-          if (msg.timestamp > cutoff) {
+          // Only store messages newer than the cutoff
+          if (msg.timestamp < cutoff) {
+            continue;
+          }
+          // Deduplicate: skip if exact same message already stored
+          const isDuplicate = await this.messageRepository.existsByChannelTimestampContent(
+            channel,
+            child.id,
+            msg.timestamp,
+            msg.content,
+          );
+          if (!isDuplicate) {
             await this.messageRepository.create({
               source: MessageSource.WHATSAPP,
               content: msg.content,

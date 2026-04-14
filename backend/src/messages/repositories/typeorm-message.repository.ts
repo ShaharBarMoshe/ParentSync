@@ -31,6 +31,18 @@ export class TypeOrmMessageRepository implements IMessageRepository {
     });
   }
 
+  async existsByChannelTimestampContent(
+    channel: string,
+    childId: string,
+    timestamp: Date,
+    content: string,
+  ): Promise<boolean> {
+    const existing = await this.repo.findOne({
+      where: { channel, childId, timestamp, content },
+    });
+    return !!existing;
+  }
+
   async getLastTimestamp(channel: string, childId: string): Promise<Date | null> {
     const result = await this.repo.findOne({
       where: { channel, childId },

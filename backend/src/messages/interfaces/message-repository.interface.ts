@@ -7,6 +7,7 @@ export interface IMessageRepository {
   findBySource(source: MessageSource): Promise<MessageEntity[]>;
   findUnparsed(): Promise<MessageEntity[]>;
   getLastTimestamp(channel: string, childId: string): Promise<Date | null>;
+  existsByChannelTimestampContent(channel: string, childId: string, timestamp: Date, content: string): Promise<boolean>;
   create(message: Partial<MessageEntity>): Promise<MessageEntity>;
   update(id: string, message: Partial<MessageEntity>): Promise<MessageEntity>;
   delete(id: string): Promise<void>;
