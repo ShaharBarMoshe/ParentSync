@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, LessThan, Not, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { CalendarEventEntity } from '../entities/calendar-event.entity';
 import { IEventRepository } from '../interfaces/event-repository.interface';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
@@ -50,26 +50,19 @@ export class TypeOrmEventRepository implements IEventRepository {
   }
 
   async findDueForReminder(now: Date): Promise<CalendarEventEntity[]> {
-    // Events created more than 24h ago that are still synced to Google,
-    // not yet reminded, with start time in the next 24 hours.
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    // Find events scheduled for tomorrow that haven't been reminded yet.
+    // "Tomorrow" is the next calendar day in local time (Asia/Jerusalem).
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDate = tomorrow.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    const candidates = await this.repo.find({
+    return this.repo.find({
       where: {
         reminderSent: false,
         syncedToGoogle: true,
         googleEventId: Not(IsNull()),
-        createdAt: LessThan(oneDayAgo),
+        date: tomorrowDate,
       },
-    });
-
-    return candidates.filter((event) => {
-      const startIso = event.time
-        ? `${event.date}T${event.time}:00`
-        : `${event.date}T00:00:00`;
-      const start = new Date(startIso);
-      return start.getTime() >= now.getTime() && start.getTime() <= in24h.getTime();
     });
   }
 

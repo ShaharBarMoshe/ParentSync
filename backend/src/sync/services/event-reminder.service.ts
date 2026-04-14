@@ -34,7 +34,7 @@ export class EventReminderService {
     private readonly settingsService: SettingsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron('0 18 * * *', { timeZone: 'Asia/Jerusalem' })
   async runScheduled(): Promise<void> {
     try {
       await this.sendDueReminders();
