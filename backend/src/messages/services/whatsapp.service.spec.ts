@@ -72,6 +72,7 @@ describe('WhatsAppService', () => {
 
     const mockChat = {
       name: 'empty-channel',
+      id: { _serialized: 'empty-channel@g.us' },
       fetchMessages: jest.fn().mockRejectedValue(
         new Error("Cannot read properties of undefined (reading 'waitForChatLoading')"),
       ),
@@ -80,10 +81,10 @@ describe('WhatsAppService', () => {
     const { Client } = require('whatsapp-web.js');
     const mockClient = new Client();
     mockClient.getChats.mockResolvedValue([mockChat]);
-
-    // Simulate that a reconnect already happened this cycle,
-    // so getChannelMessages takes the skip path without the 10s delay.
-    (service as any).reconnectedThisCycle = true;
+    // pupPage.evaluate (fetchMessagesDirectly) fails, then fallback fetchMessages also fails
+    mockClient.pupPage = {
+      evaluate: jest.fn().mockRejectedValue(new Error('Store not available')),
+    };
 
     const result = await service.getChannelMessages('empty-channel');
     expect(result).toEqual([]);

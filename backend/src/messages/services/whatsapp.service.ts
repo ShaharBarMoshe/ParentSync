@@ -235,61 +235,83 @@ export class WhatsAppService
     this.reconnectedThisCycle = false;
   }
 
+  /**
+   * Read messages directly from the in-memory chat store via pupPage.evaluate,
+   * bypassing Chat.fetchMessages() which breaks when WhatsApp Web removes or
+   * renames internal functions like waitForChatLoading.
+   */
+  private async fetchMessagesDirectly(
+    chatId: string,
+    limit: number,
+  ): Promise<Array<{ body: string; timestamp: number; author?: string; from: string }>> {
+    if (!this.client) {
+      throw new Error('WhatsApp client is not connected.');
+    }
+
+    const page = (this.client as any).pupPage;
+    if (!page) {
+      throw new Error('Puppeteer page not available.');
+    }
+
+    return page.evaluate(
+      async (serializedChatId: string, msgLimit: number) => {
+        const chatWid = window.Store.WidFactory.createWid(serializedChatId);
+        const chat =
+          window.Store.Chat.get(chatWid) ||
+          (await window.Store.FindOrCreateChat.findOrCreateLatestChat(chatWid))?.chat;
+
+        if (!chat || !chat.msgs) return [];
+
+        const msgs = chat.msgs
+          .getModelsArray()
+          .filter((m: any) => !m.isNotification)
+          .sort((a: any, b: any) => b.t - a.t)
+          .slice(0, msgLimit);
+
+        return msgs.map((m: any) => ({
+          body: m.body || '',
+          timestamp: m.t,
+          author: m.author || undefined,
+          from: m.id?.remote?._serialized || m.id?.remote || '',
+        }));
+      },
+      chatId,
+      limit,
+    );
+  }
+
   async getChannelMessages(
     channelName: string,
     limit = 50,
   ): Promise<WhatsAppMessage[]> {
     const targetChat = await this.findChatByName(channelName);
+    const chatId = (targetChat as any).id?._serialized;
 
-    let messages: Message[];
+    let rawMessages: Array<{ body: string; timestamp: number; author?: string; from: string }>;
     try {
-      messages = await targetChat.fetchMessages({ limit });
+      rawMessages = await this.fetchMessagesDirectly(chatId, limit);
     } catch (error) {
-      const isStaleSession =
-        error.message?.includes('waitForChatLoading') ||
-        error.message?.includes('Cannot read properties of undefined');
-
-      if (!isStaleSession) {
-        this.logger.warn(
-          `Failed to fetch messages from "${channelName}" (channel may be empty): ${error.message}`,
-        );
-        return [];
-      }
-
-      // Try reconnecting once per sync cycle if the session looks stale
-      if (!this.reconnectedThisCycle) {
-        this.reconnectedThisCycle = true;
-        this.logger.warn(
-          `WhatsApp session appears stale for "${channelName}" — reinitializing client (once per sync)`,
-        );
-        this.connected = false;
-        try {
-          await this.initialize();
-          // Wait for WhatsApp Web to fully load chat data after reconnect;
-          // the 'ready' event fires before internal chat loading completes.
-          await new Promise((resolve) => setTimeout(resolve, 15_000));
-        } catch (reconnectError) {
-          this.logger.warn(
-            `Failed to reconnect WhatsApp: ${reconnectError.message}`,
-          );
-          return [];
-        }
-      }
-
-      // Retry with a fresh chat reference (whether we just reconnected or
-      // a previous channel already triggered the reconnect this cycle)
+      this.logger.warn(
+        `Direct message fetch failed for "${channelName}", falling back to fetchMessages: ${error.message}`,
+      );
+      // Fallback to original fetchMessages
       try {
-        const retryChat = await this.findChatByName(channelName);
-        messages = await retryChat.fetchMessages({ limit });
-      } catch (retryError) {
+        const messages = await targetChat.fetchMessages({ limit });
+        return messages.map((msg) => ({
+          content: msg.body,
+          timestamp: new Date(msg.timestamp * 1000),
+          sender: msg.author || msg.from,
+          channel: channelName,
+        }));
+      } catch (fallbackError) {
         this.logger.warn(
-          `Failed to fetch messages from "${channelName}" after reconnect: ${retryError.message}`,
+          `Failed to fetch messages from "${channelName}": ${fallbackError.message}`,
         );
         return [];
       }
     }
 
-    return messages.map((msg) => ({
+    return rawMessages.map((msg) => ({
       content: msg.body,
       timestamp: new Date(msg.timestamp * 1000),
       sender: msg.author || msg.from,
