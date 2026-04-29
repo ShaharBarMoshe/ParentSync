@@ -41,6 +41,7 @@ describe('Security (e2e)', () => {
     deleteEvent: jest.fn().mockResolvedValue(true),
     getCalendarList: jest.fn().mockResolvedValue([]),
     eventExists: jest.fn().mockResolvedValue(true),
+    searchEvents: jest.fn().mockResolvedValue([]),
   };
 
   const mockLlmService: ILLMService = {

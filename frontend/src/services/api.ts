@@ -5,9 +5,9 @@ import axios from 'axios';
 function getBaseURL(): string {
   if (typeof window !== 'undefined' && (window as any).electronAPI) {
     // Will be overridden once the async call resolves — see initElectronApi()
-    return 'http://127.0.0.1:3000/api';
+    return 'http://127.0.0.1:41932/api';
   }
-  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+  return import.meta.env.VITE_API_BASE_URL || 'http://localhost:41932/api';
 }
 
 const api = axios.create({

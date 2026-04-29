@@ -6,6 +6,13 @@ export interface GoogleCalendarInfo {
   primary: boolean;
 }
 
+export interface GoogleCalendarEventResult {
+  googleEventId: string;
+  summary: string;
+  date: string;
+  time?: string;
+}
+
 export interface IGoogleCalendarService {
   createEvent(
     event: CalendarEventEntity,
@@ -16,4 +23,10 @@ export interface IGoogleCalendarService {
   deleteEvent(googleEventId: string, calendarId: string): Promise<boolean>;
   getCalendarList(): Promise<GoogleCalendarInfo[]>;
   eventExists(googleEventId: string, calendarId: string): Promise<boolean>;
+  searchEvents(
+    calendarId: string,
+    query: string,
+    timeMin?: string,
+    timeMax?: string,
+  ): Promise<GoogleCalendarEventResult[]>;
 }

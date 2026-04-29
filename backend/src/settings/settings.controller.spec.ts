@@ -51,7 +51,7 @@ describe('SettingsController', () => {
   });
 
   describe('findAll', () => {
-    it('should return all settings with sensitive values masked', async () => {
+    it('should return all settings as-is (SENSITIVE_SETTING_KEYS is empty)', async () => {
       service.findAll.mockResolvedValue([
         mockSetting,
         mockSensitiveSetting,
@@ -61,26 +61,9 @@ describe('SettingsController', () => {
       const result = await controller.findAll();
 
       expect(result).toHaveLength(3);
-      // Non-sensitive: returned as-is
       expect(result[0].value).toBe('daily');
-      // Sensitive: masked
-      expect(result[1].value).not.toBe('sk-1234567890abcdef');
-      expect(result[1].value).toContain('••••');
-      expect(result[2].value).not.toBe('GOCSPX-abcdefgh1234');
-      expect(result[2].value).toContain('••••');
-    });
-
-    it('should mask short sensitive values completely', async () => {
-      const shortSecret: UserSettingEntity = {
-        id: '4',
-        key: 'openrouter_api_key',
-        value: 'short',
-        updatedAt: new Date(),
-      };
-      service.findAll.mockResolvedValue([shortSecret]);
-
-      const result = await controller.findAll();
-      expect(result[0].value).toBe('••••••••');
+      expect(result[1].value).toBe('sk-1234567890abcdef');
+      expect(result[2].value).toBe('GOCSPX-abcdefgh1234');
     });
 
     it('should return empty array when no settings exist', async () => {
@@ -91,39 +74,12 @@ describe('SettingsController', () => {
   });
 
   describe('getSensitiveStatus', () => {
-    it('should return boolean status for each sensitive key', async () => {
+    it('should return empty object when SENSITIVE_SETTING_KEYS is empty', async () => {
       service.findAll.mockResolvedValue([mockSensitiveSetting]);
 
       const result = await controller.getSensitiveStatus();
 
-      expect(result).toEqual({
-        openrouter_api_key: true,
-        google_client_secret: false,
-      });
-    });
-
-    it('should return false for empty or whitespace-only values', async () => {
-      const emptySetting: UserSettingEntity = {
-        id: '5',
-        key: 'openrouter_api_key',
-        value: '   ',
-        updatedAt: new Date(),
-      };
-      service.findAll.mockResolvedValue([emptySetting]);
-
-      const result = await controller.getSensitiveStatus();
-
-      expect(result.openrouter_api_key).toBe(false);
-      expect(result.google_client_secret).toBe(false);
-    });
-
-    it('should return all false when no settings exist', async () => {
-      service.findAll.mockResolvedValue([]);
-
-      const result = await controller.getSensitiveStatus();
-
-      expect(result.openrouter_api_key).toBe(false);
-      expect(result.google_client_secret).toBe(false);
+      expect(result).toEqual({});
     });
   });
 
@@ -136,20 +92,12 @@ describe('SettingsController', () => {
       expect(result.value).toBe('daily');
     });
 
-    it('should mask sensitive setting value', async () => {
+    it('should return value as-is when key is not in SENSITIVE_SETTING_KEYS', async () => {
       service.findByKey.mockResolvedValue(mockSensitiveSetting);
 
       const result = await controller.findByKey('openrouter_api_key');
 
-      expect(result.value).not.toBe('sk-1234567890abcdef');
-      expect(result.value).toContain('••••');
-    });
-
-    it('should preserve other fields when masking', async () => {
-      service.findByKey.mockResolvedValue(mockSensitiveSetting);
-
-      const result = await controller.findByKey('openrouter_api_key');
-
+      expect(result.value).toBe('sk-1234567890abcdef');
       expect(result.id).toBe('2');
       expect(result.key).toBe('openrouter_api_key');
     });

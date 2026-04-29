@@ -54,7 +54,7 @@ describe('OAuthService', () => {
       const settings: Record<string, string> = {
         google_client_id: 'mock-client-id',
         google_client_secret: 'mock-client-secret',
-        google_redirect_uri: 'http://localhost:3000/api/auth/google/callback',
+        google_redirect_uri: 'http://localhost:41932/api/auth/google/callback',
       };
       if (settings[key]) {
         return Promise.resolve({ key, value: settings[key] });

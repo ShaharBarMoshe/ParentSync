@@ -408,7 +408,9 @@ describe('MessageParserService', () => {
       expect(userMessage).toContain('===MESSAGE_2===');
       expect(userMessage).toContain('first message');
       expect(userMessage).toContain('second message');
-      expect(userMessage).toContain('Current date: 2026-04-13');
+      expect(userMessage).toContain('Default current date: 2026-04-13');
+      // Each message has its own date context
+      expect(userMessage).toContain('Current date for this message:');
     });
 
     it('should extract batch JSON from markdown code blocks', async () => {
@@ -428,6 +430,133 @@ describe('MessageParserService', () => {
 
       expect(result.get('a')).toHaveLength(1);
       expect(result.get('b')).toHaveLength(0);
+    });
+  });
+
+  describe('dismissal event validation', () => {
+    it('should accept cancel events with empty date', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          {
+            title: 'טיול שנתי',
+            action: 'cancel',
+            date: '',
+            originalTitle: 'טיול שנתי',
+          },
+        ]),
+      );
+
+      const events = await service.parseMessage('הטיול השנתי בוטל');
+      expect(events).toHaveLength(1);
+      expect(events[0].action).toBe('cancel');
+      expect(events[0].date).toBe('');
+      expect(events[0].originalTitle).toBe('טיול שנתי');
+    });
+
+    it('should accept cancel events with a date', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          {
+            title: 'טיול שנתי',
+            action: 'cancel',
+            date: '2026-04-20',
+            originalTitle: 'טיול שנתי',
+          },
+        ]),
+      );
+
+      const events = await service.parseMessage('הטיול השנתי ליום חמישי בוטל');
+      expect(events).toHaveLength(1);
+      expect(events[0].action).toBe('cancel');
+      expect(events[0].date).toBe('2026-04-20');
+    });
+
+    it('should accept delay events with newDate and newTime', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          {
+            title: 'אסיפה',
+            action: 'delay',
+            date: '',
+            originalTitle: 'אסיפה',
+            newDate: '2026-04-25',
+            newTime: '18:00',
+          },
+        ]),
+      );
+
+      const events = await service.parseMessage('האסיפה נדחתה ליום ראשון ב-18:00');
+      expect(events).toHaveLength(1);
+      expect(events[0].action).toBe('delay');
+      expect(events[0].newDate).toBe('2026-04-25');
+      expect(events[0].newTime).toBe('18:00');
+    });
+
+    it('should reject dismissal events with invalid newDate format', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          {
+            title: 'אסיפה',
+            action: 'delay',
+            date: '',
+            newDate: 'next-week',
+          },
+        ]),
+      );
+
+      const events = await service.parseMessage('האסיפה נדחתה');
+      expect(events).toHaveLength(0);
+    });
+
+    it('should reject dismissal events with invalid newTime format', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          {
+            title: 'אסיפה',
+            action: 'delay',
+            date: '',
+            newDate: '2026-04-25',
+            newTime: '6pm',
+          },
+        ]),
+      );
+
+      const events = await service.parseMessage('האסיפה נדחתה');
+      expect(events).toHaveLength(0);
+    });
+
+    it('should default to create when action is not set (backward compat)', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'Regular Event', date: '2026-04-20' },
+        ]),
+      );
+
+      const events = await service.parseMessage('event on april 20');
+      expect(events).toHaveLength(1);
+      expect(events[0].action).toBeUndefined();
+    });
+
+    it('should reject events with invalid action value', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'Bad Action', date: '2026-04-20', action: 'delete' },
+        ]),
+      );
+
+      const events = await service.parseMessage('some message');
+      expect(events).toHaveLength(0);
+    });
+
+    it('should reject cancel event with invalid date format (non-empty, non-YYYY-MM-DD)', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'Event', action: 'cancel', date: 'tomorrow' },
+        ]),
+      );
+
+      const events = await service.parseMessage('some message');
+      expect(events).toHaveLength(0);
     });
   });
 });

@@ -296,7 +296,7 @@ describe('SyncService', () => {
     );
   });
 
-  it('should still update lastScanAt when individual channels fail (error logged per channel)', async () => {
+  it('should NOT update lastScanAt when ALL channels fail', async () => {
     const child = makeChild({ channelNames: 'Group A', teacherEmails: '' });
     mockChildService.findAll.mockResolvedValue([child]);
 
@@ -306,13 +306,13 @@ describe('SyncService', () => {
 
     await service.syncAll();
 
-    // lastScanAt IS updated — channel errors are handled gracefully
-    expect(mockChildService.update).toHaveBeenCalledWith(
+    // lastScanAt should NOT be updated — all channels failed
+    expect(mockChildService.update).not.toHaveBeenCalledWith(
       child.id,
       expect.objectContaining({ lastScanAt: expect.any(Date) }),
     );
 
-    // But channel detail records the failure
+    // Channel detail records the failure
     expect(mockSyncLogRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         channelDetails: expect.arrayContaining([
@@ -323,6 +323,24 @@ describe('SyncService', () => {
           }),
         ]),
       }),
+    );
+  });
+
+  it('should still update lastScanAt when some channels succeed and some fail', async () => {
+    const child = makeChild({ channelNames: 'Group A, Group B', teacherEmails: '' });
+    mockChildService.findAll.mockResolvedValue([child]);
+
+    // First channel succeeds, second fails
+    mockWhatsappService.getChannelMessages
+      .mockResolvedValueOnce([{ content: 'hello', timestamp: new Date(), sender: '+972', channel: 'Group A' }])
+      .mockRejectedValueOnce(new Error('Channel not found'));
+
+    await service.syncAll();
+
+    // lastScanAt IS updated — not all channels failed
+    expect(mockChildService.update).toHaveBeenCalledWith(
+      child.id,
+      expect.objectContaining({ lastScanAt: expect.any(Date) }),
     );
   });
 

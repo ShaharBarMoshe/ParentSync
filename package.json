@@ -11,7 +11,7 @@
   "private": true,
   "scripts": {
     "rebuild:native": "npx @electron/rebuild -m backend",
-    "electron:dev": "npm run build:electron && concurrently \"cd frontend && npm run dev\" \"cd backend && npm run start:dev\" \"wait-on http://localhost:5173 http://localhost:3000/api/health && ELECTRON_DEV=1 electron .\"",
+    "electron:dev": "npm run build:electron && concurrently \"cd frontend && npm run dev\" \"cd backend && PORT=41932 npm run start:dev\" \"wait-on http://localhost:5173 http://localhost:41932/api/health && ELECTRON_DEV=1 PORT=41932 electron .\"",
     "electron:start": "npm run build:all && npm run rebuild:native && electron .",
     "build:electron": "tsc -p electron/tsconfig.json",
     "build:frontend": "cd frontend && npm run build",
@@ -20,6 +20,7 @@
     "package:win": "npm run build:all && npm run rebuild:native && electron-builder --win",
     "package:mac": "npm run build:all && npm run rebuild:native && electron-builder --mac",
     "package:linux": "bash scripts/smart-package.sh",
+    "install:local": "bash scripts/install-local.sh",
     "package:linux:full": "npm run build:all && npm run rebuild:native && electron-builder --linux",
     "package": "npm run build:all && npm run rebuild:native && electron-builder",
     "test": "bash scripts/run-all-tests.sh",

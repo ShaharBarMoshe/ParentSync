@@ -4,6 +4,7 @@ import { OAuthService } from '../../auth/services/oauth.service';
 import type {
   IGoogleCalendarService,
   GoogleCalendarInfo,
+  GoogleCalendarEventResult,
 } from '../interfaces/google-calendar-service.interface';
 import { CalendarEventEntity } from '../entities/calendar-event.entity';
 
@@ -163,6 +164,43 @@ export class GoogleCalendarService implements IGoogleCalendarService {
       summary: item.summary || item.id!,
       primary: item.primary || false,
     }));
+  }
+
+  async searchEvents(
+    calendarId: string,
+    query: string,
+    timeMin?: string,
+    timeMax?: string,
+  ): Promise<GoogleCalendarEventResult[]> {
+    const calendar = await this.getCalendarClient();
+
+    const params: calendar_v3.Params$Resource$Events$List = {
+      calendarId,
+      q: query,
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 10,
+    };
+
+    if (timeMin) params.timeMin = timeMin;
+    if (timeMax) params.timeMax = timeMax;
+
+    const response = await this.withRetry(
+      () => calendar.events.list(params),
+      'searchEvents',
+    );
+
+    return (response.data.items || [])
+      .filter((item) => item.status !== 'cancelled')
+      .map((item) => ({
+        googleEventId: item.id!,
+        summary: item.summary || '',
+        date:
+          item.start?.date || item.start?.dateTime?.split('T')[0] || '',
+        time: item.start?.dateTime
+          ? item.start.dateTime.split('T')[1]?.substring(0, 5)
+          : undefined,
+      }));
   }
 
   private async withRetry<T>(

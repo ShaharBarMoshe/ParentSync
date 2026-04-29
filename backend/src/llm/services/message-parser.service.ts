@@ -4,7 +4,7 @@ import type { Cache } from 'cache-manager';
 import * as crypto from 'crypto';
 import { LLM_SERVICE } from '../../shared/constants/injection-tokens';
 import type { ILLMService } from '../interfaces/llm-service.interface';
-import type { ParsedEvent } from '../dto/parsed-event.dto';
+import type { ParsedEvent, EventAction } from '../dto/parsed-event.dto';
 
 const SYSTEM_PROMPT = `You are a calendar event extractor. Extract calendar events from messages, which may be WhatsApp group chat logs or emails.
 
@@ -22,6 +22,8 @@ CRITICAL RULES:
 - All text fields (title, description, location) MUST be in Hebrew.
 - For relative dates like "next Tuesday" or "tomorrow", use the current date context provided.
 - If a date format is DD.MM.YY, interpret it correctly (e.g., 12.3.26 = 2026-03-12).
+- If a date format is DD.MM or D.M (without year), interpret as day.month of the CURRENT or NEXT occurrence relative to the message date. For example, if the current date is 2026-04-17 and the message says "ב-1.5", that means May 1st = 2026-05-01. Similarly, "ב-15.4" means April 15th — if that date has already passed this year, use next year.
+- IMPORTANT: "ב-1.5" means "on the 1st of May" (day=1, month=5). "ב-15.3" means "on the 15th of March" (day=15, month=3). The format is ALWAYS day.month, never month.day.
 - Return ONLY the JSON array, no other text or markdown formatting.
 
 WhatsApp chat format:
@@ -66,6 +68,12 @@ Example output: [{"title":"טיול שנתי","date":"2026-03-15"}]
 Example input: "ניפגש מחר בגינה"
 Example output: [{"title":"מפגש בגינה","date":"2026-03-14","location":"גינה"}]
 
+Example input: "ב 1.5 נחגוג בבית הספר את חג פורים"
+Example output: [{"title":"חגיגת פורים בבית הספר","date":"2026-05-01","location":"בית הספר"}]
+
+Example input: "האירוע יתקיים ב-25.6"
+Example output: [{"title":"אירוע","date":"2026-06-25"}]
+
 Example input: "הורים יקרים, נא להעביר תשלום עבור טיול שנתי בסך 120 ש״ח דרך הלינק: https://pay.school.co.il/trip2026 עד ה-20 לחודש"
 Example output: [{"title":"תשלום עבור טיול שנתי","date":"2026-03-20","description":"סכום: 120 ש״ח\\nלינק לתשלום: https://pay.school.co.il/trip2026"}]
 
@@ -95,6 +103,32 @@ Example output: [{"title":"מפגש","date":"2026-03-18","time":"16:00"}]
 
 Example input: "מחר אחרי הצהריים דניאל מגיע לשחק"
 Example output: [{"title":"דניאל מגיע לשחק","date":"2026-03-14"}]
+
+Event cancellation, dismissal, and delay:
+- If a message says an event is CANCELLED, DISMISSED, or NO LONGER HAPPENING (בוטל, לא מתקיים, בוטלה, מבוטל), return an event with "action": "cancel".
+- If a message says an event is DELAYED, POSTPONED, or MOVED to a new date/time (נדחה, נדחתה, הועבר, הוזז, שונה), return an event with "action": "delay", plus "newDate" and optionally "newTime" for the new schedule.
+- For cancel/delay events, "title" should be a search-friendly title matching the original event name.
+- "originalTitle" should contain the event name as mentioned in the message (for search matching).
+- "date" should be the ORIGINAL date if mentioned in the message, or an empty string "" if NOT mentioned.
+- "time" should be the ORIGINAL time if mentioned, omit if not mentioned.
+- "newDate" and "newTime" are ONLY for delay actions — the new date/time the event was moved to.
+- If no "action" field is returned, it defaults to "create" (a new event).
+- Do NOT return both a "create" and a "cancel" for the same event — only the cancel/delay.
+
+Example input: "הטיול השנתי שתוכנן ליום חמישי בוטל"
+Example output: [{"title":"טיול שנתי","action":"cancel","date":"2026-03-19","originalTitle":"טיול שנתי"}]
+
+Example input: "האסיפה נדחתה ליום ראשון הבא ב-18:00"
+Example output: [{"title":"אסיפה","action":"delay","date":"","originalTitle":"אסיפה","newDate":"2026-03-22","newTime":"18:00"}]
+
+Example input: "השיעור מחר בוטל"
+Example output: [{"title":"שיעור","action":"cancel","date":"2026-03-14","originalTitle":"שיעור"}]
+
+Example input: "טיול לירושלים נדחה מיום שלישי ליום חמישי"
+Example output: [{"title":"טיול לירושלים","action":"delay","date":"2026-03-17","originalTitle":"טיול לירושלים","newDate":"2026-03-19"}]
+
+Example input: "המסיבה לא מתקיימת"
+Example output: [{"title":"מסיבה","action":"cancel","date":"","originalTitle":"מסיבה"}]
 
 Example input: "שלום מה נשמע?"
 Example output: []`;
@@ -133,8 +167,16 @@ export class MessageParserService {
         { role: 'user', content: userMessage },
       ]);
 
+      this.logger.log(
+        `LLM response (${response.length} chars): ${response.substring(0, 300)}`,
+      );
+
       const events = this.extractJsonFromResponse(response);
       const validatedEvents = this.validateEvents(events);
+
+      this.logger.log(
+        `Parsed ${events.length} raw events → ${validatedEvents.length} valid events`,
+      );
 
       // Cache the result
       await this.cacheManager.set(cacheKey, validatedEvents, CACHE_TTL_SECONDS);
@@ -154,6 +196,7 @@ export class MessageParserService {
   async parseMessageBatch(
     groups: { id: string; content: string }[],
     currentDate?: string,
+    perGroupDates?: string[],
   ): Promise<Map<string, ParsedEvent[]>> {
     const result = new Map<string, ParsedEvent[]>();
 
@@ -178,7 +221,10 @@ export class MessageParserService {
 
     // Single group — use the simpler single-message flow
     if (uncached.length === 1) {
-      const events = await this.parseMessage(uncached[0].content, currentDate);
+      // Find the per-group date for this uncached group
+      const groupIndex = groups.findIndex((g) => g.id === uncached[0].id);
+      const groupDate = perGroupDates?.[groupIndex] || currentDate;
+      const events = await this.parseMessage(uncached[0].content, groupDate);
       result.set(uncached[0].id, events);
       return result;
     }
@@ -191,7 +237,18 @@ export class MessageParserService {
       );
       for (let i = 0; i < uncached.length; i += MAX_BATCH_SIZE) {
         const chunk = uncached.slice(i, i + MAX_BATCH_SIZE);
-        const chunkResult = await this.parseMessageBatch(chunk, currentDate);
+        // Map per-group dates for this chunk
+        const chunkDates = perGroupDates
+          ? chunk.map((c) => {
+              const idx = groups.findIndex((g) => g.id === c.id);
+              return perGroupDates[idx] || currentDate || '';
+            })
+          : undefined;
+        const chunkResult = await this.parseMessageBatch(
+          chunk,
+          currentDate,
+          chunkDates,
+        );
         for (const [id, events] of chunkResult) {
           result.set(id, events);
         }
@@ -207,12 +264,16 @@ export class MessageParserService {
       const dateContext = currentDate ?? new Date().toISOString().split('T')[0];
 
       const numberedMessages = uncached
-        .map((g, i) => `===MESSAGE_${i + 1}===\n${g.content}`)
+        .map((g, i) => {
+          const groupIndex = groups.findIndex((orig) => orig.id === g.id);
+          const groupDate = perGroupDates?.[groupIndex] || dateContext;
+          return `===MESSAGE_${i + 1}===\nCurrent date for this message: ${groupDate}\n${g.content}`;
+        })
         .join('\n\n');
 
       const userMessage =
-        `Current date: ${dateContext}\n\n` +
-        `Parse the following ${uncached.length} messages. ` +
+        `Default current date: ${dateContext}\n\n` +
+        `Parse the following ${uncached.length} messages. Each message has its own "Current date" context — use THAT date (not the default) to resolve relative dates like "tomorrow", "next week", etc.\n` +
         `Return a JSON object where each key is the message number (as a string) and each value is an array of events extracted from that message. ` +
         `Example format: {"1": [{"title":"...", "date":"..."}], "2": [], "3": [{"title":"...", "date":"...", "time":"..."}]}\n\n` +
         numberedMessages;
@@ -229,6 +290,10 @@ export class MessageParserService {
         maxTokens,
       );
 
+      this.logger.log(
+        `Batch LLM response (${response.length} chars): ${response.substring(0, 500)}`,
+      );
+
       const parsed = this.extractBatchJsonFromResponse(response, uncached.length);
 
       if (parsed) {
@@ -236,6 +301,9 @@ export class MessageParserService {
           const key = String(i + 1);
           const events = parsed[key] || [];
           const validated = this.validateEvents(events);
+          this.logger.log(
+            `Batch group ${key}: ${events.length} raw → ${validated.length} valid events`,
+          );
           result.set(uncached[i].id, validated);
           // Cache each group individually
           const cacheKey = this.getCacheKey(uncached[i].content);
@@ -354,12 +422,28 @@ export class MessageParserService {
       .filter((event): event is Record<string, unknown> => {
         if (typeof event !== 'object' || event === null) return false;
         const e = event as Record<string, unknown>;
-        // Must have title and date
+        // Must have title
         if (typeof e.title !== 'string' || !e.title.trim()) return false;
-        if (typeof e.date !== 'string' || !e.date.match(/^\d{4}-\d{2}-\d{2}$/))
+
+        const action = typeof e.action === 'string' ? e.action : 'create';
+        const isDismissal = action === 'cancel' || action === 'delay';
+
+        // date is required but can be empty string for dismissals
+        if (typeof e.date !== 'string') return false;
+        if (!isDismissal && !e.date.match(/^\d{4}-\d{2}-\d{2}$/)) return false;
+        if (isDismissal && e.date !== '' && !e.date.match(/^\d{4}-\d{2}-\d{2}$/))
           return false;
+
         // Validate time format if present
         if (e.time && (typeof e.time !== 'string' || !e.time.match(/^\d{2}:\d{2}$/)))
+          return false;
+        // Validate newDate/newTime for delay actions
+        if (e.newDate && (typeof e.newDate !== 'string' || !e.newDate.match(/^\d{4}-\d{2}-\d{2}$/)))
+          return false;
+        if (e.newTime && (typeof e.newTime !== 'string' || !e.newTime.match(/^\d{2}:\d{2}$/)))
+          return false;
+        // Validate action value
+        if (e.action && !['create', 'cancel', 'delay'].includes(String(e.action)))
           return false;
         return true;
       })
@@ -369,6 +453,12 @@ export class MessageParserService {
         date: String(event.date),
         time: event.time ? String(event.time) : undefined,
         location: event.location ? String(event.location).trim() : undefined,
+        action: (['cancel', 'delay'].includes(String(event.action))
+          ? String(event.action) as EventAction
+          : undefined),
+        originalTitle: event.originalTitle ? String(event.originalTitle).trim() : undefined,
+        newDate: event.newDate ? String(event.newDate) : undefined,
+        newTime: event.newTime ? String(event.newTime) : undefined,
       }));
   }
 

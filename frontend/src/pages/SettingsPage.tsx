@@ -128,7 +128,7 @@ const DEFAULT_FORM: SettingsForm = {
   geminiModel: 'gemini-2.0-flash',
   googleClientId: '',
   googleClientSecret: '',
-  googleRedirectUri: 'http://localhost:3000/api/auth/google/callback',
+  googleRedirectUri: 'http://localhost:41932/api/auth/google/callback',
   approvalChannel: '',
 };
 
@@ -825,7 +825,7 @@ export default function SettingsPage() {
               </div>
               <div className="form-field">
                 <label htmlFor="googleRedirectUri" className="form-label">Redirect URI</label>
-                <input id="googleRedirectUri" type="text" className="form-input" value={form.googleRedirectUri} onChange={(e) => handleChange('googleRedirectUri', e.target.value)} placeholder="http://localhost:3000/api/auth/google/callback" />
+                <input id="googleRedirectUri" type="text" className="form-input" value={form.googleRedirectUri} onChange={(e) => handleChange('googleRedirectUri', e.target.value)} placeholder="http://localhost:41932/api/auth/google/callback" />
                 <span className="form-hint">Must match the redirect URI configured in Google Cloud Console</span>
               </div>
             </div>

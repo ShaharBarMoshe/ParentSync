@@ -61,6 +61,7 @@ describe('EventReminderService', () => {
 
     googleCalendarService = {
       eventExists: jest.fn().mockResolvedValue(true),
+      searchEvents: jest.fn().mockResolvedValue([]),
     };
 
     googleTasksService = {};

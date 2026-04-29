@@ -1,21 +1,23 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
   EVENT_REPOSITORY,
   WHATSAPP_SERVICE,
   MESSAGE_REPOSITORY,
-  GOOGLE_CALENDAR_SERVICE,
+  DISMISSAL_REPOSITORY,
 } from '../../shared/constants/injection-tokens';
 import type { IEventRepository } from '../../calendar/interfaces/event-repository.interface';
 import type { IWhatsAppService } from '../../messages/interfaces/whatsapp-service.interface';
 import type { IMessageRepository } from '../../messages/interfaces/message-repository.interface';
-import type { IGoogleCalendarService } from '../../calendar/interfaces/google-calendar-service.interface';
+import type { IDismissalRepository } from '../interfaces/dismissal-repository.interface';
 import { SettingsService } from '../../settings/settings.service';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 import { APP_MESSAGE_MARKER } from '../../shared/constants/app-marker';
 import type { WhatsAppReaction } from '../../messages/interfaces/whatsapp-service.interface';
 import { generateICS } from '../../calendar/utils/ics-generator';
+import { EventDismissalService } from './event-dismissal.service';
+import { EventSyncService } from './event-sync.service';
 
 @Injectable()
 export class ApprovalService {
@@ -28,9 +30,13 @@ export class ApprovalService {
     private readonly whatsappService: IWhatsAppService,
     @Inject(MESSAGE_REPOSITORY)
     private readonly messageRepository: IMessageRepository,
-    @Inject(GOOGLE_CALENDAR_SERVICE)
-    private readonly googleCalendarService: IGoogleCalendarService,
+    @Inject(DISMISSAL_REPOSITORY)
+    private readonly dismissalRepository: IDismissalRepository,
     private readonly settingsService: SettingsService,
+    @Inject(forwardRef(() => EventDismissalService))
+    private readonly eventDismissalService: EventDismissalService,
+    @Inject(forwardRef(() => EventSyncService))
+    private readonly eventSyncService: EventSyncService,
   ) {}
 
   async isApprovalEnabled(): Promise<boolean> {
@@ -107,65 +113,58 @@ export class ApprovalService {
       return;
     }
 
+    // Check regular event approval first
     const event = await this.eventRepository.findByApprovalMessageId(
       payload.msgId,
     );
-    if (!event) {
-      return; // Reaction on an unrelated message
+    if (event) {
+      if (event.approvalStatus !== ApprovalStatus.PENDING) {
+        this.logger.debug(
+          `Ignoring reaction on event ${event.id} — already ${event.approvalStatus}`,
+        );
+        return;
+      }
+
+      if (payload.reaction === '👍') {
+        await this.approveEvent(event);
+      } else if (payload.reaction === '😢') {
+        await this.rejectEvent(event);
+      }
+      return;
     }
 
-    if (event.approvalStatus !== ApprovalStatus.PENDING) {
-      this.logger.debug(
-        `Ignoring reaction on event ${event.id} — already ${event.approvalStatus}`,
-      );
+    // Check dismissal approval
+    const dismissal = await this.dismissalRepository.findByApprovalMessageId(
+      payload.msgId,
+    );
+    if (!dismissal || dismissal.status !== 'pending_approval') {
       return;
     }
 
     if (payload.reaction === '👍') {
-      await this.approveEvent(event);
+      await this.eventDismissalService.approveDismissal(dismissal);
     } else if (payload.reaction === '😢') {
-      await this.rejectEvent(event);
+      await this.eventDismissalService.rejectDismissal(dismissal);
     }
-    // Ignore other reactions
   }
 
   private async approveEvent(event: CalendarEventEntity): Promise<void> {
     this.logger.log(`Event "${event.title}" approved`);
 
-    await this.eventRepository.update(event.id, {
+    const updated = await this.eventRepository.update(event.id, {
       approvalStatus: ApprovalStatus.APPROVED,
     });
 
-    // Immediately sync to Google Calendar
     try {
-      let calendarId = 'primary';
-      try {
-        const setting =
-          await this.settingsService.findByKey('google_calendar_id');
-        calendarId = setting.value;
-      } catch {
-        // Use primary
-      }
-
-      const googleEventId = await this.googleCalendarService.createEvent(
-        { ...event, approvalStatus: ApprovalStatus.APPROVED },
-        calendarId,
-        event.calendarColorId || undefined,
-      );
-
-      await this.eventRepository.update(event.id, {
-        googleEventId,
-        syncedToGoogle: true,
-      });
-
+      await this.eventSyncService.syncSingleEventToGoogle(updated);
       this.logger.log(
-        `Event "${event.title}" synced to Google Calendar after approval`,
+        `Event "${event.title}" synced to Google after approval`,
       );
     } catch (error) {
       this.logger.error(
-        `Failed to sync approved event ${event.id} to Google Calendar: ${error.message}. Will retry on next sync.`,
+        `Failed to sync approved event ${event.id} to Google: ${error.message}. Will retry on next sync.`,
       );
-      // Event is marked approved, findUnsynced() will pick it up on next sync
+      // Event is marked approved; findUnsynced() will pick it up on next sync
     }
   }
 

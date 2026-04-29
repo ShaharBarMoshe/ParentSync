@@ -74,29 +74,29 @@ describe('SettingsService', () => {
     });
   });
 
-  describe('findByKey — sensitive decryption', () => {
-    it('should decrypt sensitive setting values', async () => {
-      const sensitiveKey = {
+  describe('findByKey — non-sensitive keys', () => {
+    it('should return value as-is when key is not in SENSITIVE_SETTING_KEYS', async () => {
+      const setting = {
         id: '2',
         key: 'openrouter_api_key',
-        value: 'enc:sk-or-v1-abcdef1234567890',
+        value: 'sk-or-v1-abcdef1234567890',
         updatedAt: new Date(),
       };
-      repository.findByKey.mockResolvedValue(sensitiveKey);
+      repository.findByKey.mockResolvedValue(setting);
       const result = await service.findByKey('openrouter_api_key');
       expect(result.value).toBe('sk-or-v1-abcdef1234567890');
     });
   });
 
   describe('findByKeyDecrypted', () => {
-    it('should return full decrypted value (alias for findByKey)', async () => {
-      const sensitiveKey = {
+    it('should return value as-is (alias for findByKey)', async () => {
+      const setting = {
         id: '2',
         key: 'openrouter_api_key',
-        value: 'enc:sk-or-v1-secret',
+        value: 'sk-or-v1-secret',
         updatedAt: new Date(),
       };
-      repository.findByKey.mockResolvedValue(sensitiveKey);
+      repository.findByKey.mockResolvedValue(setting);
       const result = await service.findByKeyDecrypted('openrouter_api_key');
       expect(result.value).toBe('sk-or-v1-secret');
     });

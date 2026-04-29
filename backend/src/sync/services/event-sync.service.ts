@@ -1,5 +1,5 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 import {
   MESSAGE_REPOSITORY,
@@ -19,6 +19,7 @@ import { ChildService } from '../../settings/child.service';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
 import { MessageEntity } from '../../messages/entities/message.entity';
 import { ApprovalService } from './approval.service';
+import { EventDismissalService } from './event-dismissal.service';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 
 @Injectable()
@@ -39,8 +40,30 @@ export class EventSyncService {
     private readonly childService: ChildService,
     private readonly eventEmitter: EventEmitter2,
     private readonly dataSource: DataSource,
+    @Inject(forwardRef(() => ApprovalService))
     private readonly approvalService: ApprovalService,
+    private readonly eventDismissalService: EventDismissalService,
   ) {}
+
+  async syncSingleEventToGoogle(event: CalendarEventEntity): Promise<void> {
+    const calendarId = await this.getCalendarId();
+    if (event.syncType === 'task') {
+      await this.syncAsTask(event, calendarId);
+    } else {
+      await this.syncAsCalendarEvent(event, calendarId);
+    }
+  }
+
+  @OnEvent('sync.completed')
+  async handleSyncCompleted(): Promise<void> {
+    try {
+      await this.syncEvents();
+    } catch (error) {
+      this.logger.error(
+        `Event sync after message sync failed: ${error.message}`,
+      );
+    }
+  }
 
   async syncEvents(): Promise<{
     messagesParsed: number;
@@ -57,8 +80,6 @@ export class EventSyncService {
     const unparsedMessages = await this.messageRepository.findUnparsed();
     this.logger.log(`Found ${unparsedMessages.length} unparsed messages`);
 
-    const currentDate = new Date().toISOString().split('T')[0];
-
     // Group nearby messages from the same channel to reduce LLM calls
     const messageGroups = this.groupMessagesByProximity(unparsedMessages);
     this.logger.log(
@@ -72,6 +93,7 @@ export class EventSyncService {
       childId?: string;
       calendarColorId?: string;
       mergedContent: string;
+      messageDate: string;
     }[] = [];
 
     for (const group of messageGroups) {
@@ -91,23 +113,36 @@ export class EventSyncService {
         }
       }
 
+      // Use the latest message timestamp as date context for the LLM
+      // so relative dates ("tomorrow", "next week") resolve correctly
+      const latestTimestamp = group.reduce((latest, msg) => {
+        const msgTime = new Date(msg.timestamp).getTime();
+        return msgTime > latest ? msgTime : latest;
+      }, 0);
+      const messageDate = new Date(latestTimestamp).toISOString().split('T')[0];
+
       groupMeta.push({
         group,
         childName,
         childId: firstMessage.childId,
         calendarColorId,
         mergedContent: this.mergeGroupContent(group),
+        messageDate,
       });
     }
 
     // Batch parse all groups in a single LLM call
+    // Each group's content includes its own date context (based on message timestamps)
+    // so relative dates like "tomorrow" resolve relative to when the message was sent
     const batchInput = groupMeta.map((meta, i) => ({
       id: String(i),
       content: meta.mergedContent,
     }));
+    const fallbackDate = new Date().toISOString().split('T')[0];
     const batchResult = await this.messageParserService.parseMessageBatch(
       batchInput,
-      currentDate,
+      fallbackDate,
+      groupMeta.map((meta) => meta.messageDate),
     );
 
     const approvalEnabled = await this.approvalService.isApprovalEnabled();
@@ -117,16 +152,24 @@ export class EventSyncService {
       const meta = groupMeta[i];
       const parsedEvents = batchResult.get(String(i)) || [];
 
+      // Split into creation events and dismissal events
+      const createEvents = parsedEvents.filter(
+        (e) => !e.action || e.action === 'create',
+      );
+      const dismissalEvents = parsedEvents.filter(
+        (e) => e.action === 'cancel' || e.action === 'delay',
+      );
+
       try {
+        // Process creation events (also marks messages as parsed in the transaction)
         const result = await this.createEventsInTransaction(
           meta.group,
-          parsedEvents,
+          createEvents,
           meta.childName,
           meta.childId,
           meta.calendarColorId,
           approvalEnabled,
         );
-        messagesParsed += meta.group.length;
         eventsCreated += result.eventsCreated;
 
         // Send newly created events for approval if enabled (skip past events)
@@ -145,6 +188,24 @@ export class EventSyncService {
             await this.approvalService.sendForApproval(savedEvent);
           }
         }
+
+        // Process dismissal events
+        for (const dismissal of dismissalEvents) {
+          try {
+            await this.eventDismissalService.processDismissal(
+              dismissal,
+              meta.childId,
+              meta.childName,
+              meta.group[0].id,
+            );
+          } catch (error) {
+            this.logger.error(
+              `Failed to process dismissal "${dismissal.title}": ${error.message}`,
+            );
+          }
+        }
+
+        messagesParsed += meta.group.length;
       } catch (error) {
         this.logger.error(
           `Failed to process message group (${meta.group.length} messages): ${error.message}`,
@@ -282,7 +343,17 @@ export class EventSyncService {
 
       const firstMessage = group[0];
 
+      const now = new Date();
+
       for (const parsed of parsedEvents) {
+        // Skip events with dates in the past
+        if (parsed.date && this.isDateInPast(parsed.date, parsed.time, now)) {
+          this.logger.log(
+            `Skipping past event "${parsed.title}" (${parsed.date}${parsed.time ? ' ' + parsed.time : ''})`,
+          );
+          continue;
+        }
+
         const title = childName
           ? `${childName}: ${parsed.title}`
           : parsed.title;
@@ -415,10 +486,18 @@ export class EventSyncService {
     event: CalendarEventEntity,
     now: Date,
   ): boolean {
-    const eventDateStr = event.time
-      ? `${event.date}T${event.time}:00`
-      : `${event.date}T23:59:59`;
-    const eventDate = new Date(eventDateStr);
+    return this.isDateInPast(event.date, event.time, now);
+  }
+
+  private isDateInPast(
+    date: string,
+    time: string | undefined,
+    now: Date,
+  ): boolean {
+    const dateStr = time
+      ? `${date}T${time}:00`
+      : `${date}T23:59:59`;
+    const eventDate = new Date(dateStr);
     return eventDate.getTime() < now.getTime();
   }
 

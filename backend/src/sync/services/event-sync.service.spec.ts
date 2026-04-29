@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DataSource } from 'typeorm';
 import { EventSyncService } from './event-sync.service';
 import { ApprovalService } from './approval.service';
+import { EventDismissalService } from './event-dismissal.service';
 import { MessageParserService } from '../../llm/services/message-parser.service';
 import { SettingsService } from '../../settings/settings.service';
 import { ChildService } from '../../settings/child.service';
@@ -40,6 +41,7 @@ describe('EventSyncService', () => {
   let childService: any;
   let eventEmitter: any;
   let approvalService: any;
+  let eventDismissalService: any;
   let queryRunner: any;
 
   beforeEach(async () => {
@@ -97,6 +99,11 @@ describe('EventSyncService', () => {
       sendForApproval: jest.fn().mockResolvedValue(undefined),
     };
 
+    eventDismissalService = {
+      processDismissal: jest.fn().mockResolvedValue(undefined),
+      sendFailureNotification: jest.fn().mockResolvedValue(undefined),
+    };
+
     queryRunner = {
       connect: jest.fn(),
       startTransaction: jest.fn(),
@@ -132,6 +139,7 @@ describe('EventSyncService', () => {
         { provide: EventEmitter2, useValue: eventEmitter },
         { provide: DataSource, useValue: mockDataSource },
         { provide: ApprovalService, useValue: approvalService },
+        { provide: EventDismissalService, useValue: eventDismissalService },
       ],
     }).compile();
 
@@ -162,7 +170,7 @@ describe('EventSyncService', () => {
     messageParserService.parseMessage.mockResolvedValue([
       {
         title: 'School Meeting',
-        date: '2026-03-20',
+        date: '2027-03-20',
         time: '10:00',
       },
     ]);
@@ -199,7 +207,7 @@ describe('EventSyncService', () => {
       calendarColor: null,
     });
     messageParserService.parseMessage.mockResolvedValue([
-      { title: 'School Trip', date: '2026-03-25', time: '08:00' },
+      { title: 'School Trip', date: '2027-03-25', time: '08:00' },
     ]);
 
     await service.syncEvents();
@@ -225,7 +233,7 @@ describe('EventSyncService', () => {
       calendarColor: '5',
     });
     messageParserService.parseMessage.mockResolvedValue([
-      { title: 'Art Class', date: '2026-03-27', time: '14:00' },
+      { title: 'Art Class', date: '2027-03-27', time: '14:00' },
     ]);
 
     await service.syncEvents();
@@ -249,7 +257,7 @@ describe('EventSyncService', () => {
 
     messageRepository.findUnparsed.mockResolvedValue([mockMessage]);
     messageParserService.parseMessage.mockResolvedValue([
-      { title: 'PTA Meeting', date: '2026-03-23', time: '18:00' },
+      { title: 'PTA Meeting', date: '2027-03-23', time: '18:00' },
     ]);
 
     await service.syncEvents();
@@ -271,7 +279,7 @@ describe('EventSyncService', () => {
     const mockEvent = {
       id: 'event-1',
       title: 'Alice: School Meeting',
-      date: '2026-03-20',
+      date: '2027-03-20',
       syncedToGoogle: false,
       syncType: 'event',
       calendarColorId: '3',
@@ -293,7 +301,7 @@ describe('EventSyncService', () => {
     const mockEvent = {
       id: 'event-1',
       title: 'School Meeting',
-      date: '2026-03-20',
+      date: '2027-03-20',
       syncedToGoogle: false,
       syncType: 'event',
       calendarColorId: undefined,
@@ -341,7 +349,7 @@ describe('EventSyncService', () => {
     const mockEvent = {
       id: 'event-1',
       title: 'Meeting',
-      date: '2026-03-20',
+      date: '2027-03-20',
       syncedToGoogle: false,
       syncType: 'event',
       calendarColorId: undefined,
@@ -366,7 +374,7 @@ describe('EventSyncService', () => {
     const mockEvent = {
       id: 'event-1',
       title: 'Meeting',
-      date: '2026-03-20',
+      date: '2027-03-20',
       syncedToGoogle: false,
       syncType: 'event',
       calendarColorId: undefined,
@@ -395,7 +403,7 @@ describe('EventSyncService', () => {
 
       messageRepository.findUnparsed.mockResolvedValue([mockMessage]);
       messageParserService.parseMessage.mockResolvedValue([
-        { title: 'Meeting', date: '2026-03-20', time: '15:00' },
+        { title: 'Meeting', date: '2027-03-20', time: '15:00' },
       ]);
 
       await service.syncEvents();
@@ -414,7 +422,7 @@ describe('EventSyncService', () => {
 
       messageRepository.findUnparsed.mockResolvedValue([mockMessage]);
       messageParserService.parseMessage.mockResolvedValue([
-        { title: 'להביא תחפושת', date: '2026-03-17' },
+        { title: 'להביא תחפושת', date: '2027-03-17' },
       ]);
 
       await service.syncEvents();
@@ -430,7 +438,7 @@ describe('EventSyncService', () => {
         id: 'event-task-1',
         title: 'Alice: להביא תחפושת',
         description: 'להביא תחפושת לפורים',
-        date: '2026-03-17',
+        date: '2027-03-17',
         time: undefined,
         syncType: 'task',
         syncedToGoogle: false,
@@ -449,7 +457,7 @@ describe('EventSyncService', () => {
       expect(googleTasksService.createTask).toHaveBeenCalledWith(
         'Alice: להביא תחפושת',
         'להביא תחפושת לפורים',
-        '2026-03-17',
+        '2027-03-17',
         'list-alice',
       );
       expect(eventRepository.update).toHaveBeenCalledWith('event-task-1', {
@@ -465,7 +473,7 @@ describe('EventSyncService', () => {
         id: 'event-task-2',
         title: 'PTA Payment',
         description: null,
-        date: '2026-03-20',
+        date: '2027-03-20',
         time: undefined,
         syncType: 'task',
         syncedToGoogle: false,
@@ -482,7 +490,7 @@ describe('EventSyncService', () => {
       expect(googleTasksService.createTask).toHaveBeenCalledWith(
         'PTA Payment',
         undefined,
-        '2026-03-20',
+        '2027-03-20',
         '@default',
       );
     });
@@ -492,7 +500,7 @@ describe('EventSyncService', () => {
         id: 'event-task-3',
         title: 'Alice: Math Test',
         description: null,
-        date: '2026-03-20',
+        date: '2027-03-20',
         time: undefined,
         syncType: 'task',
         syncedToGoogle: false,
@@ -518,7 +526,7 @@ describe('EventSyncService', () => {
       const timedEvent = {
         id: 'evt-1',
         title: 'Parent Meeting',
-        date: '2026-03-20',
+        date: '2027-03-20',
         time: '15:00',
         syncType: 'event',
         syncedToGoogle: false,
@@ -528,7 +536,7 @@ describe('EventSyncService', () => {
         id: 'evt-2',
         title: 'Bob: Bring Costume',
         description: 'Purim costume',
-        date: '2026-03-20',
+        date: '2027-03-20',
         time: undefined,
         syncType: 'task',
         syncedToGoogle: false,
@@ -554,7 +562,7 @@ describe('EventSyncService', () => {
       jest.useRealTimers();
     });
 
-    it('should not send past timed events for approval', async () => {
+    it('should skip creating past timed events entirely', async () => {
       jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
 
       const pastMessage = makeMessage({
@@ -569,18 +577,14 @@ describe('EventSyncService', () => {
         { title: 'Past Meeting', date: '2026-04-01', time: '10:00' },
       ]);
 
-      await service.syncEvents();
+      const result = await service.syncEvents();
 
-      // Should NOT send for approval
+      // Past event should not be created at all
+      expect(result.eventsCreated).toBe(0);
       expect(approvalService.sendForApproval).not.toHaveBeenCalled();
-      // Should set approvalStatus to NONE so it syncs directly
-      expect(eventRepository.update).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ approvalStatus: 'none' }),
-      );
     });
 
-    it('should not send past date-only tasks for approval', async () => {
+    it('should skip creating past date-only tasks entirely', async () => {
       jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
 
       const pastMessage = makeMessage({
@@ -900,6 +904,83 @@ describe('EventSyncService', () => {
       // First line should be the earlier message
       expect(lines[0]).toContain('first message');
       expect(lines[1]).toContain('second message');
+    });
+
+    it('should route dismissal events to EventDismissalService', async () => {
+      const mockMessage = makeMessage({
+        id: 'msg-cancel',
+        content: 'הטיול בוטל',
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([mockMessage]);
+      messageParserService.parseMessage.mockResolvedValue([
+        {
+          title: 'טיול',
+          action: 'cancel',
+          date: '',
+          originalTitle: 'טיול',
+        },
+      ]);
+
+      const result = await service.syncEvents();
+
+      expect(eventDismissalService.processDismissal).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'cancel', title: 'טיול' }),
+        undefined,
+        undefined,
+        'msg-cancel',
+      );
+      expect(result.eventsCreated).toBe(0);
+      expect(result.messagesParsed).toBe(1);
+    });
+
+    it('should handle mix of create and cancel events in same group', async () => {
+      const mockMessage = makeMessage({
+        id: 'msg-mix',
+        content: 'new event and cancel old',
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([mockMessage]);
+      messageParserService.parseMessage.mockResolvedValue([
+        { title: 'New Event', date: '2026-04-20', time: '10:00' },
+        {
+          title: 'Old Event',
+          action: 'cancel',
+          date: '2026-04-15',
+          originalTitle: 'Old Event',
+        },
+      ]);
+
+      const result = await service.syncEvents();
+
+      expect(result.eventsCreated).toBe(1);
+      expect(eventDismissalService.processDismissal).toHaveBeenCalledTimes(1);
+    });
+
+    it('should mark messages as parsed when only dismissal events found', async () => {
+      const mockMessage = makeMessage({
+        id: 'msg-only-cancel',
+        content: 'הטיול בוטל',
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([mockMessage]);
+      messageParserService.parseMessage.mockResolvedValue([
+        {
+          title: 'טיול',
+          action: 'cancel',
+          date: '',
+          originalTitle: 'טיול',
+        },
+      ]);
+
+      await service.syncEvents();
+
+      // Messages should be marked as parsed via transaction manager
+      expect(queryRunner.manager.update).toHaveBeenCalledWith(
+        expect.anything(),
+        'msg-only-cancel',
+        { parsed: true },
+      );
     });
 
     it('should use unknown as sender when sender is null', async () => {

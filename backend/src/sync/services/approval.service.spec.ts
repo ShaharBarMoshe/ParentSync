@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ApprovalService } from './approval.service';
+import { EventDismissalService } from './event-dismissal.service';
+import { EventSyncService } from './event-sync.service';
 import { SettingsService } from '../../settings/settings.service';
 import {
   EVENT_REPOSITORY,
   WHATSAPP_SERVICE,
   MESSAGE_REPOSITORY,
-  GOOGLE_CALENDAR_SERVICE,
+  DISMISSAL_REPOSITORY,
 } from '../../shared/constants/injection-tokens';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 import { MessageSource } from '../../shared/enums/message-source.enum';
@@ -15,7 +17,9 @@ describe('ApprovalService', () => {
   let eventRepository: any;
   let whatsappService: any;
   let messageRepository: any;
-  let googleCalendarService: any;
+  let eventSyncService: any;
+  let dismissalRepository: any;
+  let eventDismissalService: any;
   let settingsService: any;
 
   const mockEvent = {
@@ -54,8 +58,19 @@ describe('ApprovalService', () => {
       }),
     };
 
-    googleCalendarService = {
-      createEvent: jest.fn().mockResolvedValue('google-event-456'),
+    eventSyncService = {
+      syncSingleEventToGoogle: jest.fn().mockResolvedValue(undefined),
+    };
+
+    dismissalRepository = {
+      findByApprovalMessageId: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+      update: jest.fn().mockResolvedValue({}),
+    };
+
+    eventDismissalService = {
+      approveDismissal: jest.fn().mockResolvedValue(undefined),
+      rejectDismissal: jest.fn().mockResolvedValue(undefined),
     };
 
     settingsService = {
@@ -76,8 +91,10 @@ describe('ApprovalService', () => {
         { provide: EVENT_REPOSITORY, useValue: eventRepository },
         { provide: WHATSAPP_SERVICE, useValue: whatsappService },
         { provide: MESSAGE_REPOSITORY, useValue: messageRepository },
-        { provide: GOOGLE_CALENDAR_SERVICE, useValue: googleCalendarService },
+        { provide: DISMISSAL_REPOSITORY, useValue: dismissalRepository },
         { provide: SettingsService, useValue: settingsService },
+        { provide: EventDismissalService, useValue: eventDismissalService },
+        { provide: EventSyncService, useValue: eventSyncService },
       ],
     }).compile();
 
@@ -157,11 +174,12 @@ describe('ApprovalService', () => {
       expect(eventRepository.update).toHaveBeenCalledWith('event-1', {
         approvalStatus: ApprovalStatus.APPROVED,
       });
-      expect(googleCalendarService.createEvent).toHaveBeenCalled();
-      expect(eventRepository.update).toHaveBeenCalledWith('event-1', {
-        googleEventId: 'google-event-456',
-        syncedToGoogle: true,
-      });
+      expect(eventSyncService.syncSingleEventToGoogle).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'event-1',
+          approvalStatus: ApprovalStatus.APPROVED,
+        }),
+      );
     });
 
     it('should reject event on ❌ reaction', async () => {
@@ -177,7 +195,7 @@ describe('ApprovalService', () => {
       expect(eventRepository.update).toHaveBeenCalledWith('event-1', {
         approvalStatus: ApprovalStatus.REJECTED,
       });
-      expect(googleCalendarService.createEvent).not.toHaveBeenCalled();
+      expect(eventSyncService.syncSingleEventToGoogle).not.toHaveBeenCalled();
     });
 
     it('should ignore reactions on unknown messages', async () => {
@@ -189,6 +207,72 @@ describe('ApprovalService', () => {
       });
 
       expect(eventRepository.update).not.toHaveBeenCalled();
+      expect(eventDismissalService.approveDismissal).not.toHaveBeenCalled();
+    });
+
+    it('should delegate thumbs-up on dismissal message to EventDismissalService', async () => {
+      const mockDismissal = {
+        id: 'dismissal-1',
+        action: 'cancel',
+        status: 'pending_approval',
+        approvalMessageId: 'wa-dismissal-msg',
+      };
+      dismissalRepository.findByApprovalMessageId.mockResolvedValue(
+        mockDismissal,
+      );
+
+      await service.handleReaction({
+        msgId: 'wa-dismissal-msg',
+        reaction: '👍',
+        senderId: 'user-1',
+        timestamp: Date.now(),
+      });
+
+      expect(eventDismissalService.approveDismissal).toHaveBeenCalledWith(
+        mockDismissal,
+      );
+      expect(eventDismissalService.rejectDismissal).not.toHaveBeenCalled();
+    });
+
+    it('should delegate thumbs-down on dismissal message to EventDismissalService', async () => {
+      const mockDismissal = {
+        id: 'dismissal-1',
+        action: 'cancel',
+        status: 'pending_approval',
+        approvalMessageId: 'wa-dismissal-msg',
+      };
+      dismissalRepository.findByApprovalMessageId.mockResolvedValue(
+        mockDismissal,
+      );
+
+      await service.handleReaction({
+        msgId: 'wa-dismissal-msg',
+        reaction: '😢',
+        senderId: 'user-1',
+        timestamp: Date.now(),
+      });
+
+      expect(eventDismissalService.rejectDismissal).toHaveBeenCalledWith(
+        mockDismissal,
+      );
+      expect(eventDismissalService.approveDismissal).not.toHaveBeenCalled();
+    });
+
+    it('should ignore dismissal reaction if already processed', async () => {
+      dismissalRepository.findByApprovalMessageId.mockResolvedValue({
+        id: 'dismissal-1',
+        status: 'approved',
+        approvalMessageId: 'wa-dismissal-msg',
+      });
+
+      await service.handleReaction({
+        msgId: 'wa-dismissal-msg',
+        reaction: '👍',
+        senderId: 'user-1',
+        timestamp: Date.now(),
+      });
+
+      expect(eventDismissalService.approveDismissal).not.toHaveBeenCalled();
     });
 
     it('should ignore reactions on already approved events', async () => {
@@ -358,8 +442,8 @@ describe('ApprovalService', () => {
       });
       expect(statuses.get('event-A')).toBe(ApprovalStatus.REJECTED);
 
-      // Google Calendar only called for approved events (D and B)
-      expect(googleCalendarService.createEvent).toHaveBeenCalledTimes(2);
+      // Sync only called for approved events (D and B)
+      expect(eventSyncService.syncSingleEventToGoogle).toHaveBeenCalledTimes(2);
     });
 
     it('should handle mixed approve/reject in arbitrary order', async () => {
@@ -400,7 +484,7 @@ describe('ApprovalService', () => {
       expect(statuses.get('event-D')).toBe(ApprovalStatus.REJECTED);
 
       // Only A and B synced to Google
-      expect(googleCalendarService.createEvent).toHaveBeenCalledTimes(2);
+      expect(eventSyncService.syncSingleEventToGoogle).toHaveBeenCalledTimes(2);
     });
 
     it('should handle partial approval — some events left pending', async () => {
@@ -427,7 +511,7 @@ describe('ApprovalService', () => {
       expect(statuses.get('event-D')).toBe(ApprovalStatus.PENDING);
 
       // Only A synced
-      expect(googleCalendarService.createEvent).toHaveBeenCalledTimes(1);
+      expect(eventSyncService.syncSingleEventToGoogle).toHaveBeenCalledTimes(1);
     });
 
     it('should not change status when reacting to already-decided events', async () => {
@@ -472,7 +556,7 @@ describe('ApprovalService', () => {
       expect(statuses.get('event-B')).toBe(ApprovalStatus.REJECTED);
 
       // Only A was synced to Google
-      expect(googleCalendarService.createEvent).toHaveBeenCalledTimes(1);
+      expect(eventSyncService.syncSingleEventToGoogle).toHaveBeenCalledTimes(1);
     });
   });
 });

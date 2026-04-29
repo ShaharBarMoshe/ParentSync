@@ -72,6 +72,31 @@ export class TypeOrmEventRepository implements IEventRepository {
     return this.repo.findOneBy({ approvalMessageId: messageId });
   }
 
+  async findByTitleSubstringAndChild(
+    titleSubstring: string,
+    childId?: string,
+    date?: string,
+  ): Promise<CalendarEventEntity[]> {
+    const qb = this.repo
+      .createQueryBuilder('event')
+      .where('event.title LIKE :title', { title: `%${titleSubstring}%` })
+      .andWhere('event.syncedToGoogle = :synced', { synced: true })
+      .andWhere('event.approvalStatus != :rejected', {
+        rejected: ApprovalStatus.REJECTED,
+      });
+
+    if (childId) {
+      qb.andWhere('event.childId = :childId', { childId });
+    }
+    if (date) {
+      qb.andWhere('event.date = :date', { date });
+    }
+
+    qb.orderBy('event.date', 'DESC').limit(10);
+
+    return qb.getMany();
+  }
+
   findByTitleDateTimeChild(
     title: string,
     date: string,

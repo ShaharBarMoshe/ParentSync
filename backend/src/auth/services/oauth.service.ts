@@ -15,7 +15,7 @@ import * as crypto from 'crypto';
 
 const PROVIDER_GOOGLE = 'google';
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
-const DEFAULT_REDIRECT_URI = 'http://localhost:3000/api/auth/google/callback';
+const DEFAULT_REDIRECT_URI = `http://localhost:${process.env.PORT || 41932}/api/auth/google/callback`;
 
 const SCOPES_BY_PURPOSE: Record<OAuthPurpose, string[]> = {
   gmail: [

@@ -20,4 +20,9 @@ export interface IEventRepository {
     messageId: string,
   ): Promise<CalendarEventEntity | null>;
   findDueForReminder(now: Date): Promise<CalendarEventEntity[]>;
+  findByTitleSubstringAndChild(
+    titleSubstring: string,
+    childId?: string,
+    date?: string,
+  ): Promise<CalendarEventEntity[]>;
 }

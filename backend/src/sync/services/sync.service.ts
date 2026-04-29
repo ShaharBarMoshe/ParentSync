@@ -221,8 +221,19 @@ export class SyncService {
     totalMessages += gmailResult.messageCount;
     channelDetails.push(...gmailResult.channelDetails);
 
-    // Update lastScanAt on success
-    await this.childService.update(child.id, { lastScanAt: new Date() });
+    // Only skip lastScanAt update if ALL channels failed (total sync failure).
+    // Individual channel errors (e.g. channel not found) are logged but
+    // shouldn't block progress for the channels that succeeded.
+    const allFailed =
+      channelDetails.length > 0 &&
+      channelDetails.every((ch) => ch.skipped);
+    if (!allFailed) {
+      await this.childService.update(child.id, { lastScanAt: new Date() });
+    } else {
+      this.logger.warn(
+        `Not updating lastScanAt for child "${child.name}" — all channels failed`,
+      );
+    }
 
     return { messageCount: totalMessages, channelDetails };
   }

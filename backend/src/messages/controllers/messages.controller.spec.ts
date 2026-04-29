@@ -11,30 +11,26 @@ describe('MessagesController', () => {
 
   const mockMessage: MessageEntity = {
     id: 'msg-uuid-1',
-    externalId: 'ext-1',
     source: MessageSource.WHATSAPP,
     channel: 'parents-group',
     childId: 'child-uuid-1',
     content: 'School trip next Monday',
-    author: 'Teacher',
+    sender: 'Teacher',
     timestamp: new Date(),
     parsed: false,
     createdAt: new Date(),
-    updatedAt: new Date(),
   } as MessageEntity;
 
   const mockMessage2: MessageEntity = {
     id: 'msg-uuid-2',
-    externalId: 'ext-2',
     source: MessageSource.EMAIL,
     channel: 'inbox',
     childId: 'child-uuid-1',
     content: 'Parent meeting on Friday',
-    author: 'Principal',
+    sender: 'Principal',
     timestamp: new Date(),
     parsed: true,
     createdAt: new Date(),
-    updatedAt: new Date(),
   } as MessageEntity;
 
   beforeEach(async () => {
@@ -48,6 +44,8 @@ describe('MessagesController', () => {
       update: jest.fn(),
       delete: jest.fn(),
       pruneOldest: jest.fn(),
+      existsByChannelTimestampContent: jest.fn(),
+      resetAllParsed: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

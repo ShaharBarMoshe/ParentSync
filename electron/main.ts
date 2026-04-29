@@ -55,7 +55,7 @@ let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let backendProcess: ChildProcess | null = null;
-let backendPort = 3000;
+let backendPort = 41932;
 let isQuitting = false;
 
 // ── Paths ──────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ function findAvailablePort(startPort: number): Promise<number> {
 // ── Backend ────────────────────────────────────────────────────────
 
 async function startBackend(): Promise<number> {
-  const port = await findAvailablePort(3000);
+  const port = await findAvailablePort(41932);
   backendPort = port;
 
   const backendMain = path.join(getBackendDistPath(), 'main.js');
@@ -476,7 +476,7 @@ app.whenReady().then(async () => {
   try {
     if (process.env.ELECTRON_DEV) {
       // In dev mode, backend is already running separately (via concurrently)
-      backendPort = 3000;
+      backendPort = parseInt(process.env.PORT || '41932', 10);
       console.log(`Dev mode: using existing backend on port ${backendPort}`);
     } else {
       // In production, start the NestJS backend as a child process

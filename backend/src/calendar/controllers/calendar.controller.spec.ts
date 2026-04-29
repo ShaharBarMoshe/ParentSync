@@ -26,11 +26,14 @@ describe('CalendarController', () => {
     source: MessageSource.WHATSAPP,
     sourceId: 'msg-1',
     childId: 'child-1',
-    calendarColorId: null,
-    googleEventId: null,
+    calendarColorId: null as unknown as string,
+    googleEventId: null as unknown as string,
     syncedToGoogle: false,
     approvalStatus: ApprovalStatus.NONE,
-    approvalMessageId: null,
+    approvalMessageId: null as unknown as string,
+    syncType: 'event' as const,
+    googleTaskListId: null as unknown as string,
+    reminderSent: false,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -54,6 +57,7 @@ describe('CalendarController', () => {
       findByTitleDateTimeChild: jest.fn(),
       findByApprovalMessageId: jest.fn(),
       findDueForReminder: jest.fn(),
+      findByTitleSubstringAndChild: jest.fn(),
     };
 
     const mockGoogleService: jest.Mocked<IGoogleCalendarService> = {
@@ -62,6 +66,7 @@ describe('CalendarController', () => {
       deleteEvent: jest.fn(),
       getCalendarList: jest.fn(),
       eventExists: jest.fn(),
+      searchEvents: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

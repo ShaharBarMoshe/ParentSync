@@ -31,9 +31,9 @@ import { HealthController } from './health/health.controller';
         NODE_ENV: Joi.string()
           .valid('development', 'test')
           .default('development'),
-        PORT: Joi.number().default(3000),
+        PORT: Joi.number().default(41932),
         DATABASE_URL: Joi.string().default(defaultDbPath),
-        FRONTEND_URL: Joi.string().default('http://localhost:5173'),
+        FRONTEND_URL: Joi.string().default('*'),
       }),
     }),
     TypeOrmModule.forRootAsync({
