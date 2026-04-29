@@ -1,145 +1,166 @@
 # ParentSync
 
-A private-use desktop application that aggregates WhatsApp channels and Gmail emails into a unified task manager, using LLM-powered parsing to automatically create events on a family Google Calendar.
+> A cross-platform desktop app that watches your WhatsApp parent groups and Gmail, uses an LLM to pull out the actual events (field trips, deadlines, doctor visits), routes each one through a WhatsApp approval channel, and syncs the survivors to a family Google Calendar.
 
-Events can optionally go through a **WhatsApp approval channel** before syncing to Google Calendar — react 👍 to approve or 😢 to reject. Reactions can arrive in any order and at any time.
+[![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)](https://claude.com/claude-code)
+![Electron](https://img.shields.io/badge/Electron-35-47848F?logo=electron&logoColor=white)
+![NestJS](https://img.shields.io/badge/NestJS-10-E0234E?logo=nestjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-TypeORM-003B57?logo=sqlite&logoColor=white)
 
-Runs as a standalone desktop app via Electron. Also works in the browser during development.
+| Dashboard | Calendar | Settings |
+|---|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Calendar](docs/screenshots/calendar.png) | ![Settings](docs/screenshots/settings.png) |
 
-### Platform Support
+---
 
-| Platform | Format | Status |
-|----------|--------|--------|
-| **Linux** | `.AppImage` (portable) / `.deb` | Primary target |
-| Windows | `.exe` (NSIS installer) | Supported via electron-builder |
-| macOS | `.dmg` | Supported via electron-builder |
+## Why This Project
 
-## Prerequisites
+Two parents, four WhatsApp class groups, two school inboxes, one shared calendar — and somehow always one missed permission slip. ParentSync is the system that reads everything, decides what's actually an event, asks you before publishing, and keeps the family calendar honest.
 
-- Node.js (v18+)
-- npm
-- Google Chrome (for WhatsApp Web integration)
+It's also a deliberately end-to-end engineering exercise: a real Electron app with a real backend, real OAuth, real LLM cost controls, and a real test pyramid — built to be readable from the top down.
 
-## Setup
+## Highlights
 
-Run the setup script — it handles everything automatically:
+- **End-to-end Electron desktop app** — single AppImage / `.exe` / `.dmg`. Backend, frontend, and Chromium are all packaged together; SQLite lives in the OS user-data directory.
+- **Clean Architecture + Hexagonal (Ports & Adapters)** on NestJS. Every external dependency (Gmail, Google Calendar, OpenRouter, WhatsApp) sits behind an injection token with a swappable mock adapter.
+- **LLM-driven extraction with cost controls** — batched parsing, prompt-engineered for Hebrew + English, structured output validated by class-validator DTOs.
+- **Cancellation & delay detection** — the parser doesn't just create events; it recognizes "המפגש בוטל" / "נדחה ל-…" and updates or removes the existing calendar entry. ([docs](docs/EVENT-DISMISSAL.md))
+- **WhatsApp approval channel** — every extracted event is posted to a dedicated chat. React 👍 to publish, 😢 to drop. Reactions are idempotent and order-independent.
+- **OAuth 2.0 done properly** — PKCE, CSRF state, encrypted token storage at rest, refresh-on-expiry. ([writeup](docs/ARCHITECTURE.md))
+- **80%+ test coverage** — unit tests via NestJS `Test.createTestingModule()`, Supertest e2e, Vitest on the frontend, real Puppeteer browser tests for the desktop UI.
+- **Built with [Claude Code](https://claude.com/claude-code)** — this repo is also a case study in agentic development: see the 17-phase implementation plan under [`plan/`](plan/) and the reusable skills/rules in [`.agents/skills/`](.agents/skills/).
 
-```bash
-./setup.sh
-```
-
-The script is idempotent (safe to run multiple times). It will:
-
-1. **Check prerequisites** — Node.js v18+, npm, Google Chrome
-2. **Install dependencies** — root, backend, and frontend (skips if already up to date)
-3. **Configure environment** — creates `backend/.env` from template if missing
-4. **Build the project** — backend, frontend, and Electron (skips if already up to date)
-
-After the script finishes, you may need to configure:
-
-| What | How |
-|------|-----|
-| **OpenRouter API key** (required) | Configure via Settings UI or `POST /api/settings` with key `openrouter_api_key` ([get one here](https://openrouter.ai/keys)) |
-| **Google OAuth** (for Gmail & Calendar) | Configure `google_client_id` and `google_client_secret` via Settings UI ([get credentials from Google Cloud Console](https://console.cloud.google.com/apis/credentials)) |
-
-## Building & Running
-
-### Build the Standalone Executable
-
-```bash
-# Build and package for Linux (produces .AppImage + .deb in release/)
-npm run package:linux
-```
-
-The `.AppImage` is a single portable file — no installation needed:
-
-```bash
-chmod +x release/ParentSync-*.AppImage
-./release/ParentSync-*.AppImage
-```
-
-For other platforms:
-
-```bash
-npm run package:win    # Windows .exe installer
-npm run package:mac    # macOS .dmg
-npm run package        # All platforms
-```
-
-### Development Mode
-
-For development with hot-reload:
-
-```bash
-# Desktop (Electron + hot-reload frontend + backend)
-npm run electron:dev
-
-# Or browser mode (two terminals):
-cd backend && npm run start:dev    # Terminal 1 — backend (localhost:3000)
-cd frontend && npm run dev         # Terminal 2 — frontend (localhost:5173)
-```
-
-### What the App Does
-
-- Starts the NestJS backend embedded in the Electron main process
-- Serves the React frontend from built files
-- Stores the SQLite database in the OS user-data directory
-- System tray icon with quick actions (Sync Now, Quit)
-- Shows WhatsApp QR code in-app for authentication
-
-## Project Structure
+## Architecture at a glance
 
 ```
-parentsync/
-  electron/          # Electron main process (main.ts, preload.ts)
-  backend/           # NestJS API server
-  frontend/          # React + Vite frontend
-  assets/            # App icons
-  plan/              # Implementation plan
-  package.json       # Root: Electron deps + build scripts
+┌──────────────────────────────  Electron main  ──────────────────────────────┐
+│                                                                              │
+│   ┌──────────── React (Vite) ────────────┐    ┌──────── NestJS ──────────┐   │
+│   │  Dashboard · Calendar · Settings ·   │ ←→ │  Settings · Messages ·   │   │
+│   │  Monitor · WhatsApp QR · OAuth flow  │    │  Calendar · LLM · Sync · │   │
+│   └──────────────────────────────────────┘    │  Auth · Monitor          │   │
+│                                                └────┬────────────┬────────┘   │
+│                                                     │            │            │
+│                                          ┌──────────┴──┐   ┌────┴─────────┐  │
+│                                          │  TypeORM /  │   │  Ports &     │  │
+│                                          │  SQLite     │   │  Adapters    │  │
+│                                          └─────────────┘   └──┬───────────┘  │
+└─────────────────────────────────────────────────────────────────│────────────┘
+                                                                  │
+                       ┌──────────────────────────────────────────┼──────────┐
+                       ▼                  ▼                       ▼          ▼
+                  Gmail API       Google Calendar API       OpenRouter   WhatsApp Web
+                                                              (LLM)     (whatsapp-web.js)
 ```
 
-## Data Storage
+Each NestJS feature module owns its domain (entities, repositories, services, controllers). External services are accessed only through interfaces — `IGmailService`, `IGoogleCalendarService`, `ILLMService`, `IMessageRepository`, `ISettingsRepository` — wired via DI tokens, so tests swap in mocks with `Test.createTestingModule().overrideProvider()`.
 
-In desktop mode, all data is stored locally in the OS user-data directory:
+Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 
-| Platform | Path |
-|----------|------|
-| Windows  | `%APPDATA%/ParentSync/` |
-| macOS    | `~/Library/Application Support/ParentSync/` |
-| Linux    | `~/.config/ParentSync/` |
+## Tech Stack
 
-This includes the SQLite database, WhatsApp session, and OAuth tokens.
-
-## Event Approval
-
-When an **Approval Channel** is configured in Settings (a WhatsApp group name), newly parsed events are sent to that group with an ICS file attachment instead of syncing directly to Google Calendar.
-
-- React **👍** on the message to approve — the event syncs to Google Calendar
-- React **😢** to reject — the event is marked as rejected and not synced
-- Reactions can be given in any order, at any time, independently per event
-- If no approval channel is configured, events sync automatically
-
-## API Endpoints
-
-- `GET /api/health` — Health check
-- `GET /api/docs` — Swagger API documentation
-- `GET /api/whatsapp/status` — WhatsApp connection status
-- `POST /api/whatsapp/reconnect` — Reconnect WhatsApp (triggers QR)
-- `GET /api/whatsapp/events` — SSE stream for WhatsApp QR and status events
+| Layer | Choice |
+|---|---|
+| Desktop shell | Electron 35, electron-builder (NSIS / DMG / AppImage + deb) |
+| Frontend | React 19 + TypeScript + Vite, SCSS (7-1 architecture) |
+| Backend | NestJS 10 + TypeScript, class-validator, `@nestjs/config` (Joi) |
+| Persistence | SQLite via TypeORM, stored in OS user-data dir |
+| AI | OpenRouter (model-agnostic), prompt-engineered extraction with structured DTOs |
+| WhatsApp | `whatsapp-web.js` with in-app QR onboarding, persisted session |
+| Email & Calendar | Gmail API & Google Calendar API (OAuth 2.0 + PKCE) |
+| Testing | Jest, Supertest, Vitest, Puppeteer |
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) — how the system is designed, data flow, key decisions
-- [Onboarding Guide](docs/ONBOARDING.md) — step-by-step setup, first launch, troubleshooting
-- [User Guide](docs/USER-GUIDE.md) — how to use every feature in the app
+| Doc | What's inside |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | Module boundaries, ports & adapters, sync orchestration |
+| [User Guide](docs/USER-GUIDE.md) | What the app actually does, end-user perspective |
+| [Onboarding](docs/ONBOARDING.md) | First-run flow: OAuth, WhatsApp QR, settings |
+| [Event Dismissal](docs/EVENT-DISMISSAL.md) | Cancel / delay detection design |
+| [Event Reminders](docs/EVENT-REMINDERS.md) | The 24h-before-event reminder pipeline |
+| [Google Tasks](docs/GOOGLE-TASKS.md) | Timed events vs. date-only tasks |
+| [Implementation plan](plan/README.md) | The 17-phase plan that drove development |
 
-## Testing
+## Getting Started
+
+> Single-user app — no app-level auth, no dev/prod split. Built once, runs as a standalone executable.
+
+### Prerequisites
+- Node.js 18+
+- npm
+- Google Chrome (used by `whatsapp-web.js`)
+
+### Setup
 
 ```bash
-# Backend unit tests
-cd backend && npm test
-
-# Backend e2e tests
-cd backend && npm run test:e2e
+./setup.sh   # idempotent: deps + .env scaffold + build
 ```
+
+You'll then need:
+
+| What | How |
+|---|---|
+| **OpenRouter API key** (required for parsing) | Settings UI → `openrouter_api_key` ([get one](https://openrouter.ai/keys)) |
+| **Google OAuth client** (Gmail + Calendar) | Settings UI → `google_client_id` / `google_client_secret` ([Cloud Console](https://console.cloud.google.com/apis/credentials)) |
+
+### Run
+
+```bash
+# Hot-reload dev (Electron + Vite + Nest)
+npm run electron:dev
+
+# Or browser-only dev
+cd backend  && npm run start:dev   # → :41932
+cd frontend && npm run dev         # → :5173
+
+# Package
+npm run package:linux    # AppImage + .deb
+npm run package:win      # NSIS .exe
+npm run package:mac      # .dmg
+```
+
+### Test
+
+```bash
+npm test                      # backend unit + e2e + frontend
+cd backend  && npm test       # backend unit tests
+cd backend  && npm run test:e2e
+cd frontend && npm test       # vitest
+```
+
+## Project Layout
+
+```
+parentsync/
+├── electron/         Electron main process (window, tray, backend embedding)
+├── backend/          NestJS API — feature modules (settings, messages,
+│                     calendar, llm, sync, auth, monitor, shared)
+├── frontend/         React + Vite UI (pages, components, services)
+├── assets/           App icons (.ico / .icns / .png)
+├── docs/             Architecture, user guide, feature designs, screenshots
+├── plan/             17-phase implementation plan (used to drive Claude Code)
+├── scripts/          Packaging, tests, install-as-systemd-service
+└── .agents/skills/   Reusable Claude Code skills (NestJS rules, OAuth2,
+                      Clean Architecture, SCSS, UI/UX) used during development
+```
+
+## About Claude Code
+
+This project was built end-to-end with **[Claude Code](https://claude.com/claude-code)**, Anthropic's coding agent. The repo intentionally preserves the artifacts of that workflow:
+
+- **[`plan/`](plan/)** — a 17-phase implementation plan with explicit acceptance criteria, used as the source of truth Claude worked against.
+- **[`.agents/skills/`](.agents/skills/)** — distilled, reusable rule sets (NestJS best practices, OAuth 2.0, Clean Architecture, SCSS, UI/UX) the agent loaded on demand.
+- **[`CLAUDE.md`](CLAUDE.md)** — project-level guidance the agent reads on every session.
+
+The result is production-quality code with explicit architectural intent, full test coverage, and human-readable docs — the engineering decisions are the human's; the typing was the agent's.
+
+## License
+
+Private use. Not currently published under an open-source license.
+
+---
+
+**Author:** Shahar Bar-Moshe · [GitHub](https://github.com/ShaharBarMoshe)
