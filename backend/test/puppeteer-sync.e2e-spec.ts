@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
+import * as path from 'path';
 import puppeteer, { Browser, Page } from 'puppeteer';
 
 const BACKEND_URL = 'http://localhost:3000';
@@ -79,8 +80,9 @@ describe('Puppeteer – Sync & Channel Scan (e2e)', () => {
   // ── setup / teardown ─────────────────────────────────────────────────
 
   beforeAll(async () => {
-    const backendDir = '/home/shaharb/projects/ParentSync/backend';
-    const frontendDir = '/home/shaharb/projects/ParentSync/frontend';
+    const repoRoot = path.resolve(__dirname, '../..');
+    const backendDir = path.join(repoRoot, 'backend');
+    const frontendDir = path.join(repoRoot, 'frontend');
 
     // Start backend & frontend in parallel
     [backend, frontend] = await Promise.all([

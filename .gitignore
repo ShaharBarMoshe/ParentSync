@@ -35,7 +35,12 @@ backend/.vscode/
 
 # Claude Code / Skills (local tooling)
 .agents/
+.claude/
+.junie/
 skills-lock.json
+
+# Local build state
+.last-packaged-sha
 
 # OS
 .DS_Store

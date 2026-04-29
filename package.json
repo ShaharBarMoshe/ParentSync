@@ -6,7 +6,7 @@
     "name": "Shahar Bar-Moshe",
     "email": "shahar@parentsync.local"
   },
-  "homepage": "https://github.com/shaharb/ParentSync",
+  "homepage": "https://github.com/ShaharBarMoshe/ParentSync",
   "main": "electron/dist/main.js",
   "private": true,
   "scripts": {
