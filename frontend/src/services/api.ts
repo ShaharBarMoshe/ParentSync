@@ -126,6 +126,11 @@ export interface CalendarEvent {
 export const calendarApi = {
   getAll: () =>
     api.get<CalendarEvent[]>('/calendar/events').then((r) => r.data),
+  /** Inclusive YYYY-MM-DD range; bypasses pagination. */
+  getInRange: (from: string, to: string) =>
+    api
+      .get<CalendarEvent[]>('/calendar/events', { params: { from, to } })
+      .then((r) => r.data),
   getById: (id: string) =>
     api.get<CalendarEvent>(`/calendar/events/${id}`).then((r) => r.data),
   syncEvent: (id: string) =>

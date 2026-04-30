@@ -2,6 +2,7 @@ import { CalendarEventEntity } from '../entities/calendar-event.entity';
 
 export interface IEventRepository {
   findAll(): Promise<CalendarEventEntity[]>;
+  findInDateRange(from: string, to: string): Promise<CalendarEventEntity[]>;
   findById(id: string): Promise<CalendarEventEntity | null>;
   findUnsynced(): Promise<CalendarEventEntity[]>;
   create(event: Partial<CalendarEventEntity>): Promise<CalendarEventEntity>;

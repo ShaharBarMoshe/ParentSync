@@ -17,23 +17,18 @@ export default function DashboardPage() {
 
   const loadData = useCallback(async () => {
     try {
+      const today = new Date();
+      const weekFromToday = new Date(today);
+      weekFromToday.setDate(weekFromToday.getDate() + 7);
+      const ymd = (d: Date) => d.toISOString().slice(0, 10);
+
       const [msgs, evts, logs] = await Promise.all([
         messagesApi.getAll(),
-        calendarApi.getAll(),
+        calendarApi.getInRange(ymd(today), ymd(weekFromToday)),
         syncApi.getLogs(5),
       ]);
       setMessages(msgs);
-
-      const now = new Date();
-      const weekFromNow = new Date(now);
-      weekFromNow.setDate(weekFromNow.getDate() + 7);
-      const upcoming = evts
-        .filter((e) => {
-          const eventDate = new Date(e.date);
-          return eventDate >= now && eventDate <= weekFromNow;
-        })
-        .sort((a, b) => a.date.localeCompare(b.date));
-      setEvents(upcoming);
+      setEvents(evts.sort((a, b) => a.date.localeCompare(b.date)));
       setSyncLogs(logs);
       setError(null);
     } catch {

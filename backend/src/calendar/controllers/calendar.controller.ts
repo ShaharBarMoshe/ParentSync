@@ -33,9 +33,20 @@ export class CalendarController {
   ) {}
 
   @Get('events')
-  @ApiOperation({ summary: 'Get calendar events (paginated)' })
+  @ApiOperation({
+    summary:
+      'Get calendar events. Optional `from`/`to` (YYYY-MM-DD) filters by event date and bypasses pagination.',
+  })
   @ApiResponse({ status: 200, description: 'Events retrieved' })
-  async getEvents(@Query() pagination: PaginationDto) {
+  async getEvents(
+    @Query() pagination: PaginationDto,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (from && to && dateRe.test(from) && dateRe.test(to)) {
+      return this.eventRepository.findInDateRange(from, to);
+    }
     const events = await this.eventRepository.findAll();
     const offset = pagination.offset ?? 0;
     const limit = pagination.limit ?? 50;

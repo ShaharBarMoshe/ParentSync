@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Not, Repository } from 'typeorm';
+import { Between, In, IsNull, Not, Repository } from 'typeorm';
 import { CalendarEventEntity } from '../entities/calendar-event.entity';
 import { IEventRepository } from '../interfaces/event-repository.interface';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
@@ -14,6 +14,13 @@ export class TypeOrmEventRepository implements IEventRepository {
 
   findAll(): Promise<CalendarEventEntity[]> {
     return this.repo.find({ order: { date: 'ASC' } });
+  }
+
+  findInDateRange(from: string, to: string): Promise<CalendarEventEntity[]> {
+    return this.repo.find({
+      where: { date: Between(from, to) },
+      order: { date: 'ASC' },
+    });
   }
 
   findById(id: string): Promise<CalendarEventEntity | null> {
