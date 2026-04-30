@@ -86,11 +86,18 @@
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  // minmax(0, 1fr) instead of 1fr — without it, a long unbreakable run
+  // inside Recent Messages forces its column wider and pushes Upcoming
+  // Events to the right.
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: $spacing-xl;
 
   @include respond-to('md') {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  > .dashboard-section {
+    min-width: 0;
   }
 }
 
@@ -221,9 +228,13 @@
 
   &-channel {
     flex: 1;
+    min-width: 0;
     font-size: 14px;
     font-weight: 500;
     color: var(--text-h);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   &-time {
@@ -240,10 +251,18 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+    max-width: 100%;
 
     &--expanded {
-      white-space: normal;
-      overflow: visible;
+      // Wrap soft text where possible, preserve explicit line breaks,
+      // and let any unbreakable run (URLs, Hebrew without spaces, base64)
+      // scroll horizontally inside the message instead of expanding the
+      // whole panel.
+      white-space: pre-wrap;
+      overflow-wrap: normal;
+      overflow-x: auto;
+      overflow-y: hidden;
+      text-overflow: clip;
     }
   }
 }
