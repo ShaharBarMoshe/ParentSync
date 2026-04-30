@@ -11,6 +11,8 @@ import {
   WhatsAppMedia,
   WhatsAppConnectionStatus,
 } from '../interfaces/whatsapp-service.interface';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 @Injectable()
 export class WhatsAppService
@@ -22,7 +24,10 @@ export class WhatsAppService
   private connectionStatus: WhatsAppConnectionStatus = 'disconnected';
   private initPromise: Promise<void> | null = null;
 
-  constructor(private readonly eventEmitter: EventEmitter2) {}
+  constructor(
+    private readonly eventEmitter: EventEmitter2,
+    private readonly appErrorEmitter: AppErrorEmitterService,
+  ) {}
 
   onModuleInit(): void {
     this.initialize().catch((error) => {
@@ -176,6 +181,12 @@ export class WhatsAppService
     } catch (error) {
       this.logger.error(`Failed to initialize WhatsApp client: ${error.message}`);
       this.setStatus('disconnected');
+      this.appErrorEmitter.emit({
+        source: 'whatsapp',
+        code: AppErrorCodes.WHATSAPP_INIT_FAILED,
+        message:
+          'WhatsApp Web could not connect. Open Settings → WhatsApp to scan a fresh QR code.',
+      });
       throw error;
     }
   }
@@ -222,6 +233,11 @@ export class WhatsAppService
       this.logger.warn(
         `Channel "${chatName}" not found. Available chats: ${JSON.stringify(chatNames)}`,
       );
+      this.appErrorEmitter.emit({
+        source: 'whatsapp',
+        code: AppErrorCodes.WHATSAPP_CHANNEL_NOT_FOUND,
+        message: `WhatsApp channel "${chatName}" was not found. Verify the channel name in Settings — it must match exactly.`,
+      });
       throw new Error(`Channel "${chatName}" not found`);
     }
 
@@ -322,6 +338,11 @@ export class WhatsAppService
         this.logger.warn(
           `Failed to fetch messages from "${channelName}": ${fallbackError.message}`,
         );
+        this.appErrorEmitter.emit({
+          source: 'whatsapp',
+          code: AppErrorCodes.WHATSAPP_FETCH_FAILED,
+          message: `Could not read messages from one or more WhatsApp channels. ParentSync will retry on the next sync.`,
+        });
         return [];
       }
     }
@@ -349,19 +370,28 @@ export class WhatsAppService
   ): Promise<string> {
     const targetChat = await this.findChatByName(chatName);
 
-    let sent: Message;
-    if (media) {
-      const messageMedia = new MessageMedia(
-        media.mimetype,
-        media.data,
-        media.filename,
-      );
-      sent = await targetChat.sendMessage(messageMedia, { caption: text });
-    } else {
-      sent = await targetChat.sendMessage(text);
-    }
+    try {
+      let sent: Message;
+      if (media) {
+        const messageMedia = new MessageMedia(
+          media.mimetype,
+          media.data,
+          media.filename,
+        );
+        sent = await targetChat.sendMessage(messageMedia, { caption: text });
+      } else {
+        sent = await targetChat.sendMessage(text);
+      }
 
-    return sent.id._serialized;
+      return sent.id._serialized;
+    } catch (error) {
+      this.appErrorEmitter.emit({
+        source: 'whatsapp',
+        code: AppErrorCodes.WHATSAPP_SEND_FAILED,
+        message: `WhatsApp message could not be sent. ${error.message}`,
+      });
+      throw error;
+    }
   }
 
   async disconnect(): Promise<void> {

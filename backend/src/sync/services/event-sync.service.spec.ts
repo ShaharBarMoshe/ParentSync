@@ -15,6 +15,8 @@ import {
 } from '../../shared/constants/injection-tokens';
 import { GoogleTasksScopeError } from '../../calendar/services/google-tasks.service';
 import { MessageSource } from '../../shared/enums/message-source.enum';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
   return {
@@ -42,6 +44,7 @@ describe('EventSyncService', () => {
   let eventEmitter: any;
   let approvalService: any;
   let eventDismissalService: any;
+  let appErrorEmitter: any;
   let queryRunner: any;
 
   beforeEach(async () => {
@@ -104,6 +107,11 @@ describe('EventSyncService', () => {
       sendFailureNotification: jest.fn().mockResolvedValue(undefined),
     };
 
+    appErrorEmitter = {
+      emit: jest.fn(),
+      clear: jest.fn(),
+    };
+
     queryRunner = {
       connect: jest.fn(),
       startTransaction: jest.fn(),
@@ -140,6 +148,7 @@ describe('EventSyncService', () => {
         { provide: DataSource, useValue: mockDataSource },
         { provide: ApprovalService, useValue: approvalService },
         { provide: EventDismissalService, useValue: eventDismissalService },
+        { provide: AppErrorEmitterService, useValue: appErrorEmitter },
       ],
     }).compile();
 
@@ -368,6 +377,53 @@ describe('EventSyncService', () => {
       'event-1',
       expect.objectContaining({ syncedToGoogle: true }),
     );
+  });
+
+  it('emits EVENT_SYNC_GOOGLE_FAILED on Google API failure', async () => {
+    eventRepository.findUnsynced.mockResolvedValue([
+      {
+        id: 'event-1',
+        title: 'Meeting',
+        date: '2027-03-20',
+        syncedToGoogle: false,
+        syncType: 'event',
+      },
+    ]);
+    googleCalendarService.createEvent.mockRejectedValue(
+      new Error('Google quota exceeded'),
+    );
+
+    await service.syncEvents();
+
+    expect(appErrorEmitter.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'calendar',
+        code: AppErrorCodes.EVENT_SYNC_GOOGLE_FAILED,
+      }),
+    );
+  });
+
+  it('does not double-emit when underlying error is OAuth-related', async () => {
+    eventRepository.findUnsynced.mockResolvedValue([
+      {
+        id: 'event-1',
+        title: 'Meeting',
+        date: '2027-03-20',
+        syncedToGoogle: false,
+        syncType: 'event',
+      },
+    ]);
+    googleCalendarService.createEvent.mockRejectedValue(
+      new Error(
+        'Failed to refresh access token for calendar. Please re-authenticate with Google.',
+      ),
+    );
+
+    await service.syncEvents();
+
+    // OAuthService is responsible for emitting OAUTH_REFRESH_FAILED;
+    // EventSyncService should not double-fire EVENT_SYNC_GOOGLE_FAILED.
+    expect(appErrorEmitter.emit).not.toHaveBeenCalled();
   });
 
   it('should use configured calendar ID from settings', async () => {

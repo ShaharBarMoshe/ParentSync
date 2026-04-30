@@ -10,6 +10,8 @@ import {
 } from '../../shared/constants/injection-tokens';
 import { MessageSource } from '../../shared/enums/message-source.enum';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 describe('EventReminderService', () => {
   let service: EventReminderService;
@@ -19,6 +21,7 @@ describe('EventReminderService', () => {
   let googleCalendarService: any;
   let googleTasksService: any;
   let settingsService: any;
+  let appErrorEmitter: any;
 
   const now = new Date('2026-04-08T12:00:00Z');
 
@@ -78,6 +81,11 @@ describe('EventReminderService', () => {
       }),
     };
 
+    appErrorEmitter = {
+      emit: jest.fn(),
+      clear: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EventReminderService,
@@ -87,6 +95,7 @@ describe('EventReminderService', () => {
         { provide: GOOGLE_CALENDAR_SERVICE, useValue: googleCalendarService },
         { provide: GOOGLE_TASKS_SERVICE, useValue: googleTasksService },
         { provide: SettingsService, useValue: settingsService },
+        { provide: AppErrorEmitterService, useValue: appErrorEmitter },
       ],
     }).compile();
 
@@ -268,5 +277,19 @@ describe('EventReminderService', () => {
 
     expect(sent).toBe(1);
     expect(whatsappService.sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('emits REMINDER_SEND_FAILED when a reminder send throws', async () => {
+    eventRepository.findDueForReminder.mockResolvedValue([baseEvent]);
+    whatsappService.sendMessage.mockRejectedValueOnce(new Error('boom'));
+
+    await service.sendDueReminders(now);
+
+    expect(appErrorEmitter.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'reminder',
+        code: AppErrorCodes.REMINDER_SEND_FAILED,
+      }),
+    );
   });
 });

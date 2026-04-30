@@ -15,6 +15,8 @@ import type { IGoogleTasksService } from '../../calendar/interfaces/google-tasks
 import { SettingsService } from '../../settings/settings.service';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
 import { APP_MESSAGE_MARKER } from '../../shared/constants/app-marker';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 @Injectable()
 export class EventReminderService {
@@ -32,6 +34,7 @@ export class EventReminderService {
     @Inject(GOOGLE_TASKS_SERVICE)
     private readonly googleTasksService: IGoogleTasksService,
     private readonly settingsService: SettingsService,
+    private readonly appErrorEmitter: AppErrorEmitterService,
   ) {}
 
   @Cron('0 18 * * *', { timeZone: 'Asia/Jerusalem' })
@@ -100,6 +103,11 @@ export class EventReminderService {
           `Failed to send reminder for event ${event.id}: ${(error as Error).message}`,
           (error as Error).stack,
         );
+        this.appErrorEmitter.emit({
+          source: 'reminder',
+          code: AppErrorCodes.REMINDER_SEND_FAILED,
+          message: `Could not send WhatsApp reminder for one or more events. Check WhatsApp connection and the reminder channel in Settings.`,
+        });
       }
     }
 

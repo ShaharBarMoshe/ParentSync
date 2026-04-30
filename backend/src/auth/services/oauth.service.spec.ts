@@ -4,6 +4,8 @@ import { UnauthorizedException } from '@nestjs/common';
 import { OAuthService } from './oauth.service';
 import { OAuthTokenEntity } from '../entities/oauth-token.entity';
 import { SettingsService } from '../../settings/settings.service';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 // Mock googleapis
 jest.mock('googleapis', () => ({
@@ -41,6 +43,7 @@ describe('OAuthService', () => {
   let service: OAuthService;
   let mockTokenRepository: any;
   let mockSettingsService: any;
+  let mockAppErrorEmitter: jest.Mocked<AppErrorEmitterService>;
 
   beforeEach(async () => {
     mockTokenRepository = {
@@ -67,6 +70,11 @@ describe('OAuthService', () => {
       findByKeyDecrypted: jest.fn().mockImplementation(settingsLookup),
     };
 
+    mockAppErrorEmitter = {
+      emit: jest.fn(),
+      clear: jest.fn(),
+    } as unknown as jest.Mocked<AppErrorEmitterService>;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OAuthService,
@@ -77,6 +85,10 @@ describe('OAuthService', () => {
         {
           provide: getRepositoryToken(OAuthTokenEntity),
           useValue: mockTokenRepository,
+        },
+        {
+          provide: AppErrorEmitterService,
+          useValue: mockAppErrorEmitter,
         },
       ],
     }).compile();
@@ -203,5 +215,51 @@ describe('OAuthService', () => {
   it('should not fail when disconnecting non-existent purpose', async () => {
     mockTokenRepository.findOne.mockResolvedValue(null);
     await expect(service.disconnect('calendar')).resolves.toBeUndefined();
+  });
+
+  it('emits OAUTH_NO_REFRESH_TOKEN when token has no refresh_token', async () => {
+    mockTokenRepository.findOne.mockResolvedValue({
+      accessToken: 'expired',
+      expiresAt: new Date(Date.now() - 1000),
+      refreshToken: null,
+      provider: 'google',
+      purpose: 'calendar',
+    });
+
+    await expect(service.getValidAccessToken('calendar')).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(mockAppErrorEmitter.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'oauth',
+        code: AppErrorCodes.OAUTH_NO_REFRESH_TOKEN,
+      }),
+    );
+  });
+
+  it('emits OAUTH_REFRESH_FAILED when google rejects the refresh', async () => {
+    mockTokenRepository.findOne.mockResolvedValue({
+      accessToken: 'expired',
+      expiresAt: new Date(Date.now() - 1000),
+      refreshToken: 'stale-refresh-token',
+      provider: 'google',
+      purpose: 'calendar',
+    });
+
+    const { google } = jest.requireMock('googleapis');
+    const oauth2Instance = google.auth.OAuth2.mock.results.at(-1)?.value;
+    oauth2Instance.refreshAccessToken.mockRejectedValueOnce(
+      new Error('invalid_grant'),
+    );
+
+    await expect(service.getValidAccessToken('calendar')).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(mockAppErrorEmitter.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'oauth',
+        code: AppErrorCodes.OAUTH_REFRESH_FAILED,
+      }),
+    );
   });
 });

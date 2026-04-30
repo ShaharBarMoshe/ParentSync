@@ -11,6 +11,8 @@ import {
 } from '../../shared/constants/injection-tokens';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 import { MessageSource } from '../../shared/enums/message-source.enum';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 describe('ApprovalService', () => {
   let service: ApprovalService;
@@ -21,6 +23,7 @@ describe('ApprovalService', () => {
   let dismissalRepository: any;
   let eventDismissalService: any;
   let settingsService: any;
+  let appErrorEmitter: any;
 
   const mockEvent = {
     id: 'event-1',
@@ -85,6 +88,11 @@ describe('ApprovalService', () => {
       }),
     };
 
+    appErrorEmitter = {
+      emit: jest.fn(),
+      clear: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ApprovalService,
@@ -95,6 +103,7 @@ describe('ApprovalService', () => {
         { provide: SettingsService, useValue: settingsService },
         { provide: EventDismissalService, useValue: eventDismissalService },
         { provide: EventSyncService, useValue: eventSyncService },
+        { provide: AppErrorEmitterService, useValue: appErrorEmitter },
       ],
     }).compile();
 
@@ -157,6 +166,19 @@ describe('ApprovalService', () => {
       await service.sendForApproval(mockEvent as any);
 
       expect(whatsappService.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('emits APPROVAL_WHATSAPP_DISCONNECTED when WhatsApp is offline', async () => {
+      whatsappService.isConnected.mockReturnValue(false);
+
+      await service.sendForApproval(mockEvent as any);
+
+      expect(appErrorEmitter.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: 'approval',
+          code: AppErrorCodes.APPROVAL_WHATSAPP_DISCONNECTED,
+        }),
+      );
     });
   });
 

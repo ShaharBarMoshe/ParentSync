@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { AppErrorEmitterService } from '../errors/app-error-emitter.service';
+import { AppErrorCodes } from '../errors/app-error-codes';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -18,7 +20,14 @@ export class CryptoService {
   private readonly logger = new Logger(CryptoService.name);
   private readonly key: Buffer;
 
-  constructor() {
+  // appErrorEmitter is optional because EncryptedColumnTransformer
+  // instantiates CryptoService outside the DI container — see
+  // encrypted-column.transformer.ts. In that path, a decrypt failure still
+  // throws, it just won't surface a UI modal (the column-level call site is
+  // sync-driven and a higher-level catch will run anyway).
+  constructor(
+    @Optional() private readonly appErrorEmitter?: AppErrorEmitterService,
+  ) {
     this.key = this.loadOrCreateKey();
   }
 
@@ -72,22 +81,32 @@ export class CryptoService {
       return stored;
     }
 
-    const payload = stored.slice(ENCRYPTED_PREFIX.length);
-    const [ivB64, tagB64, dataB64] = payload.split(':');
+    try {
+      const payload = stored.slice(ENCRYPTED_PREFIX.length);
+      const [ivB64, tagB64, dataB64] = payload.split(':');
 
-    const iv = Buffer.from(ivB64, 'base64');
-    const authTag = Buffer.from(tagB64, 'base64');
-    const encrypted = Buffer.from(dataB64, 'base64');
+      const iv = Buffer.from(ivB64, 'base64');
+      const authTag = Buffer.from(tagB64, 'base64');
+      const encrypted = Buffer.from(dataB64, 'base64');
 
-    const decipher = crypto.createDecipheriv(ALGORITHM, this.key, iv, {
-      authTagLength: AUTH_TAG_LENGTH,
-    });
-    decipher.setAuthTag(authTag);
+      const decipher = crypto.createDecipheriv(ALGORITHM, this.key, iv, {
+        authTagLength: AUTH_TAG_LENGTH,
+      });
+      decipher.setAuthTag(authTag);
 
-    return Buffer.concat([
-      decipher.update(encrypted),
-      decipher.final(),
-    ]).toString('utf-8');
+      return Buffer.concat([
+        decipher.update(encrypted),
+        decipher.final(),
+      ]).toString('utf-8');
+    } catch (error) {
+      this.appErrorEmitter?.emit({
+        source: 'crypto',
+        code: AppErrorCodes.CRYPTO_DECRYPT_FAILED,
+        message:
+          'A stored secret could not be decrypted. The encryption key may have been replaced — re-enter your API keys and Google credentials in Settings.',
+      });
+      throw error;
+    }
   }
 
   isEncrypted(value: string): boolean {

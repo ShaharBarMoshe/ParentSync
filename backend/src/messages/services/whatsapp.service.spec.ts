@@ -1,5 +1,6 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { WhatsAppService } from './whatsapp.service';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 
 // Mock whatsapp-web.js — simulate 'ready' firing after initialize
 jest.mock('whatsapp-web.js', () => {
@@ -34,9 +35,14 @@ jest.mock('whatsapp-web.js', () => {
 
 describe('WhatsAppService', () => {
   let service: WhatsAppService;
+  let appErrorEmitter: jest.Mocked<AppErrorEmitterService>;
 
   beforeEach(() => {
-    service = new WhatsAppService(new EventEmitter2());
+    appErrorEmitter = {
+      emit: jest.fn(),
+      clear: jest.fn(),
+    } as unknown as jest.Mocked<AppErrorEmitterService>;
+    service = new WhatsAppService(new EventEmitter2(), appErrorEmitter);
   });
 
   afterEach(async () => {

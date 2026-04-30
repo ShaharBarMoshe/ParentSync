@@ -18,6 +18,8 @@ import type { WhatsAppReaction } from '../../messages/interfaces/whatsapp-servic
 import { generateICS } from '../../calendar/utils/ics-generator';
 import { EventDismissalService } from './event-dismissal.service';
 import { EventSyncService } from './event-sync.service';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 @Injectable()
 export class ApprovalService {
@@ -37,6 +39,7 @@ export class ApprovalService {
     private readonly eventDismissalService: EventDismissalService,
     @Inject(forwardRef(() => EventSyncService))
     private readonly eventSyncService: EventSyncService,
+    private readonly appErrorEmitter: AppErrorEmitterService,
   ) {}
 
   async isApprovalEnabled(): Promise<boolean> {
@@ -64,6 +67,12 @@ export class ApprovalService {
       this.logger.warn(
         `WhatsApp not connected, cannot send approval for event ${event.id}`,
       );
+      this.appErrorEmitter.emit({
+        source: 'approval',
+        code: AppErrorCodes.APPROVAL_WHATSAPP_DISCONNECTED,
+        message:
+          'WhatsApp is disconnected — pending events cannot be sent for approval. Reconnect from Settings → WhatsApp.',
+      });
       return;
     }
 

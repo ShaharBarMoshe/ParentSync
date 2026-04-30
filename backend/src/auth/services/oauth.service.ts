@@ -11,6 +11,8 @@ import { google, Auth } from 'googleapis';
 import { OnEvent } from '@nestjs/event-emitter';
 import { OAuthTokenEntity, OAuthPurpose } from '../entities/oauth-token.entity';
 import { SettingsService } from '../../settings/settings.service';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 import * as crypto from 'crypto';
 
 const PROVIDER_GOOGLE = 'google';
@@ -42,6 +44,7 @@ export class OAuthService implements OnModuleInit {
     private readonly settingsService: SettingsService,
     @InjectRepository(OAuthTokenEntity)
     private readonly tokenRepository: Repository<OAuthTokenEntity>,
+    private readonly appErrorEmitter: AppErrorEmitterService,
   ) {}
 
   async onModuleInit() {
@@ -271,6 +274,11 @@ export class OAuthService implements OnModuleInit {
     const client = this.ensureConfigured();
 
     if (!tokenEntity.refreshToken) {
+      this.appErrorEmitter.emit({
+        source: 'oauth',
+        code: AppErrorCodes.OAUTH_NO_REFRESH_TOKEN,
+        message: `No refresh token stored for Google ${tokenEntity.purpose}. Please re-authenticate in Settings.`,
+      });
       throw new UnauthorizedException(
         `No refresh token available for ${tokenEntity.purpose}. Please re-authenticate with Google.`,
       );
@@ -293,10 +301,17 @@ export class OAuthService implements OnModuleInit {
 
       await this.tokenRepository.save(tokenEntity);
       this.logger.log(`OAuth access token refreshed for purpose: ${tokenEntity.purpose}`);
+      this.appErrorEmitter.clear(AppErrorCodes.OAUTH_REFRESH_FAILED);
+      this.appErrorEmitter.clear(AppErrorCodes.OAUTH_NO_REFRESH_TOKEN);
 
       return tokenEntity.accessToken;
     } catch (error) {
       this.logger.error(`Token refresh failed: ${error.message}`);
+      this.appErrorEmitter.emit({
+        source: 'oauth',
+        code: AppErrorCodes.OAUTH_REFRESH_FAILED,
+        message: `Google ${tokenEntity.purpose} access expired and could not be refreshed. Please re-authenticate in Settings.`,
+      });
       throw new UnauthorizedException(
         `Failed to refresh access token for ${tokenEntity.purpose}. Please re-authenticate with Google.`,
       );

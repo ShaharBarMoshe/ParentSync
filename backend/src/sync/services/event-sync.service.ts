@@ -21,6 +21,8 @@ import { MessageEntity } from '../../messages/entities/message.entity';
 import { ApprovalService } from './approval.service';
 import { EventDismissalService } from './event-dismissal.service';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 @Injectable()
 export class EventSyncService {
@@ -43,6 +45,7 @@ export class EventSyncService {
     @Inject(forwardRef(() => ApprovalService))
     private readonly approvalService: ApprovalService,
     private readonly eventDismissalService: EventDismissalService,
+    private readonly appErrorEmitter: AppErrorEmitterService,
   ) {}
 
   async syncSingleEventToGoogle(event: CalendarEventEntity): Promise<void> {
@@ -239,6 +242,16 @@ export class EventSyncService {
         this.logger.error(
           `Failed to sync event ${event.id} to Google: ${error.message}`,
         );
+        const isOAuthFailure = /re-authenticate with Google/i.test(error.message);
+        if (!isOAuthFailure) {
+          // OAuth failures already emit OAUTH_REFRESH_FAILED from OAuthService;
+          // don't double-notify. Surface other Google API failures separately.
+          this.appErrorEmitter.emit({
+            source: 'calendar',
+            code: AppErrorCodes.EVENT_SYNC_GOOGLE_FAILED,
+            message: `Failed to push events to Google Calendar. ${error.message}`,
+          });
+        }
         // Don't mark as synced - will retry on next run
       }
     }
