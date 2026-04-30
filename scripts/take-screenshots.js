@@ -104,6 +104,25 @@ async function scrollAndScreenshot(page, name, selector) {
   console.log(`  Saved: ${filePath}`);
 }
 
+async function scrollToHeadingAndShoot(page, name, headingText) {
+  const found = await page.evaluate((text) => {
+    const headings = Array.from(document.querySelectorAll('h3'));
+    const target = headings.find((h) => (h.textContent || '').includes(text));
+    if (!target) return false;
+    const section = target.closest('.settings-section') || target;
+    section.scrollIntoView({ behavior: 'instant', block: 'start' });
+    return true;
+  }, headingText);
+  if (!found) {
+    console.warn(`  Heading "${headingText}" not found — skipping ${name}.png`);
+    return;
+  }
+  await sleep(700);
+  const filePath = path.join(SCREENSHOTS_DIR, `${prefix}${name}.png`);
+  await page.screenshot({ path: filePath, fullPage: false });
+  console.log(`  Saved: ${filePath}`);
+}
+
 async function main() {
   fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
 
@@ -151,8 +170,25 @@ async function main() {
 
     console.log('Taking screenshots...');
 
-    // Dashboard
+    // Dashboard — wait extra long for dashboard-grid to render
     await takeScreenshot(page, 'dashboard', '#/', 2000);
+    try {
+      await page.waitForSelector('.dashboard-grid', { timeout: 30000 });
+      await sleep(1500);
+      await scrollAndScreenshot(page, 'dashboard', null);
+    } catch {}
+
+    // Dashboard scrolled to Upcoming Events (shows the approval buttons)
+    await page.evaluate(() => {
+      const headings = Array.from(document.querySelectorAll('h3'));
+      const target = headings.find((h) => (h.textContent || '').includes('Upcoming Events'));
+      if (target) {
+        const section = target.closest('.dashboard-section') || target;
+        section.scrollIntoView({ behavior: 'instant', block: 'start' });
+      }
+    });
+    await sleep(700);
+    await scrollAndScreenshot(page, 'dashboard-approval', null);
 
     // Calendar
     await takeScreenshot(page, 'calendar', '#/calendar', 2000);
@@ -168,6 +204,12 @@ async function main() {
 
     // Settings scrolled to Sync Schedule
     await scrollAndScreenshot(page, 'settings-schedule', '.hour-picker');
+
+    // Settings scrolled to AI Extraction Prompt
+    await scrollToHeadingAndShoot(page, 'settings-prompt', 'AI Extraction Prompt');
+
+    // Settings scrolled to Learned Exclusions
+    await scrollToHeadingAndShoot(page, 'settings-exclusions', 'Learned Exclusions');
 
     console.log('Done!');
   } catch (err) {

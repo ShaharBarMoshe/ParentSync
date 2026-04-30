@@ -3,11 +3,14 @@
 > A cross-platform desktop app that watches your WhatsApp parent groups and Gmail, uses an LLM to pull out the actual events (field trips, deadlines, doctor visits), routes each one through a WhatsApp approval channel, and syncs the survivors to a family Google Calendar.
 
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)](https://claude.com/claude-code)
+[![Docs site](https://img.shields.io/badge/docs-shaharbarmoshe.github.io%2FParentSync-2563eb)](https://shaharbarmoshe.github.io/ParentSync/)
 ![Electron](https://img.shields.io/badge/Electron-35-47848F?logo=electron&logoColor=white)
 ![NestJS](https://img.shields.io/badge/NestJS-10-E0234E?logo=nestjs&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-TypeORM-003B57?logo=sqlite&logoColor=white)
+
+📊 **[View the interactive presentation →](https://shaharbarmoshe.github.io/ParentSync/presentation.html)** · [PDF](https://shaharbarmoshe.github.io/ParentSync/ParentSync-Presentation.pdf) · [Docs site](https://shaharbarmoshe.github.io/ParentSync/)
 
 | Dashboard | Calendar | Settings |
 |---|---|---|

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ParentSync — Documentation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --text: #1e293b;
+    --muted: #64748b;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --border: #e2e8f0;
+    --bg: #f8fafc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.6;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 64px 24px; }
+  header h1 {
+    font-size: 48px;
+    font-weight: 800;
+    margin: 0 0 8px;
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  header p.tagline { color: var(--muted); font-size: 18px; margin: 0 0 32px; }
+  .badges { margin-bottom: 32px; }
+  .badges img { vertical-align: middle; margin-right: 4px; }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  a.card {
+    display: block;
+    padding: 20px 22px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: white;
+    color: inherit;
+    text-decoration: none;
+    transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+  }
+  a.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    border-color: var(--accent);
+  }
+  a.card .label { color: var(--accent); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+  a.card h3 { margin: 4px 0 4px; font-size: 18px; }
+  a.card p { margin: 0; color: var(--muted); font-size: 14px; }
+  a.card.featured {
+    grid-column: 1 / -1;
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+    color: white;
+    border: none;
+  }
+  a.card.featured .label { color: rgba(255,255,255,0.8); }
+  a.card.featured p { color: rgba(255,255,255,0.85); }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--border); padding-top: 24px; }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  code { background: rgba(15, 23, 42, 0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ParentSync</h1>
+    <p class="tagline">A cross-platform desktop app that watches your WhatsApp parent groups and Gmail, uses an LLM to pull out the actual events, routes each one through an optional approval channel, and syncs the survivors to a family Google Calendar.</p>
+    <div class="badges">
+      <a href="https://github.com/ShaharBarMoshe/ParentSync"><img src="https://img.shields.io/badge/github-ShaharBarMoshe%2FParentSync-181717?logo=github" alt="GitHub repo"></a>
+      <img src="https://img.shields.io/badge/built%20with-Claude%20Code-D97757" alt="Built with Claude Code">
+    </div>
+  </header>
+
+  <section class="grid">
+    <a class="card featured" href="presentation.html">
+      <div class="label">Walkthrough</div>
+      <h3>Interactive Presentation →</h3>
+      <p>25 slides covering features, setup, architecture, and the AI feedback loop. Renders in your browser.</p>
+    </a>
+
+    <a class="card" href="ParentSync-Presentation.pdf">
+      <div class="label">PDF</div>
+      <h3>Presentation (PDF)</h3>
+      <p>The same deck, downloadable.</p>
+    </a>
+
+    <a class="card" href="USER-GUIDE.md">
+      <div class="label">Reference</div>
+      <h3>User Guide</h3>
+      <p>What every screen does, in detail.</p>
+    </a>
+
+    <a class="card" href="ONBOARDING.md">
+      <div class="label">Setup</div>
+      <h3>Onboarding</h3>
+      <p>First-run flow: OAuth, WhatsApp QR, settings.</p>
+    </a>
+
+    <a class="card" href="ARCHITECTURE.md">
+      <div class="label">Engineering</div>
+      <h3>Architecture</h3>
+      <p>Module boundaries, ports &amp; adapters, sync orchestration.</p>
+    </a>
+
+    <a class="card" href="PROMPT-CUSTOMIZATION.md">
+      <div class="label">AI</div>
+      <h3>Prompt Customization</h3>
+      <p>Editing the LLM prompt and the 😢-reaction feedback loop.</p>
+    </a>
+
+    <a class="card" href="EVENT-DISMISSAL.md">
+      <div class="label">Feature</div>
+      <h3>Event Dismissal</h3>
+      <p>Cancel / delay detection design.</p>
+    </a>
+
+    <a class="card" href="EVENT-REMINDERS.md">
+      <div class="label">Feature</div>
+      <h3>Event Reminders</h3>
+      <p>The 24h-before-event reminder pipeline.</p>
+    </a>
+
+    <a class="card" href="GOOGLE-TASKS.md">
+      <div class="label">Feature</div>
+      <h3>Google Tasks</h3>
+      <p>Timed events vs. date-only tasks.</p>
+    </a>
+  </section>
+
+  <footer>
+    <p>Built end-to-end with <a href="https://claude.com/claude-code">Claude Code</a>. The implementation plan that drove development lives under <code>plan/</code> in the repo. Source: <a href="https://github.com/ShaharBarMoshe/ParentSync">github.com/ShaharBarMoshe/ParentSync</a>.</p>
+  </footer>
+</div>
+</body>
+</html>

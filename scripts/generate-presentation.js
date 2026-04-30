@@ -36,7 +36,7 @@ function buildHTML() {
     return '';
   };
 
-  const TOTAL_SLIDES = 21;
+  const TOTAL_SLIDES = 25;
 
   return `<!DOCTYPE html>
 <html>
@@ -357,7 +357,8 @@ function buildHTML() {
       <h3 style="margin-top: 16px;">Upcoming Events (bottom right)</h3>
       <ul>
         <li>Events in the <strong>next 7 days</strong> parsed from messages</li>
-        <li>Shows title, date, time, and location</li>
+        <li>Coloured pill: 🟠 <strong>Pending</strong>, 🟢 <strong>Approved</strong>, 🔴 <strong>Rejected</strong></li>
+        <li>Pending events have inline <strong>Approve / Reject</strong> buttons — same effect as 👍 / 😢 in WhatsApp</li>
         <li><strong>Checkmark icon</strong> = synced to Google Calendar</li>
       </ul>
     </div>
@@ -366,7 +367,7 @@ function buildHTML() {
       <ol class="steps">
         <li>Make sure <strong>WhatsApp is connected</strong> (Settings → WhatsApp → "Connected")</li>
         <li>Add at least one <strong>child with WhatsApp channels</strong> (Settings → Children)</li>
-        <li>Set your <strong>OpenRouter API key</strong> (Settings → OpenRouter)</li>
+        <li>Set your <strong>Gemini API key</strong> (Settings → Gemini AI), or use OpenRouter as alternative</li>
         <li>Click <strong>"Sync Now"</strong> on the Dashboard</li>
         <li>Wait 15-30 seconds — messages and events appear</li>
       </ol>
@@ -511,22 +512,58 @@ function buildHTML() {
   <p>Step-by-step setup for each integration</p>
 </div>
 
-<!-- Slide 15: How-To — OpenRouter -->
+<!-- Slide 15: How-To — Gemini (default) -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <div class="howto-header">
     <div class="howto-title">
-      <h2>Setup: OpenRouter (AI)</h2>
+      <h2>Setup: Gemini (default AI)</h2>
       <p>The AI engine that reads messages and extracts calendar events</p>
     </div>
   </div>
 
   <div class="howto-cols">
     <div class="howto-col">
-      <h3>What is OpenRouter?</h3>
-      <p>OpenRouter is a gateway to many AI models (GPT, Claude, Llama, etc.) through a single API key. ParentSync uses it to read WhatsApp and email messages and identify dates, events, and details.</p>
+      <h3>What is Gemini?</h3>
+      <p>Google's Gemini family of LLMs — fast, cheap, and very good at multilingual extraction. ParentSync uses it to read WhatsApp and email messages and identify dates, events, and details.</p>
       <div class="info-box">
-        <p>💡 Free models are available! The default model (<strong>qwen3.6-plus:free</strong>) costs nothing to use.</p>
+        <p>💡 The default model <code>gemini-2.5-flash-lite</code> is fast and cheap — typical extraction costs are negligible. A free tier is available too.</p>
+      </div>
+      <div class="info-box">
+        <p>🔁 Don't want Gemini? <strong>OpenRouter</strong> is supported as an alternative provider — see next slide.</p>
+      </div>
+    </div>
+    <div class="howto-col">
+      <h3>How to get your API key</h3>
+      <ol class="steps">
+        <li>Go to <strong>aistudio.google.com/apikey</strong></li>
+        <li>Sign in with your Google account</li>
+        <li>Click <strong>"Create API key"</strong></li>
+        <li>Copy the key</li>
+        <li>Paste in ParentSync → Settings → Gemini AI → API Key</li>
+        <li>Optionally pick a different model in the same section</li>
+      </ol>
+    </div>
+  </div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>15 / ${TOTAL_SLIDES}</span></div>
+</div>
+
+<!-- Slide 15b: How-To — OpenRouter (alternative) -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <div class="howto-header">
+    <div class="howto-title">
+      <h2>Alternative: OpenRouter</h2>
+      <p>One-stop shop for many LLM providers behind a single API key</p>
+    </div>
+  </div>
+
+  <div class="howto-cols">
+    <div class="howto-col">
+      <h3>What is OpenRouter?</h3>
+      <p>A gateway to many AI models (GPT, Claude, Llama, Qwen, etc.) through a single API key. Useful if you already have credits there, or if you want to A/B test models without changing keys.</p>
+      <div class="info-box">
+        <p>💡 Free models are available — typically labelled <code>:free</code>. They have rate limits but cost nothing.</p>
       </div>
     </div>
     <div class="howto-col">
@@ -538,9 +575,10 @@ function buildHTML() {
         <li>Copy the key (starts with <code>sk-or-</code>)</li>
         <li>Paste in ParentSync → Settings → OpenRouter → API Key</li>
       </ol>
+      <p style="margin-top: 12px; font-size: 16px; color: #64748b;">You can fill both keys; the active provider is whichever the build is wired to (Gemini by default).</p>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>15 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>16 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 16: How-To — Google OAuth -->
@@ -571,12 +609,13 @@ function buildHTML() {
         <li>Create <strong>OAuth consent screen</strong>
           <div class="step-detail">Add your email as a Test user</div></li>
         <li>Create <strong>OAuth Client ID</strong> (Web app)
-          <div class="step-detail">Redirect URI: <code>http://localhost:3000/api/auth/google/callback</code></div></li>
+          <div class="step-detail">Redirect URI: <code>http://localhost:41932/api/auth/google/callback</code></div></li>
         <li>Copy <strong>Client ID</strong> and <strong>Client Secret</strong> into ParentSync Settings</li>
+        <li><strong>Tip:</strong> switch the consent screen to <em>"In production"</em> — Test mode tokens expire after 7 days</li>
       </ol>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>16 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>17 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 17: How-To — Google OAuth page 2 -->
@@ -608,10 +647,10 @@ function buildHTML() {
       </div>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>17 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>18 / ${TOTAL_SLIDES}</span></div>
 </div>
 
-<!-- Slide 18: How-To — WhatsApp -->
+<!-- Slide 19: How-To — WhatsApp -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <div class="howto-header">
@@ -646,10 +685,10 @@ function buildHTML() {
       <p style="margin-top: 12px; font-size: 16px; color: #64748b;">Then go to <strong>Children</strong> in Settings, add a child, and type the exact WhatsApp group name.</p>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>18 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>19 / ${TOTAL_SLIDES}</span></div>
 </div>
 
-<!-- Slide 19: Architecture -->
+<!-- Slide 20: Architecture -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Under the Hood</h2>
@@ -663,12 +702,12 @@ function buildHTML() {
       <div class="arch-item"><div class="arch-label">Database</div><div class="arch-value">SQLite (local, no server)</div></div>
     </div>
     <div class="arch-row">
-      <div class="arch-item"><div class="arch-label">AI</div><div class="arch-value">OpenRouter (multiple LLM models)</div></div>
+      <div class="arch-item"><div class="arch-label">AI</div><div class="arch-value">Gemini (default) · OpenRouter swap-in</div></div>
       <div class="arch-item"><div class="arch-label">WhatsApp</div><div class="arch-value">whatsapp-web.js (Chromium)</div></div>
     </div>
   </div>
   <p style="margin-top: 24px; font-size: 18px;">All data stored locally on your machine. No cloud servers, no accounts to create. Just download, configure, and run.</p>
-  <div class="slide-footer"><span>ParentSync</span><span>19 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>20 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 20: Platform Support -->
@@ -690,10 +729,10 @@ function buildHTML() {
   <p style="margin-top: 20px; text-align: center; font-size: 20px; color: #64748b;">
     Built with Electron | All data stored locally | Private use
   </p>
-  <div class="slide-footer"><span>ParentSync</span><span>20 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>21 / ${TOTAL_SLIDES}</span></div>
 </div>
 
-<!-- Slide 21: Event Reminders -->
+<!-- Slide 22: Event Reminders -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Event Reminders</h2>
@@ -707,7 +746,55 @@ function buildHTML() {
     <li>Each event is reminded at most once (<code>reminderSent</code> flag)</li>
   </ul>
   <p style="margin-top: 16px; font-size: 16px; color: #64748b;">See <code>docs/EVENT-REMINDERS.md</code> for the full specification.</p>
-  <div class="slide-footer"><span>ParentSync</span><span>21 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>22 / ${TOTAL_SLIDES}</span></div>
+</div>
+
+<!-- Slide 23: AI Feedback Loop -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>AI Feedback Loop</h2>
+  <p>The system prompt that tells the LLM how to extract events is fully editable, and the app learns from every 😢 reaction.</p>
+  <div class="screenshot-grid">
+    <div class="col">
+      <div class="label">AI Extraction Prompt — editable from Settings</div>
+      <img src="${img('settings-prompt')}" alt="Settings — AI Extraction Prompt">
+    </div>
+    <div class="col">
+      <div class="label">Learned Exclusions — captured from 😢 reactions</div>
+      <img src="${img('settings-exclusions')}" alt="Settings — Learned Exclusions">
+    </div>
+  </div>
+  <p style="margin-top: 16px; font-size: 16px; color: #64748b;">Every 😢 saves the source message + the wrong title. The most recent 50 are appended to the prompt as "do NOT extract events for messages similar to these," so the LLM stops repeating the mistake. The parse cache keys include a hash of the prompt + exclusions — so feedback closes on the next sync, not 24h later.</p>
+  <div class="slide-footer"><span>ParentSync — Feedback Loop</span><span>23 / ${TOTAL_SLIDES}</span></div>
+</div>
+
+<!-- Slide 24: In-App Approval -->
+<div class="slide slide-screenshot">
+  <div class="accent-bar"></div>
+  <h2>In-App Approval</h2>
+  <div class="screenshot-container">
+    <img class="screenshot" src="${img('dashboard-approval')}" alt="Dashboard with approval pills + Approve/Reject buttons">
+  </div>
+  <div class="caption">Each upcoming event shows its status as a pill — 🟠 Pending, 🟢 Approved, 🔴 Rejected. Pending events have inline Approve / Reject buttons. Same effect as 👍 / 😢 in WhatsApp; reactions are reversible too — take back a 👍 to unsync from Google, take back a 😢 to clear the learned exclusion.</div>
+  <div class="slide-footer"><span>ParentSync — Approval</span><span>24 / ${TOTAL_SLIDES}</span></div>
+</div>
+
+<!-- Slide 25: Duplicate Suppression -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Duplicate Suppression</h2>
+  <p>One real-world WhatsApp message can describe the same gathering from multiple angles — a birthday is also a "meetup," a class trip is also a "ceremony." The LLM used to extract them as <em>separate</em> events at the same date+time. Now:</p>
+  <ul>
+    <li>Before sending an event for approval, the backend looks up other non-rejected events for the same child at the same date+time slot.</li>
+    <li>For each match, a focused LLM call asks <strong>"are these two events the same gathering?"</strong> The prompt is tiny and cheap.</li>
+    <li>If the answer is yes, the new event is silently rejected and never reaches your approval channel — the existing event remains the canonical record.</li>
+    <li>Date-only tasks (no time) skip the check entirely — the false-positive risk is too high without a time slot.</li>
+    <li>LLM hiccups default to "different" — a transient error never accidentally swallows a real event.</li>
+  </ul>
+  <div class="info-box">
+    <p>💡 The check pairs with the negative-feedback loop: even if a duplicate slips through, one 😢 reaction puts it in the learned-exclusions pool so it's gone for good.</p>
+  </div>
+  <div class="slide-footer"><span>ParentSync — Duplicate Suppression</span><span>25 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 </body>
