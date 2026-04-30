@@ -161,6 +161,45 @@ export class ApprovalService {
     }
   }
 
+  /**
+   * Public approve entry-point used by HTTP requests from the in-app button.
+   * Idempotent: if the event is already approved/rejected, returns the
+   * current state without re-running the approval side effects.
+   */
+  async approveEventById(id: string): Promise<CalendarEventEntity> {
+    const event = await this.eventRepository.findById(id);
+    if (!event) {
+      throw new Error(`Event ${id} not found`);
+    }
+    if (event.approvalStatus !== ApprovalStatus.PENDING) {
+      this.logger.debug(
+        `approveEventById no-op for ${id} — already ${event.approvalStatus}`,
+      );
+      return event;
+    }
+    await this.approveEvent(event);
+    return (await this.eventRepository.findById(id)) ?? event;
+  }
+
+  /**
+   * Public reject entry-point used by HTTP requests from the in-app button.
+   * Idempotent — see approveEventById.
+   */
+  async rejectEventById(id: string): Promise<CalendarEventEntity> {
+    const event = await this.eventRepository.findById(id);
+    if (!event) {
+      throw new Error(`Event ${id} not found`);
+    }
+    if (event.approvalStatus !== ApprovalStatus.PENDING) {
+      this.logger.debug(
+        `rejectEventById no-op for ${id} — already ${event.approvalStatus}`,
+      );
+      return event;
+    }
+    await this.rejectEvent(event);
+    return (await this.eventRepository.findById(id)) ?? event;
+  }
+
   private async approveEvent(event: CalendarEventEntity): Promise<void> {
     this.logger.log(`Event "${event.title}" approved`);
 

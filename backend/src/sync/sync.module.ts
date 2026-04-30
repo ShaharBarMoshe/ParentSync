@@ -10,6 +10,7 @@ import { ApprovalService } from './services/approval.service';
 import { EventDismissalService } from './services/event-dismissal.service';
 import { EventReminderService } from './services/event-reminder.service';
 import { SyncController } from './controllers/sync.controller';
+import { ApprovalController } from './controllers/approval.controller';
 import {
   SYNC_LOG_REPOSITORY,
   DISMISSAL_REPOSITORY,
@@ -27,7 +28,7 @@ import { SettingsModule } from '../settings/settings.module';
     LlmModule,
     SettingsModule,
   ],
-  controllers: [SyncController],
+  controllers: [SyncController, ApprovalController],
   providers: [
     {
       provide: SYNC_LOG_REPOSITORY,

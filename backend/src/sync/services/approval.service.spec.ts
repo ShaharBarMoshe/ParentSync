@@ -657,4 +657,62 @@ describe('ApprovalService', () => {
       expect(eventSyncService.syncSingleEventToGoogle).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('approveEventById / rejectEventById (in-app)', () => {
+    it('approves a pending event and triggers Google sync', async () => {
+      const pending = { ...mockEvent, approvalStatus: ApprovalStatus.PENDING };
+      eventRepository.findById = jest.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce({
+        ...pending,
+        approvalStatus: ApprovalStatus.APPROVED,
+      });
+
+      const result = await service.approveEventById(pending.id);
+
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        pending.id,
+        expect.objectContaining({ approvalStatus: ApprovalStatus.APPROVED }),
+      );
+      expect(eventSyncService.syncSingleEventToGoogle).toHaveBeenCalled();
+      expect(result.approvalStatus).toBe(ApprovalStatus.APPROVED);
+    });
+
+    it('rejects a pending event and captures a negative example', async () => {
+      const pending = { ...mockEvent, approvalStatus: ApprovalStatus.PENDING };
+      eventRepository.findById = jest.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce({
+        ...pending,
+        approvalStatus: ApprovalStatus.REJECTED,
+      });
+      messageRepository.findById.mockResolvedValue({
+        id: 'msg-1',
+        content: 'something',
+        channel: 'ch',
+      });
+
+      const result = await service.rejectEventById(pending.id);
+
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        pending.id,
+        expect.objectContaining({ approvalStatus: ApprovalStatus.REJECTED }),
+      );
+      expect(negativeExampleRepository.create).toHaveBeenCalled();
+      expect(result.approvalStatus).toBe(ApprovalStatus.REJECTED);
+    });
+
+    it('is a no-op when the event is already approved', async () => {
+      const approved = { ...mockEvent, approvalStatus: ApprovalStatus.APPROVED };
+      eventRepository.findById = jest.fn().mockResolvedValue(approved);
+
+      await service.approveEventById(approved.id);
+
+      expect(eventRepository.update).not.toHaveBeenCalled();
+      expect(eventSyncService.syncSingleEventToGoogle).not.toHaveBeenCalled();
+    });
+
+    it('throws when event id does not exist', async () => {
+      eventRepository.findById = jest.fn().mockResolvedValue(null);
+      await expect(service.approveEventById('missing')).rejects.toThrow(
+        /not found/,
+      );
+    });
+  });
 });

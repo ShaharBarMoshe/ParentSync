@@ -107,6 +107,12 @@ export const messagesApi = {
 
 // Calendar Events API
 
+export type ApprovalStatus =
+  | 'none'
+  | 'pending_approval'
+  | 'approved'
+  | 'rejected';
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -119,6 +125,7 @@ export interface CalendarEvent {
   googleEventId: string | null;
   syncType: 'event' | 'task';
   syncedToGoogle: boolean;
+  approvalStatus: ApprovalStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -135,6 +142,17 @@ export const calendarApi = {
     api.get<CalendarEvent>(`/calendar/events/${id}`).then((r) => r.data),
   syncEvent: (id: string) =>
     api.post(`/calendar/events/${id}/sync`).then((r) => r.data),
+};
+
+export const approvalApi = {
+  approve: (id: string) =>
+    api
+      .post<CalendarEvent>(`/approval/events/${id}/approve`)
+      .then((r) => r.data),
+  reject: (id: string) =>
+    api
+      .post<CalendarEvent>(`/approval/events/${id}/reject`)
+      .then((r) => r.data),
 };
 
 // Sync API

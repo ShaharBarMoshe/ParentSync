@@ -282,6 +282,10 @@
     border-bottom: none;
   }
 
+  &--rejected {
+    opacity: 0.6;
+  }
+
   &-header {
     display: flex;
     align-items: center;
@@ -290,9 +294,14 @@
   }
 
   &-title {
+    flex: 1;
+    min-width: 0;
     font-size: 14px;
     font-weight: 500;
     color: var(--text-h);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   &-synced {
@@ -301,11 +310,44 @@
     flex-shrink: 0;
   }
 
+  &-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+
+    &--pending {
+      background: rgba(217, 119, 6, 0.12);
+      color: rgb(180, 83, 9);
+    }
+
+    &--approved {
+      background: rgba(22, 163, 74, 0.12);
+      color: rgb(21, 128, 61);
+    }
+
+    &--rejected {
+      background: rgba(220, 38, 38, 0.12);
+      color: rgb(185, 28, 28);
+    }
+  }
+
   &-details {
     display: flex;
     gap: $spacing-md;
     font-size: 13px;
     color: var(--text-muted);
+  }
+
+  &-actions {
+    display: flex;
+    gap: $spacing-sm;
+    margin-top: $spacing-sm;
   }
 }
 

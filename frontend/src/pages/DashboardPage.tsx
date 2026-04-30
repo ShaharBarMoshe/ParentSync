@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { messagesApi, calendarApi, syncApi } from '../services/api';
+import { messagesApi, calendarApi, syncApi, approvalApi } from '../services/api';
 import type { Message, CalendarEvent, SyncLog, ChannelSyncDetail } from '../services/api';
 import Icon from '../components/icons/Icon';
 
@@ -14,6 +14,30 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+
+  async function handleApproval(eventId: string, action: 'approve' | 'reject') {
+    setApprovingId(eventId);
+    try {
+      const updated =
+        action === 'approve'
+          ? await approvalApi.approve(eventId)
+          : await approvalApi.reject(eventId);
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === eventId
+            ? { ...e, approvalStatus: updated.approvalStatus }
+            : e,
+        ),
+      );
+    } catch (e: any) {
+      setError(
+        `Failed to ${action} event: ${e?.response?.data?.message ?? e?.message ?? 'unknown error'}`,
+      );
+    } finally {
+      setApprovingId(null);
+    }
+  }
 
   const loadData = useCallback(async () => {
     try {
@@ -302,13 +326,33 @@ export default function DashboardPage() {
             </div>
           ) : (
             <ul className="dashboard-events">
-              {events.map((evt) => (
-                <li key={evt.id} className={`dashboard-event${evt.syncType === 'task' ? ' dashboard-event--task' : ''}`}>
+              {events.map((evt) => {
+                const isPending = evt.approvalStatus === 'pending_approval';
+                const isApproved = evt.approvalStatus === 'approved';
+                const isRejected = evt.approvalStatus === 'rejected';
+                const busy = approvingId === evt.id;
+                return (
+                <li key={evt.id} className={`dashboard-event${evt.syncType === 'task' ? ' dashboard-event--task' : ''}${isRejected ? ' dashboard-event--rejected' : ''}`}>
                   <div className="dashboard-event-header">
                     <span className="dashboard-event-type" title={evt.syncType === 'task' ? 'Task' : 'Event'}>
                       <Icon name={evt.syncType === 'task' ? 'square-check' : 'calendar'} size={14} />
                     </span>
                     <span className="dashboard-event-title">{evt.title}</span>
+                    {isPending && (
+                      <span className="dashboard-event-status dashboard-event-status--pending" title="Pending approval">
+                        <Icon name="clock" size={14} /> Pending
+                      </span>
+                    )}
+                    {isApproved && (
+                      <span className="dashboard-event-status dashboard-event-status--approved" title="Approved">
+                        <Icon name="circle-check" size={14} /> Approved
+                      </span>
+                    )}
+                    {isRejected && (
+                      <span className="dashboard-event-status dashboard-event-status--rejected" title="Rejected">
+                        <Icon name="circle-x" size={14} /> Rejected
+                      </span>
+                    )}
                     {evt.syncedToGoogle && (
                       <span className="dashboard-event-synced" title={evt.syncType === 'task' ? 'Synced to Google Tasks' : 'Synced to Google Calendar'}>
                         <Icon name="circle-check" size={16} />
@@ -325,8 +369,29 @@ export default function DashboardPage() {
                       {evt.source === 'whatsapp' ? <Icon name="whatsapp" size={14} /> : <Icon name="mail" size={14} />}
                     </span>
                   )}
+                  {isPending && (
+                    <div className="dashboard-event-actions">
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--primary"
+                        disabled={busy}
+                        onClick={() => handleApproval(evt.id, 'approve')}
+                      >
+                        <Icon name="check" size={14} /> Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--secondary"
+                        disabled={busy}
+                        onClick={() => handleApproval(evt.id, 'reject')}
+                      >
+                        <Icon name="x" size={14} /> Reject
+                      </button>
+                    </div>
+                  )}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </div>
