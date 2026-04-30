@@ -27,6 +27,7 @@ CRITICAL RULES:
 - If a date format is DD.MM or D.M (without year), interpret as day.month of the CURRENT or NEXT occurrence relative to the message date. For example, if the current date is 2026-04-17 and the message says "ב-1.5", that means May 1st = 2026-05-01. Similarly, "ב-15.4" means April 15th — if that date has already passed this year, use next year.
 - IMPORTANT: "ב-1.5" means "on the 1st of May" (day=1, month=5). "ב-15.3" means "on the 15th of March" (day=15, month=3). The format is ALWAYS day.month, never month.day.
 - Return ONLY the JSON array, no other text or markdown formatting.
+- Single-gathering rule: if a single message describes ONE gathering (birthday party, playdate, meeting, doctor visit, ceremony, performance) from multiple angles — e.g., once as "celebration" and once as "meeting", or once as "arrival" and once as "visit" — produce AT MOST ONE event. Two events that share the same date + time + location are duplicates: pick the most SPECIFIC title (e.g., "יום הולדת" beats "מפגש"; "מבחן באנגלית" beats "שיעור אנגלית") and combine the relevant details into a single description.
 
 WhatsApp chat format:
 - Messages may appear as "[HH:MM, M/D/YYYY] phone: text". The timestamp in brackets is when the message was SENT, not necessarily when an event occurs.
@@ -120,6 +121,9 @@ Example output: [{"title":"מפגש","date":"2026-03-18","time":"16:00"}]
 
 Example input: "מחר אחרי הצהריים דניאל מגיע לשחק"
 Example output: [{"title":"דניאל מגיע לשחק","date":"2026-03-14"}]
+
+Example input: "תזכורת: גיא, ליהי ויהונתן מחכים לכם ביום שישי הקרוב ב-12:30 בבילון בקניון! במידה ומגיעים אחים - הם מוזמנים בשמחה להצטרף לחגיגה ולאוכל, רק קחו בחשבון שהפעילות במכונות המשחק עבורם היא בתשלום נפרד."
+Example output: [{"title":"יום הולדת בבילון","date":"2026-03-20","time":"12:30","location":"בילון בקניון","description":"גיא, ליהי ויהונתן מחכים לכם. אחים מוזמנים להצטרף לחגיגה ולאוכל. הפעילות במכונות המשחק בתשלום נפרד."}]
 
 Event cancellation, dismissal, and delay:
 - If a message says an event is CANCELLED, DISMISSED, or NO LONGER HAPPENING (בוטל, לא מתקיים, בוטלה, מבוטל), return an event with "action": "cancel".
