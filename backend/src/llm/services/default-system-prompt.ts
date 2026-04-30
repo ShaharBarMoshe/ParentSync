@@ -43,6 +43,12 @@ Discussion context — when multiple messages discuss scheduling:
 - If a single authoritative message (from a teacher, admin, or organizer) states a date, that IS the final date even without discussion.
 - If a message describes a planned activity with a clear DATE but NO specific time, still create the event WITHOUT the "time" field. These will be created as calendar tasks (to-do items). A clear date is enough — a specific time is NOT required.
 
+Routine school schedules (מערכת):
+- A daily / weekly class timetable that lists routine subjects per lesson number is NOT a list of events. Common forms: "מערכת למחר:", "מערכת היום:", "מערכת ליום ראשון:", followed by lines like "שיעור 1- עברית", "שיעור 2- חשבון". DO NOT create one event per lesson — these are routine school.
+- Any equipment / preparation list that accompanies a schedule (typically introduced by "ציוד:", "להביא:", "צריך להביא:", "לארוז:", "ציוד נדרש:") IS an actionable task. Extract ONLY that portion as a single task titled "להביא ציוד" with the items in the description.
+- Within a schedule, only call out items that are NOT routine: a test (מבחן), trip (טיול), special day (יום ספורט, יום לבן, חגיגה, יום פתוח), or any explicit one-off event. Routine subjects (עברית, חשבון, אנגלית, ספורט as a regular class, חינוך גופני, אומנות, הללוהו במחול) are NOT events.
+- If a schedule message contains NEITHER an equipment list NOR a non-routine item, return [].
+
 Action items (payments, forms, documents, things to bring/wear):
 - Messages asking to pay, fill a form, sign a document, bring an item, wear specific clothing, or complete any action are actionable tasks — extract them as events WITHOUT a time field.
 - If the message contains a URL or link, include it in the "description" field.
@@ -93,6 +99,15 @@ Example output: [{"title":"יום ספורט","date":"2026-03-14","description":
 
 Example input: "תזכורת: להביא מחברת מתמטיקה ומספריים ליום ראשון"
 Example output: [{"title":"להביא ציוד","date":"2026-03-15","description":"להביא: מחברת מתמטיקה, מספריים"}]
+
+Example input: "מערכת למחר:\nשיעור 1- עברית.\nשיעור 2- עברית.\nשיעור 3- הללוהו במחול.\nשיעור 4- חשבון.\nשיעור 5- חשבון.\nשיעור 6- הללוהו במחול.\n\nציוד:\nמחברת אותיות הכתב ומחברת עברית.\nשבילים 4, עזרים ומחברת חשבון."
+Example output: [{"title":"להביא ציוד","date":"2026-03-14","description":"מחברת אותיות הכתב, מחברת עברית, שבילים 4, עזרים, מחברת חשבון"}]
+
+Example input: "מערכת ליום שלישי:\nשיעור 1- מבחן באנגלית.\nשיעור 2- חשבון.\nציוד: ספר אנגלית, מחברת חשבון."
+Example output: [{"title":"מבחן באנגלית","date":"2026-03-17"},{"title":"להביא ציוד","date":"2026-03-17","description":"ספר אנגלית, מחברת חשבון"}]
+
+Example input: "מערכת היום:\nעברית, חשבון, מדעים, אומנות."
+Example output: []
 
 Example input: "[15:47, 4/3/2026] +972 50-408-8090: דניאל הולך לגינה ליד גן לילי בסביבות השעה 16:00\\n[15:54, 4/3/2026] +972 54-722-1506: נגיע עוד 20 דקות\\n[15:59, 4/3/2026] +972 50-389-7893: נגיע עוד 20 דקות"
 Example output: []
