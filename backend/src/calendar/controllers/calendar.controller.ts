@@ -20,7 +20,7 @@ import type { IEventRepository } from '../interfaces/event-repository.interface'
 import type { IGoogleCalendarService } from '../interfaces/google-calendar-service.interface';
 import { CreateCalendarEventDto } from '../dto/create-calendar-event.dto';
 import { UpdateCalendarEventDto } from '../dto/update-calendar-event.dto';
-import { PaginationDto } from '../../shared/dto/pagination.dto';
+import { GetEventsQueryDto } from '../dto/get-events-query.dto';
 
 @ApiTags('calendar')
 @Controller('calendar')
@@ -38,18 +38,13 @@ export class CalendarController {
       'Get calendar events. Optional `from`/`to` (YYYY-MM-DD) filters by event date and bypasses pagination.',
   })
   @ApiResponse({ status: 200, description: 'Events retrieved' })
-  async getEvents(
-    @Query() pagination: PaginationDto,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
-    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-    if (from && to && dateRe.test(from) && dateRe.test(to)) {
-      return this.eventRepository.findInDateRange(from, to);
+  async getEvents(@Query() query: GetEventsQueryDto) {
+    if (query.from && query.to) {
+      return this.eventRepository.findInDateRange(query.from, query.to);
     }
     const events = await this.eventRepository.findAll();
-    const offset = pagination.offset ?? 0;
-    const limit = pagination.limit ?? 50;
+    const offset = query.offset ?? 0;
+    const limit = query.limit ?? 50;
     return events.slice(offset, offset + limit);
   }
 
