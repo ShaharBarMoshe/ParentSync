@@ -58,6 +58,7 @@ describe('EventSyncService', () => {
         Promise.resolve({ id: 'event-' + Math.random(), ...data }),
       ),
       findUnsynced: jest.fn().mockResolvedValue([]),
+      findSameSlotForChild: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
       findByTitleDateTimeChild: jest.fn().mockResolvedValue(null),
     };
@@ -83,6 +84,7 @@ describe('EventSyncService', () => {
           return result;
         },
       ),
+      eventsAreIdentical: jest.fn().mockResolvedValue(false),
     };
 
     settingsService = {
@@ -610,6 +612,100 @@ describe('EventSyncService', () => {
       expect(result.eventsSynced).toBe(2);
       expect(googleCalendarService.createEvent).toHaveBeenCalledTimes(1);
       expect(googleTasksService.createTask).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('duplicate detection before approval', () => {
+    it('suppresses approval and marks REJECTED when an existing event at same slot is identical', async () => {
+      jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
+
+      const incoming = makeMessage({
+        id: 'msg-dup',
+        content: 'יום הולדת בבילון מחר ב-12:30',
+        timestamp: new Date('2026-04-04T11:00:00'),
+      });
+
+      messageRepository.findUnparsed.mockResolvedValue([incoming]);
+      childService.findById.mockResolvedValue(null);
+      messageParserService.parseMessage.mockResolvedValue([
+        {
+          title: 'מפגש בבילון',
+          date: '2026-04-05',
+          time: '12:30',
+          location: 'בילון',
+          description: '',
+        },
+      ]);
+      const existing = {
+        id: 'existing-1',
+        title: 'יום הולדת בבילון',
+        date: '2026-04-05',
+        time: '12:30',
+        childId: undefined,
+        approvalStatus: 'pending_approval',
+      };
+      eventRepository.findSameSlotForChild.mockResolvedValue([existing]);
+      messageParserService.eventsAreIdentical.mockResolvedValue(true);
+      settingsService.findByKey.mockImplementation((key: string) =>
+        key === 'approval_channel'
+          ? Promise.resolve({ value: 'Family' })
+          : Promise.reject(new Error('Not found')),
+      );
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+
+      await service.syncEvents();
+
+      expect(messageParserService.eventsAreIdentical).toHaveBeenCalled();
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ approvalStatus: 'rejected' }),
+      );
+
+      jest.useRealTimers();
+    });
+
+    it('still sends for approval when LLM judges siblings as different', async () => {
+      jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
+
+      messageRepository.findUnparsed.mockResolvedValue([
+        makeMessage({
+          id: 'msg-distinct',
+          content: 'משהו',
+          timestamp: new Date('2026-04-04T11:00:00'),
+        }),
+      ]);
+      childService.findById.mockResolvedValue(null);
+      messageParserService.parseMessage.mockResolvedValue([
+        {
+          title: 'תור לרופא',
+          date: '2026-04-05',
+          time: '12:30',
+          location: 'מרפאה',
+          description: '',
+        },
+      ]);
+      eventRepository.findSameSlotForChild.mockResolvedValue([
+        {
+          id: 'existing-1',
+          title: 'שיעור פסנתר',
+          date: '2026-04-05',
+          time: '12:30',
+        },
+      ]);
+      messageParserService.eventsAreIdentical.mockResolvedValue(false);
+      settingsService.findByKey.mockImplementation((key: string) =>
+        key === 'approval_channel'
+          ? Promise.resolve({ value: 'Family' })
+          : Promise.reject(new Error('Not found')),
+      );
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+
+      await service.syncEvents();
+
+      expect(approvalService.sendForApproval).toHaveBeenCalledTimes(1);
+
+      jest.useRealTimers();
     });
   });
 

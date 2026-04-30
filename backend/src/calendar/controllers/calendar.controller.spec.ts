@@ -50,6 +50,7 @@ describe('CalendarController', () => {
     const mockRepo: jest.Mocked<IEventRepository> = {
       findAll: jest.fn(),
       findInDateRange: jest.fn(),
+      findSameSlotForChild: jest.fn(),
       findById: jest.fn(),
       findUnsynced: jest.fn(),
       create: jest.fn(),

@@ -23,6 +23,23 @@ export class TypeOrmEventRepository implements IEventRepository {
     });
   }
 
+  findSameSlotForChild(
+    date: string,
+    time: string | null,
+    childId: string | null | undefined,
+    excludeId: string,
+  ): Promise<CalendarEventEntity[]> {
+    return this.repo.find({
+      where: {
+        date,
+        time: time ?? IsNull(),
+        childId: (childId ?? IsNull()) as never,
+        id: Not(excludeId),
+        approvalStatus: Not(ApprovalStatus.REJECTED),
+      },
+    });
+  }
+
   findById(id: string): Promise<CalendarEventEntity | null> {
     return this.repo.findOneBy({ id });
   }

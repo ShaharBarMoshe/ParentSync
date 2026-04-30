@@ -53,6 +53,15 @@ export class TypeOrmNegativeExampleRepository
     await this.repo.delete(id);
   }
 
+  async deleteByMessageContent(messageContent: string): Promise<boolean> {
+    const contentHash = crypto
+      .createHash('sha256')
+      .update(messageContent)
+      .digest('hex');
+    const result = await this.repo.delete({ contentHash });
+    return (result.affected ?? 0) > 0;
+  }
+
   async deleteAll(): Promise<void> {
     await this.repo.clear();
   }

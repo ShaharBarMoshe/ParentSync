@@ -65,6 +65,7 @@ describe('ApprovalService', () => {
 
     eventSyncService = {
       syncSingleEventToGoogle: jest.fn().mockResolvedValue(undefined),
+      unsyncEventFromGoogle: jest.fn().mockResolvedValue(undefined),
     };
 
     dismissalRepository = {
@@ -100,6 +101,7 @@ describe('ApprovalService', () => {
       findAll: jest.fn().mockResolvedValue([]),
       findRecent: jest.fn().mockResolvedValue([]),
       delete: jest.fn(),
+      deleteByMessageContent: jest.fn().mockResolvedValue(false),
       deleteAll: jest.fn(),
       count: jest.fn().mockResolvedValue(0),
     };
@@ -713,6 +715,79 @@ describe('ApprovalService', () => {
       await expect(service.approveEventById('missing')).rejects.toThrow(
         /not found/,
       );
+    });
+  });
+
+  describe('reaction removal — undo approve / reject', () => {
+    it('undoes an approval when 👍 is removed: unsync from Google + back to PENDING', async () => {
+      const approved = {
+        ...mockEvent,
+        approvalStatus: ApprovalStatus.APPROVED,
+        syncedToGoogle: true,
+        googleEventId: 'g-123',
+      };
+      eventRepository.findByApprovalMessageId.mockResolvedValue(approved);
+
+      await service.handleReaction({
+        msgId: approved.approvalMessageId,
+        reaction: '',
+        senderId: 's',
+        timestamp: 0,
+      });
+
+      expect(eventSyncService.unsyncEventFromGoogle).toHaveBeenCalledWith(
+        approved,
+      );
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        approved.id,
+        expect.objectContaining({ approvalStatus: ApprovalStatus.PENDING }),
+      );
+    });
+
+    it('undoes a rejection when 😢 is removed: clears the negative example + back to PENDING', async () => {
+      const rejected = {
+        ...mockEvent,
+        approvalStatus: ApprovalStatus.REJECTED,
+      };
+      eventRepository.findByApprovalMessageId.mockResolvedValue(rejected);
+      messageRepository.findById.mockResolvedValue({
+        id: 'msg-1',
+        content: 'תודה למורה',
+        channel: 'ch',
+      });
+      negativeExampleRepository.deleteByMessageContent = jest
+        .fn()
+        .mockResolvedValue(true);
+
+      await service.handleReaction({
+        msgId: rejected.approvalMessageId,
+        reaction: '',
+        senderId: 's',
+        timestamp: 0,
+      });
+
+      expect(negativeExampleRepository.deleteByMessageContent).toHaveBeenCalledWith(
+        'תודה למורה',
+      );
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        rejected.id,
+        expect.objectContaining({ approvalStatus: ApprovalStatus.PENDING }),
+      );
+    });
+
+    it('does nothing when an empty-reaction event arrives for a still-PENDING event', async () => {
+      const pending = { ...mockEvent, approvalStatus: ApprovalStatus.PENDING };
+      eventRepository.findByApprovalMessageId.mockResolvedValue(pending);
+
+      await service.handleReaction({
+        msgId: pending.approvalMessageId,
+        reaction: '',
+        senderId: 's',
+        timestamp: 0,
+      });
+
+      expect(eventSyncService.unsyncEventFromGoogle).not.toHaveBeenCalled();
+      expect(negativeExampleRepository.deleteByMessageContent).not.toHaveBeenCalled();
     });
   });
 });

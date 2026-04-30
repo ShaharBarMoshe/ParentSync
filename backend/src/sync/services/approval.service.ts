@@ -131,6 +131,17 @@ export class ApprovalService {
       payload.msgId,
     );
     if (event) {
+      // Empty reaction string means the user removed their reaction in
+      // WhatsApp — undo whatever state it produced.
+      if (payload.reaction === '') {
+        if (event.approvalStatus === ApprovalStatus.APPROVED) {
+          await this.unapproveEvent(event);
+        } else if (event.approvalStatus === ApprovalStatus.REJECTED) {
+          await this.unrejectEvent(event);
+        }
+        return;
+      }
+
       if (event.approvalStatus !== ApprovalStatus.PENDING) {
         this.logger.debug(
           `Ignoring reaction on event ${event.id} — already ${event.approvalStatus}`,
@@ -150,14 +161,72 @@ export class ApprovalService {
     const dismissal = await this.dismissalRepository.findByApprovalMessageId(
       payload.msgId,
     );
-    if (!dismissal || dismissal.status !== 'pending_approval') {
+    if (!dismissal) return;
+
+    // Removal of a reaction on a dismissal-approval message reverts it to
+    // pending so the user can re-react. We don't undo the calendar effect of
+    // an already-applied dismissal here — that's intentionally beyond scope.
+    if (payload.reaction === '' && dismissal.status !== 'pending_approval') {
+      await this.dismissalRepository.update(dismissal.id, {
+        status: 'pending_approval',
+      });
+      this.logger.log(
+        `Dismissal ${dismissal.id} reverted to pending after reaction removed`,
+      );
       return;
     }
+
+    if (dismissal.status !== 'pending_approval') return;
 
     if (payload.reaction === '👍') {
       await this.eventDismissalService.approveDismissal(dismissal);
     } else if (payload.reaction === '😢') {
       await this.eventDismissalService.rejectDismissal(dismissal);
+    }
+  }
+
+  /**
+   * Reverse of approveEvent: a 👍 reaction was removed from the WhatsApp
+   * approval message. Pull the event from Google Calendar (if it landed
+   * there) and put the local record back into PENDING so the user can
+   * re-decide.
+   */
+  private async unapproveEvent(event: CalendarEventEntity): Promise<void> {
+    this.logger.log(`Event "${event.title}" approval undone`);
+    await this.eventSyncService.unsyncEventFromGoogle(event);
+    await this.eventRepository.update(event.id, {
+      approvalStatus: ApprovalStatus.PENDING,
+    });
+  }
+
+  /**
+   * Reverse of rejectEvent: a 😢 reaction was removed. Put the event back
+   * into PENDING and remove the negative-example we captured so the LLM
+   * stops "learning to skip" the original message.
+   */
+  private async unrejectEvent(event: CalendarEventEntity): Promise<void> {
+    this.logger.log(`Event "${event.title}" rejection undone`);
+    await this.eventRepository.update(event.id, {
+      approvalStatus: ApprovalStatus.PENDING,
+    });
+
+    if (!event.sourceId) return;
+    try {
+      const sourceMessage = await this.messageRepository.findById(event.sourceId);
+      if (!sourceMessage?.content) return;
+      const removed =
+        await this.negativeExampleRepository.deleteByMessageContent(
+          sourceMessage.content,
+        );
+      if (removed) {
+        this.logger.log(
+          `Removed negative example for un-rejected event "${event.title}"`,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to remove negative example for event ${event.id}: ${(error as Error).message}`,
+      );
     }
   }
 

@@ -57,6 +57,37 @@ export class EventSyncService {
     }
   }
 
+  /**
+   * Inverse of `syncSingleEventToGoogle`: remove the event from the user's
+   * Google Calendar (if it was ever pushed) and clear the local sync flags.
+   * Called when a 👍 approval reaction is removed from WhatsApp — see
+   * ApprovalService.unapproveEvent().
+   *
+   * Best-effort: if the Google delete fails (e.g. token expired) we still
+   * clear the local flags so the event can be re-approved cleanly later.
+   */
+  async unsyncEventFromGoogle(event: CalendarEventEntity): Promise<void> {
+    if (event.googleEventId && event.syncType !== 'task') {
+      try {
+        const calendarId = await this.getCalendarId();
+        await this.googleCalendarService.deleteEvent(
+          event.googleEventId,
+          calendarId,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to delete event ${event.id} from Google Calendar (continuing anyway): ${(error as Error).message}`,
+        );
+      }
+    }
+    await this.eventRepository.update(event.id, {
+      syncedToGoogle: false,
+      // Cast to never: the entity declares googleEventId as string but the
+      // column is nullable; we want to clear it on un-approve.
+      googleEventId: null as unknown as string,
+    });
+  }
+
   @OnEvent('sync.completed')
   async handleSyncCompleted(): Promise<void> {
     try {
@@ -188,6 +219,23 @@ export class EventSyncService {
               });
               continue;
             }
+
+            // Duplicate-detection: if there's already a non-rejected event
+            // for the same child at the same date+time, ask the LLM whether
+            // the two refer to the same gathering. If yes, suppress the
+            // approval message and mark this one rejected so it doesn't
+            // resurface — the existing event is the canonical record.
+            const isDup = await this.detectDuplicateOfExisting(savedEvent);
+            if (isDup) {
+              this.logger.log(
+                `Suppressing approval for duplicate event "${savedEvent.title}" — matches an existing event at ${savedEvent.date}${savedEvent.time ? ' ' + savedEvent.time : ''}`,
+              );
+              await this.eventRepository.update(savedEvent.id, {
+                approvalStatus: ApprovalStatus.REJECTED,
+              });
+              continue;
+            }
+
             await this.approvalService.sendForApproval(savedEvent);
           }
         }
@@ -500,6 +548,46 @@ export class EventSyncService {
     now: Date,
   ): boolean {
     return this.isDateInPast(event.date, event.time, now);
+  }
+
+  /**
+   * Returns true if `candidate` shares date+time with another event for the
+   * same child and the LLM judges them to be the same gathering. The check
+   * is skipped for events without a time (date-only tasks) — they're noisy
+   * to compare and we'd rather over-approve than over-suppress.
+   */
+  private async detectDuplicateOfExisting(
+    candidate: CalendarEventEntity,
+  ): Promise<boolean> {
+    if (!candidate.time) return false;
+    const siblings = await this.eventRepository.findSameSlotForChild(
+      candidate.date,
+      candidate.time,
+      candidate.childId,
+      candidate.id,
+    );
+    if (siblings.length === 0) return false;
+
+    for (const sibling of siblings) {
+      const same = await this.messageParserService.eventsAreIdentical(
+        {
+          title: candidate.title,
+          date: candidate.date,
+          time: candidate.time,
+          location: candidate.location,
+          description: candidate.description,
+        },
+        {
+          title: sibling.title,
+          date: sibling.date,
+          time: sibling.time,
+          location: sibling.location,
+          description: sibling.description,
+        },
+      );
+      if (same) return true;
+    }
+    return false;
   }
 
   private isDateInPast(

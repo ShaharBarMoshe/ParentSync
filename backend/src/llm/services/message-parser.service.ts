@@ -420,4 +420,53 @@ export class MessageParserService {
     const hash = crypto.createHash('sha256').update(content).digest('hex');
     return `msg-parse:${promptVersion}:${hash}`;
   }
+
+  /**
+   * Asks the LLM whether two events refer to the same real-world gathering.
+   * Used to suppress duplicate approval messages when a fresh extraction
+   * lands at the same date+time as an existing event but with a different
+   * title (e.g. "יום הולדת בבילון" vs "מפגש בבילון").
+   *
+   * Returns false on any error so we never accidentally swallow a real
+   * extraction because of a transient LLM hiccup.
+   */
+  async eventsAreIdentical(
+    a: { title: string; date: string; time?: string | null; location?: string | null; description?: string | null },
+    b: { title: string; date: string; time?: string | null; location?: string | null; description?: string | null },
+  ): Promise<boolean> {
+    const fmt = (e: typeof a) =>
+      [
+        `Title: ${e.title}`,
+        `Date: ${e.date}`,
+        `Time: ${e.time ?? 'all-day'}`,
+        `Location: ${e.location ?? 'none'}`,
+        `Description: ${e.description ?? 'none'}`,
+      ].join('\n');
+
+    const userMessage =
+      'Decide whether the following two calendar events refer to the SAME real-world gathering.\n' +
+      'They share a date and time slot but may have been described from different angles in different messages.\n' +
+      'Reply with exactly "yes" if identical, or "no" if they are different gatherings. No other words.\n\n' +
+      `Event A:\n${fmt(a)}\n\n` +
+      `Event B:\n${fmt(b)}`;
+
+    try {
+      const response = await this.llmService.callLLM(
+        [
+          { role: 'system', content: 'You are a precise classifier. Reply only "yes" or "no".' },
+          { role: 'user', content: userMessage },
+        ],
+        undefined,
+        undefined,
+        16,
+      );
+      const trimmed = response.trim().toLowerCase().replace(/[^a-z]/g, '');
+      return trimmed === 'yes';
+    } catch (error) {
+      this.logger.warn(
+        `eventsAreIdentical LLM call failed (treating as different): ${(error as Error).message}`,
+      );
+      return false;
+    }
+  }
 }
