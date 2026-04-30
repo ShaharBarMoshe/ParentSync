@@ -5,7 +5,9 @@ import {
   WHATSAPP_SERVICE,
   MESSAGE_REPOSITORY,
   DISMISSAL_REPOSITORY,
+  NEGATIVE_EXAMPLE_REPOSITORY,
 } from '../../shared/constants/injection-tokens';
+import type { INegativeExampleRepository } from '../../llm/interfaces/negative-example-repository.interface';
 import type { IEventRepository } from '../../calendar/interfaces/event-repository.interface';
 import type { IWhatsAppService } from '../../messages/interfaces/whatsapp-service.interface';
 import type { IMessageRepository } from '../../messages/interfaces/message-repository.interface';
@@ -40,6 +42,8 @@ export class ApprovalService {
     @Inject(forwardRef(() => EventSyncService))
     private readonly eventSyncService: EventSyncService,
     private readonly appErrorEmitter: AppErrorEmitterService,
+    @Inject(NEGATIVE_EXAMPLE_REPOSITORY)
+    private readonly negativeExampleRepository: INegativeExampleRepository,
   ) {}
 
   async isApprovalEnabled(): Promise<boolean> {
@@ -183,6 +187,28 @@ export class ApprovalService {
     await this.eventRepository.update(event.id, {
       approvalStatus: ApprovalStatus.REJECTED,
     });
+
+    // Capture as a negative example so the LLM stops repeating the mistake.
+    // Best-effort: the source message may have been pruned, in which case
+    // we just skip — the event is still marked rejected.
+    if (!event.sourceId) return;
+    try {
+      const sourceMessage = await this.messageRepository.findById(event.sourceId);
+      if (!sourceMessage?.content) return;
+      await this.negativeExampleRepository.create({
+        messageContent: sourceMessage.content,
+        extractedTitle: event.title,
+        extractedDate: event.date ?? null,
+        channel: sourceMessage.channel ?? null,
+      });
+      this.logger.log(
+        `Captured negative example for rejected event "${event.title}"`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to capture negative example for event ${event.id}: ${(error as Error).message}`,
+      );
+    }
   }
 
   private formatApprovalMessage(

@@ -1,3 +1,6 @@
+/** Setting key — see `MessageParserService.buildSystemPrompt()`. */
+export const LLM_SYSTEM_PROMPT_KEY = 'llm_system_prompt';
+
 /** All valid setting keys accepted by the Settings API. */
 export const ALLOWED_SETTING_KEYS = [
   'check_schedule',
@@ -10,6 +13,7 @@ export const ALLOWED_SETTING_KEYS = [
   'google_redirect_uri',
   'google_calendar_id',
   'approval_channel',
+  LLM_SYSTEM_PROMPT_KEY,
 ] as const;
 
 /** Keys whose values must never be returned in full via the API. */

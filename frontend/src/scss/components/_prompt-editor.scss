@@ -1,0 +1,107 @@
+.prompt-editor {
+  font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 320px;
+}
+
+.prompt-default-view {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  font-family: 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.negative-examples-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.negative-example-card {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+  }
+
+  &__channel {
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.7);
+  }
+
+  &__time {
+    color: rgba(0, 0, 0, 0.5);
+    margin-left: auto;
+  }
+
+  &__remove {
+    appearance: none;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.125rem;
+    color: rgba(0, 0, 0, 0.5);
+
+    &:hover {
+      color: rgb(220, 38, 38);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+  }
+
+  &__content {
+    margin: 0;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 0.875rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  &__expand {
+    align-self: flex-start;
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: rgb(59, 130, 246);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  &__meta {
+    font-size: 0.8125rem;
+    color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+}

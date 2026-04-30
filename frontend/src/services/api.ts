@@ -249,4 +249,42 @@ export const whatsappApi = {
     `${api.defaults.baseURL}/whatsapp/events`,
 };
 
+export interface LlmPrompt {
+  value: string;
+  default: string;
+  isCustom: boolean;
+}
+
+export const llmPromptApi = {
+  get: () => api.get<LlmPrompt>('/llm/prompt').then((r) => r.data),
+  save: (value: string) =>
+    api.put<LlmPrompt>('/llm/prompt', { value }).then((r) => r.data),
+  reset: () => api.delete<LlmPrompt>('/llm/prompt').then((r) => r.data),
+};
+
+export interface NegativeExample {
+  id: string;
+  messageContent: string;
+  extractedTitle: string;
+  extractedDate: string | null;
+  channel: string | null;
+  createdAt: string;
+}
+
+export interface NegativeExamplesResponse {
+  count: number;
+  items: NegativeExample[];
+}
+
+export const negativeExamplesApi = {
+  list: () =>
+    api
+      .get<NegativeExamplesResponse>('/llm/negative-examples')
+      .then((r) => r.data),
+  remove: (id: string) =>
+    api.delete<void>(`/llm/negative-examples/${id}`).then(() => undefined),
+  clear: () =>
+    api.delete<void>('/llm/negative-examples').then(() => undefined),
+};
+
 export default api;

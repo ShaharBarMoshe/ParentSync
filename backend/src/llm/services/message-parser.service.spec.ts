@@ -1,12 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { MessageParserService } from './message-parser.service';
-import { LLM_SERVICE } from '../../shared/constants/injection-tokens';
+import {
+  LLM_SERVICE,
+  NEGATIVE_EXAMPLE_REPOSITORY,
+} from '../../shared/constants/injection-tokens';
+import { SettingsService } from '../../settings/settings.service';
 
 describe('MessageParserService', () => {
   let service: MessageParserService;
   let mockLlmService: any;
   let mockCacheManager: any;
+  let mockSettingsService: any;
+  let mockNegativeExampleRepo: any;
 
   beforeEach(async () => {
     mockLlmService = {
@@ -18,11 +24,29 @@ describe('MessageParserService', () => {
       set: jest.fn().mockResolvedValue(undefined),
     };
 
+    mockSettingsService = {
+      findByKey: jest.fn().mockRejectedValue(new Error('Not found')),
+    };
+
+    mockNegativeExampleRepo = {
+      findRecent: jest.fn().mockResolvedValue([]),
+      findAll: jest.fn().mockResolvedValue([]),
+      create: jest.fn(),
+      delete: jest.fn(),
+      deleteAll: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageParserService,
         { provide: LLM_SERVICE, useValue: mockLlmService },
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
+        { provide: SettingsService, useValue: mockSettingsService },
+        {
+          provide: NEGATIVE_EXAMPLE_REPOSITORY,
+          useValue: mockNegativeExampleRepo,
+        },
       ],
     }).compile();
 
@@ -557,6 +581,56 @@ describe('MessageParserService', () => {
 
       const events = await service.parseMessage('some message');
       expect(events).toHaveLength(0);
+    });
+  });
+
+  describe('buildSystemPrompt', () => {
+    it('returns the default prompt when no setting is stored and no negatives exist', async () => {
+      const built = await service.buildSystemPrompt();
+      expect(built.prompt).toContain('You are a calendar event extractor');
+      expect(built.version).toMatch(/^[0-9a-f]{16}$/);
+    });
+
+    it('uses the stored llm_system_prompt setting when present', async () => {
+      mockSettingsService.findByKey.mockResolvedValue({
+        key: 'llm_system_prompt',
+        value: 'CUSTOM PROMPT FROM USER',
+      });
+
+      const built = await service.buildSystemPrompt();
+      expect(built.prompt).toContain('CUSTOM PROMPT FROM USER');
+    });
+
+    it('appends a negative-examples block when there are negatives', async () => {
+      mockNegativeExampleRepo.findRecent.mockResolvedValue([
+        {
+          messageContent: 'תודה למורה!',
+          extractedTitle: 'תודה למורה',
+          extractedDate: '2026-04-12',
+          channel: 'Grade 3A Parents',
+        },
+      ]);
+
+      const built = await service.buildSystemPrompt();
+      expect(built.prompt).toContain('NEGATIVE EXAMPLES:');
+      expect(built.prompt).toContain('תודה למורה!');
+      expect(built.prompt).toContain('Grade 3A Parents');
+    });
+
+    it('produces a different version hash when negatives change — invalidating the parse cache', async () => {
+      const noNegatives = await service.buildSystemPrompt();
+
+      mockNegativeExampleRepo.findRecent.mockResolvedValue([
+        {
+          messageContent: 'תודה',
+          extractedTitle: 'תודה',
+          extractedDate: null,
+          channel: null,
+        },
+      ]);
+      const withNegatives = await service.buildSystemPrompt();
+
+      expect(withNegatives.version).not.toEqual(noNegatives.version);
     });
   });
 });

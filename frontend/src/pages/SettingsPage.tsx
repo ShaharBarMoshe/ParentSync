@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { settingsApi, authApi, childrenApi, whatsappApi, syncApi } from '../services/api';
 import type { Setting, AuthStatus, AuthPurpose, AccountStatus, Child } from '../services/api';
 import WhatsAppQRModal from '../components/WhatsAppQRModal';
+import PromptEditor from '../components/PromptEditor';
+import NegativeExamplesPanel from '../components/NegativeExamplesPanel';
 import Icon from '../components/icons/Icon';
 
 // Google Calendar color palette
@@ -848,6 +850,12 @@ export default function SettingsPage() {
                 <span className="form-hint">WhatsApp group name for approving events before they sync to Google Calendar. Leave empty to auto-sync without approval.</span>
               </div>
             </div>
+
+            {/* AI Extraction Prompt */}
+            <PromptEditor />
+
+            {/* Learned Exclusions (negative-reaction feedback) */}
+            <NegativeExamplesPanel />
 
             <div className="settings-actions">
               <button type="submit" disabled={isSaving} className="btn btn--primary">

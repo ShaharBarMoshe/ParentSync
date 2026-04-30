@@ -8,6 +8,7 @@ import {
   WHATSAPP_SERVICE,
   MESSAGE_REPOSITORY,
   DISMISSAL_REPOSITORY,
+  NEGATIVE_EXAMPLE_REPOSITORY,
 } from '../../shared/constants/injection-tokens';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 import { MessageSource } from '../../shared/enums/message-source.enum';
@@ -24,6 +25,7 @@ describe('ApprovalService', () => {
   let eventDismissalService: any;
   let settingsService: any;
   let appErrorEmitter: any;
+  let negativeExampleRepository: any;
 
   const mockEvent = {
     id: 'event-1',
@@ -93,6 +95,15 @@ describe('ApprovalService', () => {
       clear: jest.fn(),
     };
 
+    negativeExampleRepository = {
+      create: jest.fn().mockResolvedValue({ id: 'neg-1' }),
+      findAll: jest.fn().mockResolvedValue([]),
+      findRecent: jest.fn().mockResolvedValue([]),
+      delete: jest.fn(),
+      deleteAll: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ApprovalService,
@@ -104,6 +115,10 @@ describe('ApprovalService', () => {
         { provide: EventDismissalService, useValue: eventDismissalService },
         { provide: EventSyncService, useValue: eventSyncService },
         { provide: AppErrorEmitterService, useValue: appErrorEmitter },
+        {
+          provide: NEGATIVE_EXAMPLE_REPOSITORY,
+          useValue: negativeExampleRepository,
+        },
       ],
     }).compile();
 
@@ -178,6 +193,67 @@ describe('ApprovalService', () => {
           source: 'approval',
           code: AppErrorCodes.APPROVAL_WHATSAPP_DISCONNECTED,
         }),
+      );
+    });
+  });
+
+  describe('rejectEvent — negative-example capture', () => {
+    it('captures the source message + wrong title on 😢 reaction', async () => {
+      eventRepository.findByApprovalMessageId.mockResolvedValue(mockEvent);
+      messageRepository.findById.mockResolvedValue({
+        id: 'msg-1',
+        content: 'תודה רבה למורה!',
+        channel: 'Grade 3A Parents',
+      });
+
+      await service.handleReaction({
+        msgId: 'wa-msg-123',
+        reaction: '😢',
+        senderId: 'sender',
+        timestamp: 0,
+      });
+
+      expect(negativeExampleRepository.create).toHaveBeenCalledWith({
+        messageContent: 'תודה רבה למורה!',
+        extractedTitle: mockEvent.title,
+        extractedDate: mockEvent.date,
+        channel: 'Grade 3A Parents',
+      });
+    });
+
+    it('does not create a negative when source message has been pruned', async () => {
+      eventRepository.findByApprovalMessageId.mockResolvedValue(mockEvent);
+      messageRepository.findById.mockResolvedValue(null);
+
+      await service.handleReaction({
+        msgId: 'wa-msg-123',
+        reaction: '😢',
+        senderId: 'sender',
+        timestamp: 0,
+      });
+
+      expect(negativeExampleRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('still marks event REJECTED even if negative capture throws', async () => {
+      eventRepository.findByApprovalMessageId.mockResolvedValue(mockEvent);
+      messageRepository.findById.mockResolvedValue({
+        id: 'msg-1',
+        content: 'something',
+        channel: 'ch',
+      });
+      negativeExampleRepository.create.mockRejectedValue(new Error('db down'));
+
+      await service.handleReaction({
+        msgId: 'wa-msg-123',
+        reaction: '😢',
+        senderId: 'sender',
+        timestamp: 0,
+      });
+
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        mockEvent.id,
+        expect.objectContaining({ approvalStatus: ApprovalStatus.REJECTED }),
       );
     });
   });
