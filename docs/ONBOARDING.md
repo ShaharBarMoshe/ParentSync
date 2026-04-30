@@ -39,8 +39,10 @@ You need Google Cloud credentials to connect Gmail and Calendar.
    - Add your email to **Test users** (or click **Publish App** for unrestricted access)
 5. Go to **APIs & Services > Credentials > Create Credentials > OAuth Client ID**:
    - Application type: **Web application**
-   - Authorized redirect URI: `http://localhost:3000/api/auth/google/callback`
+   - Authorized redirect URI: `http://localhost:41932/api/auth/google/callback`
    - Copy the **Client ID** and **Client Secret**
+
+> **Tip**: switch the OAuth consent screen from "Testing" to "In production" once you're done. Tokens issued in Testing mode expire after 7 days, which means sync will silently fail with `invalid_grant` until you re-authenticate. You don't need formal verification for personal use.
 
 In the ParentSync Settings page:
 - Paste the **Client ID** and **Client Secret** under "Google OAuth"
@@ -81,11 +83,20 @@ Under "Sync Schedule":
 - Select the hours when the app should check for new messages (click hours, shift+click for ranges)
 - Click **Save Settings**
 
-### Step 6: Set Up OpenRouter
+### Step 6: Set Up the LLM provider
 
+ParentSync uses **Gemini** by default, with **OpenRouter** as an alternative provider you can also configure.
+
+**Option A — Gemini (default):**
+1. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey)
+2. Paste it under "Gemini AI" > "API Key" in Settings
+3. The default model (`gemini-2.5-flash-lite`) is fast and cheap; change it only if you want a different model
+4. Click **Save Settings**
+
+**Option B — OpenRouter:**
 1. Get an API key from [OpenRouter](https://openrouter.ai/keys)
 2. Paste it under "OpenRouter" > "API Key" in Settings
-3. The default model works fine, or change it to your preferred LLM
+3. Pick a model
 4. Click **Save Settings**
 
 ### Step 7: Test It

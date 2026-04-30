@@ -37,7 +37,14 @@ On every subsequent parse, those exclusions are appended to the system prompt as
 
 ### When to remove an exclusion
 
-If you regret a 😢 — say, the message *was* an event but you rejected it for a different reason — delete the exclusion. The AI will go back to extracting similar messages.
+If you regret a 😢 — say, the message *was* an event but you rejected it for a different reason — you have two ways to undo:
+
+1. **Take back the 😢 reaction in WhatsApp.** The exclusion is removed automatically and the event flips back to Pending. Same goes for an unintended 👍 — taking it back undoes the approval and pulls the event from Google Calendar.
+2. **Delete the row in Settings → Learned Exclusions.** This only removes the exclusion; the event itself stays where it was.
+
+### In-app approval
+
+You don't have to use WhatsApp reactions at all. The Dashboard's Upcoming Events panel shows a coloured pill for each event's status (pending / approved / rejected) and inline **Approve** / **Reject** buttons for any pending event. They have the exact same effect as 👍 / 😢 — including the negative-example capture on Reject.
 
 ### Caps and cost
 

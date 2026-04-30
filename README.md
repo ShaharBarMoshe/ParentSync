@@ -24,13 +24,15 @@ It's also a deliberately end-to-end engineering exercise: a real Electron app wi
 ## Highlights
 
 - **End-to-end Electron desktop app** — single AppImage / `.exe` / `.dmg`. Backend, frontend, and Chromium are all packaged together; SQLite lives in the OS user-data directory.
-- **Clean Architecture + Hexagonal (Ports & Adapters)** on NestJS. Every external dependency (Gmail, Google Calendar, OpenRouter, WhatsApp) sits behind an injection token with a swappable mock adapter.
-- **LLM-driven extraction with cost controls** — batched parsing, prompt-engineered for Hebrew + English, structured output validated by class-validator DTOs.
+- **Clean Architecture + Hexagonal (Ports & Adapters)** on NestJS. Every external dependency (Gmail, Google Calendar, the LLM, WhatsApp) sits behind an injection token with a swappable mock adapter.
+- **LLM-driven extraction with cost controls** — batched parsing, prompt-engineered for Hebrew + English, structured output validated by class-validator DTOs. Gemini by default; OpenRouter swap-in supported.
 - **Cancellation & delay detection** — the parser doesn't just create events; it recognizes "המפגש בוטל" / "נדחה ל-…" and updates or removes the existing calendar entry. ([docs](docs/EVENT-DISMISSAL.md))
-- **WhatsApp approval channel** — every extracted event is posted to a dedicated chat. React 👍 to publish, 😢 to drop. Reactions are idempotent and order-independent.
+- **WhatsApp approval channel + in-app approval** — every extracted event is posted to a dedicated chat. React 👍 to publish, 😢 to drop. Reactions are idempotent, order-independent, and **reversible** (take back a 👍 → unsync from Google; take back a 😢 → undo the rejection). The Dashboard exposes the same Approve / Reject actions inline. ([docs](docs/USER-GUIDE.md))
+- **Self-improving prompt** — 😢 captures the source message + the wrong title as a "learned exclusion" pinned to the prompt; the LLM stops repeating the mistake. The system prompt itself is editable from Settings; the parse cache key folds in a hash of both so feedback loops close on the next sync. ([docs](docs/PROMPT-CUSTOMIZATION.md))
+- **LLM-based duplicate suppression** — before posting an approval message, the backend asks the LLM whether a candidate event matches an existing one at the same date+time. Catches "same gathering, different framing" — cases exact-match dedup misses.
 - **OAuth 2.0 done properly** — PKCE, CSRF state, encrypted token storage at rest, refresh-on-expiry. ([writeup](docs/ARCHITECTURE.md))
 - **80%+ test coverage** — unit tests via NestJS `Test.createTestingModule()`, Supertest e2e, Vitest on the frontend, real Puppeteer browser tests for the desktop UI.
-- **Built with [Claude Code](https://claude.com/claude-code)** — this repo is also a case study in agentic development: see the 17-phase implementation plan under [`plan/`](plan/) and the reusable skills/rules in [`.agents/skills/`](.agents/skills/).
+- **Built with [Claude Code](https://claude.com/claude-code)** — this repo is also a case study in agentic development: see the phased implementation plan under [`plan/`](plan/) and the reusable skills/rules in [`.agents/skills/`](.agents/skills/).
 
 ## Architecture at a glance
 
@@ -79,10 +81,11 @@ Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 | [Architecture](docs/ARCHITECTURE.md) | Module boundaries, ports & adapters, sync orchestration |
 | [User Guide](docs/USER-GUIDE.md) | What the app actually does, end-user perspective |
 | [Onboarding](docs/ONBOARDING.md) | First-run flow: OAuth, WhatsApp QR, settings |
+| [Prompt Customization](docs/PROMPT-CUSTOMIZATION.md) | Editing the LLM prompt, the 😢-feedback loop, cache behavior |
 | [Event Dismissal](docs/EVENT-DISMISSAL.md) | Cancel / delay detection design |
 | [Event Reminders](docs/EVENT-REMINDERS.md) | The 24h-before-event reminder pipeline |
 | [Google Tasks](docs/GOOGLE-TASKS.md) | Timed events vs. date-only tasks |
-| [Implementation plan](plan/README.md) | The 17-phase plan that drove development |
+| [Implementation plan](plan/README.md) | The phased plan that drove development |
 
 ## Getting Started
 
@@ -141,7 +144,7 @@ parentsync/
 ├── frontend/         React + Vite UI (pages, components, services)
 ├── assets/           App icons (.ico / .icns / .png)
 ├── docs/             Architecture, user guide, feature designs, screenshots
-├── plan/             17-phase implementation plan (used to drive Claude Code)
+├── plan/             Phased implementation plan (used to drive Claude Code)
 ├── scripts/          Packaging, tests, install-as-systemd-service
 └── .agents/skills/   Reusable Claude Code skills (NestJS rules, OAuth2,
                       Clean Architecture, SCSS, UI/UX) used during development
@@ -151,7 +154,7 @@ parentsync/
 
 This project was built end-to-end with **[Claude Code](https://claude.com/claude-code)**, Anthropic's coding agent. The repo intentionally preserves the artifacts of that workflow:
 
-- **[`plan/`](plan/)** — a 17-phase implementation plan with explicit acceptance criteria, used as the source of truth Claude worked against.
+- **[`plan/`](plan/)** — phased implementation plan with explicit acceptance criteria, used as the source of truth Claude worked against.
 - **[`.agents/skills/`](.agents/skills/)** — distilled, reusable rule sets (NestJS best practices, OAuth 2.0, Clean Architecture, SCSS, UI/UX) the agent loaded on demand.
 - **[`CLAUDE.md`](CLAUDE.md)** — project-level guidance the agent reads on every session.
 
