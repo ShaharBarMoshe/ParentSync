@@ -52,7 +52,23 @@ export default function DashboardPage() {
         syncApi.getLogs(5),
       ]);
       setMessages(msgs);
-      setEvents(evts.sort((a, b) => a.date.localeCompare(b.date)));
+
+      // Hide events whose time has already passed. Date-only items stay
+      // visible through the end of their day (`23:59:59`) since they're
+      // typically "things to bring / do today" with no specific deadline.
+      const now = Date.now();
+      const isPast = (e: CalendarEvent) => {
+        const suffix = e.time ? `T${e.time}:00` : 'T23:59:59';
+        return new Date(e.date + suffix).getTime() < now;
+      };
+      const upcoming = evts
+        .filter((e) => !isPast(e))
+        .sort((a, b) => {
+          const aKey = a.date + (a.time ?? '23:59');
+          const bKey = b.date + (b.time ?? '23:59');
+          return aKey.localeCompare(bKey);
+        });
+      setEvents(upcoming);
       setSyncLogs(logs);
       setError(null);
     } catch {
