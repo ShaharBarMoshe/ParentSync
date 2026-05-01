@@ -201,6 +201,20 @@ function buildHTML() {
 
   /* Accent bar */
   .accent-bar { position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #2563eb, #7c3aed); }
+
+  /* Links — clickable in both HTML and the rendered PDF */
+  .slide a { color: #2563eb; text-decoration: none; border-bottom: 1px dashed rgba(37, 99, 235, 0.4); }
+  .slide a:hover { border-bottom-color: #2563eb; }
+  .slide-title a, .slide-section a { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.5); }
+  .info-box a, .warning-box a { color: #2563eb; }
+  .video-link {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 12px; padding: 10px 14px;
+    background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px;
+    font-size: 15px; color: #9a3412; text-decoration: none;
+  }
+  .video-link:hover { background: #ffedd5; border-color: #fb923c; }
+  .video-link strong { color: #c2410c; }
 </style>
 </head>
 <body>
@@ -536,13 +550,14 @@ function buildHTML() {
     <div class="howto-col">
       <h3>How to get your API key</h3>
       <ol class="steps">
-        <li>Go to <strong>aistudio.google.com/apikey</strong></li>
+        <li>Go to <a href="https://aistudio.google.com/apikey"><strong>aistudio.google.com/apikey</strong></a></li>
         <li>Sign in with your Google account</li>
         <li>Click <strong>"Create API key"</strong></li>
         <li>Copy the key</li>
         <li>Paste in ParentSync → Settings → Gemini AI → API Key</li>
         <li>Optionally pick a different model in the same section</li>
       </ol>
+      <a class="video-link" href="https://www.youtube.com/watch?v=GHzAxsXn24I" target="_blank" rel="noopener">📺 <strong>Video walkthrough</strong> — Gemini API Key in Google AI Studio (YouTube)</a>
     </div>
   </div>
   <div class="slide-footer"><span>ParentSync — How-To</span><span>15 / ${TOTAL_SLIDES}</span></div>
@@ -569,13 +584,14 @@ function buildHTML() {
     <div class="howto-col">
       <h3>How to get your API key</h3>
       <ol class="steps">
-        <li>Go to <strong>openrouter.ai/keys</strong></li>
+        <li>Go to <a href="https://openrouter.ai/keys"><strong>openrouter.ai/keys</strong></a></li>
         <li>Sign up or log in (Google/GitHub)</li>
         <li>Click <strong>"Create Key"</strong></li>
         <li>Copy the key (starts with <code>sk-or-</code>)</li>
         <li>Paste in ParentSync → Settings → OpenRouter → API Key</li>
       </ol>
-      <p style="margin-top: 12px; font-size: 16px; color: #64748b;">You can fill both keys; the active provider is whichever the build is wired to (Gemini by default).</p>
+      <a class="video-link" href="https://www.youtube.com/watch?v=CjjwLK-UrLU" target="_blank" rel="noopener">📺 <strong>Video walkthrough</strong> — Get your OpenRouter API Key (YouTube)</a>
+      <p style="margin-top: 12px; font-size: 15px; color: #64748b;">You can fill both keys; the active provider is whichever the build is wired to (Gemini by default).</p>
     </div>
   </div>
   <div class="slide-footer"><span>ParentSync — How-To</span><span>16 / ${TOTAL_SLIDES}</span></div>
@@ -602,10 +618,10 @@ function buildHTML() {
     <div class="howto-col">
       <h3>How to set it up</h3>
       <ol class="steps">
-        <li>Go to <strong>console.cloud.google.com</strong>
+        <li>Go to <a href="https://console.cloud.google.com/"><strong>console.cloud.google.com</strong></a>
           <div class="step-detail">Create a project if you don't have one</div></li>
         <li>Enable <strong>Gmail API</strong> and <strong>Calendar API</strong>
-          <div class="step-detail">APIs & Services → Enable APIs</div></li>
+          <div class="step-detail">APIs &amp; Services → Enable APIs</div></li>
         <li>Create <strong>OAuth consent screen</strong>
           <div class="step-detail">Add your email as a Test user</div></li>
         <li>Create <strong>OAuth Client ID</strong> (Web app)
@@ -613,6 +629,7 @@ function buildHTML() {
         <li>Copy <strong>Client ID</strong> and <strong>Client Secret</strong> into ParentSync Settings</li>
         <li><strong>Tip:</strong> switch the consent screen to <em>"In production"</em> — Test mode tokens expire after 7 days</li>
       </ol>
+      <a class="video-link" href="https://www.youtube.com/watch?v=-G6ak4E2rBg" target="_blank" rel="noopener">📺 <strong>Video walkthrough</strong> — Create OAuth 2.0 Client ID in Google Console (YouTube)</a>
     </div>
   </div>
   <div class="slide-footer"><span>ParentSync — How-To</span><span>17 / ${TOTAL_SLIDES}</span></div>
@@ -716,7 +733,7 @@ function buildHTML() {
   <h2>Quick Start — Get the App</h2>
   <p>Pre-built downloads live on the GitHub Releases page. Pick the file for your operating system, then jump to the next slide.</p>
   <div class="code-block" style="text-align: center; font-size: 22px; padding: 16px;">
-    👉 <strong>github.com/ShaharBarMoshe/ParentSync/releases</strong>
+    👉 <a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></a></a>
   </div>
   <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 24px;">
     <div class="info-box">
@@ -747,7 +764,7 @@ function buildHTML() {
     <div class="howto-col">
       <h3>Step by step</h3>
       <ol class="steps">
-        <li>Open <strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></li>
+        <li>Open <a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></a></li>
         <li>Download <code>ParentSync-*.dmg</code></li>
         <li><strong>Double-click</strong> the downloaded <code>.dmg</code> to open it</li>
         <li><strong>Drag</strong> the ParentSync icon into the <strong>Applications</strong> folder</li>
@@ -778,7 +795,7 @@ function buildHTML() {
     <div class="howto-col">
       <h3>Step by step</h3>
       <ol class="steps">
-        <li>Open <strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></li>
+        <li>Open <a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></a></li>
         <li>Download <code>ParentSync-Setup-*.exe</code></li>
         <li><strong>Double-click</strong> the installer</li>
         <li>Windows SmartScreen may say "Windows protected your PC."<br>Click <strong>"More info"</strong> → <strong>"Run anyway"</strong></li>
@@ -810,7 +827,7 @@ function buildHTML() {
     <div class="howto-col">
       <h3>Easiest: AppImage (any distro)</h3>
       <ol class="steps">
-        <li>Open <strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></li>
+        <li>Open <a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></a></li>
         <li>Download <code>ParentSync-*.AppImage</code></li>
         <li>Double-click won't work yet — files need to be marked as runnable. Two ways:
           <div class="step-detail"><strong>Mouse:</strong> Right-click the file → <strong>Properties</strong> → <strong>Permissions</strong> → check <strong>"Allow executing as a program"</strong>.<br><strong>Terminal:</strong> <code>chmod +x ParentSync-*.AppImage</code></div></li>
@@ -845,7 +862,7 @@ function buildHTML() {
   </table>
   <div class="code-block">
     # Build it yourself (any platform)<br>
-    git clone https://github.com/ShaharBarMoshe/ParentSync.git<br>
+    git clone <a href="https://github.com/ShaharBarMoshe/ParentSync.git" style="color:#7dd3fc;">https://github.com/ShaharBarMoshe/ParentSync.git</a><br>
     cd ParentSync &amp;&amp; ./setup.sh<br>
     npm run package:linux # or :mac / :win
   </div>
@@ -944,38 +961,19 @@ async function main() {
   const slideCount = await page.evaluate(() => document.querySelectorAll('.slide').length);
   console.log(`  Found ${slideCount} slides`);
 
-  // Screenshot each slide as an image, then combine into PDF
-  const { PDFDocument } = await import('pdf-lib').catch(() => ({ PDFDocument: null }));
-
-  if (PDFDocument) {
-    // Use pdf-lib to merge individual slide screenshots into a PDF
-    const pdfDoc = await PDFDocument.create();
-    for (let i = 0; i < slideCount; i++) {
-      const slideImg = await page.evaluate((idx) => {
-        const slides = document.querySelectorAll('.slide');
-        // Hide all slides except the current one
-        slides.forEach((s, j) => { s.style.display = j === idx ? 'block' : 'none'; });
-        return true;
-      }, i);
-
-      const screenshot = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: 1280, height: 720 } });
-      const img = await pdfDoc.embedPng(screenshot);
-      const p = pdfDoc.addPage([1280, 720]);
-      p.drawImage(img, { x: 0, y: 0, width: 1280, height: 720 });
-    }
-    const pdfBytes = await pdfDoc.save();
-    fs.writeFileSync(OUTPUT_PDF, pdfBytes);
-  } else {
-    // Fallback: take individual screenshots and use Puppeteer PDF
-    // Make all slides display:block and rely on page-break
-    await page.pdf({
-      path: OUTPUT_PDF,
-      width: '1280px',
-      height: '720px',
-      printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 },
-    });
-  }
+  // Use Puppeteer's native PDF rendering. Each .slide already has
+  // `page-break-after: always`, so we get one slide per page and — crucially
+  // for this deck — anchor tags are preserved as clickable PDF links.
+  // (Earlier pdf-lib + screenshot path produced perfect bitmap pages but
+  // dropped every hyperlink.)
+  await page.pdf({
+    path: OUTPUT_PDF,
+    width: '1280px',
+    height: '720px',
+    printBackground: true,
+    preferCSSPageSize: false,
+    margin: { top: 0, right: 0, bottom: 0, left: 0 },
+  });
 
   await browser.close();
   console.log(`  Saved PDF: ${OUTPUT_PDF}`);

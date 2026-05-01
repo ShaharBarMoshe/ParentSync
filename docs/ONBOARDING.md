@@ -28,7 +28,7 @@ chmod +x release/ParentSync-*.AppImage
 
 ### Step 1: Configure Google OAuth
 
-You need Google Cloud credentials to connect Gmail and Calendar.
+You need Google Cloud credentials to connect Gmail and Calendar. Prefer to follow along with a video? 📺 [Create OAuth 2.0 Client ID in Google Console (YouTube)](https://www.youtube.com/watch?v=-G6ak4E2rBg).
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
 2. Create a project (or select an existing one)
@@ -88,13 +88,13 @@ Under "Sync Schedule":
 ParentSync uses **Gemini** by default, with **OpenRouter** as an alternative provider you can also configure.
 
 **Option A — Gemini (default):**
-1. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey)
+1. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey) — 📺 [video walkthrough](https://www.youtube.com/watch?v=GHzAxsXn24I)
 2. Paste it under "Gemini AI" > "API Key" in Settings
 3. The default model (`gemini-2.5-flash-lite`) is fast and cheap; change it only if you want a different model
 4. Click **Save Settings**
 
 **Option B — OpenRouter:**
-1. Get an API key from [OpenRouter](https://openrouter.ai/keys)
+1. Get an API key from [OpenRouter](https://openrouter.ai/keys) — 📺 [video walkthrough](https://www.youtube.com/watch?v=CjjwLK-UrLU)
 2. Paste it under "OpenRouter" > "API Key" in Settings
 3. Pick a model
 4. Click **Save Settings**

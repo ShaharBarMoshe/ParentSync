@@ -115,10 +115,14 @@ Click **Save** after making changes. Click **Remove** to delete a child (with co
 ### LLM API key
 ParentSync uses Gemini (`gemini_api_key`) by default. OpenRouter (`openrouter_api_key`) is also supported as a fallback provider. Configure whichever you have a key for; the model name is configurable per provider.
 
+- 📺 Video walkthrough — [Get a Gemini API Key in Google AI Studio](https://www.youtube.com/watch?v=GHzAxsXn24I)
+- 📺 Video walkthrough — [Get an OpenRouter API Key](https://www.youtube.com/watch?v=CjjwLK-UrLU)
+
 ### Google OAuth
 Advanced — only change these if you're using your own Google Cloud project:
-- **Client ID** and **Client Secret** from Google Cloud Console
+- **Client ID** and **Client Secret** from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
 - **Redirect URI** — must match what's configured in Google Cloud (e.g. `http://localhost:41932/api/auth/google/callback`)
+- 📺 Video walkthrough — [Create OAuth 2.0 Client ID in Google Console](https://www.youtube.com/watch?v=-G6ak4E2rBg)
 
 ### Sync Schedule
 Select which hours of the day the app should automatically check for new messages. Click individual hours, or shift+click to select a range. Click "All" for every hour, "None" to disable auto-sync.
