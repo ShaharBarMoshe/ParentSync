@@ -94,7 +94,7 @@ ParentSync uses **Gemini** by default, with **OpenRouter** as an alternative pro
 4. Click **Save Settings**
 
 **Option B — OpenRouter:**
-1. Get an API key from [OpenRouter](https://openrouter.ai/keys) — 📺 [video walkthrough](https://www.youtube.com/watch?v=CjjwLK-UrLU)
+1. Get an API key from [OpenRouter](https://openrouter.ai/keys) — 📺 [video walkthrough](https://www.youtube.com/watch?v=JYw6yFzVi44)
 2. Paste it under "OpenRouter" > "API Key" in Settings
 3. Pick a model
 4. Click **Save Settings**
