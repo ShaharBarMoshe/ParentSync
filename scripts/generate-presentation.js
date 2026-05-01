@@ -36,7 +36,7 @@ function buildHTML() {
     return '';
   };
 
-  const TOTAL_SLIDES = 25;
+  const TOTAL_SLIDES = 29;
 
   return `<!DOCTYPE html>
 <html>
@@ -710,26 +710,149 @@ function buildHTML() {
   <div class="slide-footer"><span>ParentSync</span><span>20 / ${TOTAL_SLIDES}</span></div>
 </div>
 
-<!-- Slide 20: Platform Support -->
+<!-- Slide 21: Quick Start — Where to download -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
-  <h2>Platform Support</h2>
+  <h2>Quick Start — Get the App</h2>
+  <p>Pre-built downloads live on the GitHub Releases page. Pick the file for your operating system, then jump to the next slide.</p>
+  <div class="code-block" style="text-align: center; font-size: 22px; padding: 16px;">
+    👉 <strong>github.com/ShaharBarMoshe/ParentSync/releases</strong>
+  </div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 24px;">
+    <div class="info-box">
+      <p style="font-size: 32px; text-align: center; margin: 0;">🍎</p>
+      <p style="text-align: center; font-weight: 600; margin: 4px 0;">macOS</p>
+      <p style="font-size: 14px; text-align: center; margin: 0;">Download <code>.dmg</code><br>(see slide 22)</p>
+    </div>
+    <div class="info-box">
+      <p style="font-size: 32px; text-align: center; margin: 0;">🪟</p>
+      <p style="text-align: center; font-weight: 600; margin: 4px 0;">Windows</p>
+      <p style="font-size: 14px; text-align: center; margin: 0;">Download <code>.exe</code><br>(see slide 23)</p>
+    </div>
+    <div class="info-box">
+      <p style="font-size: 32px; text-align: center; margin: 0;">🐧</p>
+      <p style="text-align: center; font-weight: 600; margin: 4px 0;">Linux</p>
+      <p style="font-size: 14px; text-align: center; margin: 0;">Download <code>.AppImage</code> or <code>.deb</code><br>(see slide 24)</p>
+    </div>
+  </div>
+  <p style="margin-top: 16px; font-size: 15px; color: #64748b; text-align: center;">No account needed. No installer asking your password. Just download and run.</p>
+  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>21 / ${TOTAL_SLIDES}</span></div>
+</div>
+
+<!-- Slide 22: Quick Start — macOS -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Run on macOS 🍎</h2>
+  <div class="howto-cols">
+    <div class="howto-col">
+      <h3>Step by step</h3>
+      <ol class="steps">
+        <li>Open <strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></li>
+        <li>Download <code>ParentSync-*.dmg</code></li>
+        <li><strong>Double-click</strong> the downloaded <code>.dmg</code> to open it</li>
+        <li><strong>Drag</strong> the ParentSync icon into the <strong>Applications</strong> folder</li>
+        <li>Open <strong>Applications</strong> in Finder and double-click ParentSync</li>
+        <li>The first time only: macOS may say "Apple cannot check it for malicious software." <strong>Right-click</strong> the icon → <strong>Open</strong> → <strong>Open</strong> in the dialog</li>
+      </ol>
+    </div>
+    <div class="howto-col">
+      <h3>What you'll see</h3>
+      <ul>
+        <li>The app window opens — click <strong>Settings</strong> (top bar) to start configuring</li>
+        <li>An icon appears in your menu bar (top right) — right-click for Sync Now / Quit</li>
+        <li>The app stays running when you close the window; quit fully from the menu bar</li>
+      </ul>
+      <div class="warning-box">
+        <p>⚠️ Don't have a <code>.dmg</code> in Releases yet? It's only built when someone has a Mac to package on. Until then: clone the repo and run <code>npm run package:mac</code>.</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>22 / ${TOTAL_SLIDES}</span></div>
+</div>
+
+<!-- Slide 23: Quick Start — Windows -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Run on Windows 🪟</h2>
+  <div class="howto-cols">
+    <div class="howto-col">
+      <h3>Step by step</h3>
+      <ol class="steps">
+        <li>Open <strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></li>
+        <li>Download <code>ParentSync-Setup-*.exe</code></li>
+        <li><strong>Double-click</strong> the installer</li>
+        <li>Windows SmartScreen may say "Windows protected your PC."<br>Click <strong>"More info"</strong> → <strong>"Run anyway"</strong></li>
+        <li>Click through the installer (Next → Install → Finish)</li>
+        <li>The app launches automatically and adds itself to the Start menu</li>
+      </ol>
+    </div>
+    <div class="howto-col">
+      <h3>What you'll see</h3>
+      <ul>
+        <li>A desktop shortcut and a Start-menu entry are created</li>
+        <li>An icon appears in the system tray (bottom right) — right-click for Sync Now / Quit</li>
+        <li>Closing the window minimizes to the tray; right-click → Quit to exit fully</li>
+        <li>Auto-starts on login by default</li>
+      </ul>
+      <div class="warning-box">
+        <p>⚠️ Don't see a <code>.exe</code> in Releases yet? Windows builds are produced on a Windows machine. Until then: clone the repo on Windows and run <code>npm run package:win</code>.</p>
+      </div>
+    </div>
+  </div>
+  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>23 / ${TOTAL_SLIDES}</span></div>
+</div>
+
+<!-- Slide 24: Quick Start — Linux -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Run on Linux 🐧</h2>
+  <div class="howto-cols">
+    <div class="howto-col">
+      <h3>Easiest: AppImage (any distro)</h3>
+      <ol class="steps">
+        <li>Open <strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></li>
+        <li>Download <code>ParentSync-*.AppImage</code></li>
+        <li>Double-click won't work yet — files need to be marked as runnable. Two ways:
+          <div class="step-detail"><strong>Mouse:</strong> Right-click the file → <strong>Properties</strong> → <strong>Permissions</strong> → check <strong>"Allow executing as a program"</strong>.<br><strong>Terminal:</strong> <code>chmod +x ParentSync-*.AppImage</code></div></li>
+        <li>Now <strong>double-click</strong> it (or run <code>./ParentSync-*.AppImage</code>)</li>
+      </ol>
+    </div>
+    <div class="howto-col">
+      <h3>Debian / Ubuntu: .deb</h3>
+      <ol class="steps">
+        <li>Download <code>parentsync_*_amd64.deb</code></li>
+        <li>Double-click → opens in Software Center → click <strong>Install</strong></li>
+        <li>Or terminal: <code>sudo dpkg -i parentsync_*_amd64.deb</code></li>
+        <li>Launch from your application menu</li>
+      </ol>
+      <h3 style="margin-top: 16px;">Auto-start on login (optional)</h3>
+      <p style="font-size: 15px;">After cloning the repo, run <code>npm run install:local</code> — it installs the AppImage as a systemd user service that starts on login and keeps the four most recent versions.</p>
+    </div>
+  </div>
+  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>24 / ${TOTAL_SLIDES}</span></div>
+</div>
+
+<!-- Slide 25: Platform Support / Build from source -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Platform Support &amp; Building From Source</h2>
   <table>
     <tr><th>Platform</th><th>Format</th><th>How to Run</th></tr>
     <tr><td><strong>Linux</strong></td><td>.AppImage (portable)</td><td>chmod +x, double-click or run from terminal</td></tr>
     <tr><td><strong>Linux</strong></td><td>.deb (Debian/Ubuntu)</td><td>dpkg -i, run from app menu</td></tr>
-    <tr><td>Windows</td><td>.exe (installer)</td><td>Double-click installer</td></tr>
+    <tr><td>Windows</td><td>.exe (NSIS installer)</td><td>Double-click installer</td></tr>
     <tr><td>macOS</td><td>.dmg</td><td>Drag to Applications</td></tr>
   </table>
   <div class="code-block">
-    # Linux quick start<br>
-    chmod +x ParentSync-1.0.1.AppImage<br>
-    ./ParentSync-1.0.1.AppImage
+    # Build it yourself (any platform)<br>
+    git clone https://github.com/ShaharBarMoshe/ParentSync.git<br>
+    cd ParentSync &amp;&amp; ./setup.sh<br>
+    npm run package:linux # or :mac / :win
   </div>
-  <p style="margin-top: 20px; text-align: center; font-size: 20px; color: #64748b;">
+  <p style="margin-top: 20px; text-align: center; font-size: 18px; color: #64748b;">
     Built with Electron | All data stored locally | Private use
   </p>
-  <div class="slide-footer"><span>ParentSync</span><span>21 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>25 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 22: Event Reminders -->
@@ -746,7 +869,7 @@ function buildHTML() {
     <li>Each event is reminded at most once (<code>reminderSent</code> flag)</li>
   </ul>
   <p style="margin-top: 16px; font-size: 16px; color: #64748b;">See <code>docs/EVENT-REMINDERS.md</code> for the full specification.</p>
-  <div class="slide-footer"><span>ParentSync</span><span>22 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>26 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 23: AI Feedback Loop -->
@@ -765,7 +888,7 @@ function buildHTML() {
     </div>
   </div>
   <p style="margin-top: 16px; font-size: 16px; color: #64748b;">Every 😢 saves the source message + the wrong title. The most recent 50 are appended to the prompt as "do NOT extract events for messages similar to these," so the LLM stops repeating the mistake. The parse cache keys include a hash of the prompt + exclusions — so feedback closes on the next sync, not 24h later.</p>
-  <div class="slide-footer"><span>ParentSync — Feedback Loop</span><span>23 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Feedback Loop</span><span>27 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 24: In-App Approval -->
@@ -776,7 +899,7 @@ function buildHTML() {
     <img class="screenshot" src="${img('dashboard-approval')}" alt="Dashboard with approval pills + Approve/Reject buttons">
   </div>
   <div class="caption">Each upcoming event shows its status as a pill — 🟠 Pending, 🟢 Approved, 🔴 Rejected. Pending events have inline Approve / Reject buttons. Same effect as 👍 / 😢 in WhatsApp; reactions are reversible too — take back a 👍 to unsync from Google, take back a 😢 to clear the learned exclusion.</div>
-  <div class="slide-footer"><span>ParentSync — Approval</span><span>24 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Approval</span><span>28 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 25: Duplicate Suppression -->
@@ -794,7 +917,7 @@ function buildHTML() {
   <div class="info-box">
     <p>💡 The check pairs with the negative-feedback loop: even if a duplicate slips through, one 😢 reaction puts it in the learned-exclusions pool so it's gone for good.</p>
   </div>
-  <div class="slide-footer"><span>ParentSync — Duplicate Suppression</span><span>25 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Duplicate Suppression</span><span>29 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 </body>
