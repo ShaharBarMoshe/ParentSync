@@ -5,12 +5,41 @@ import {
   IGmailService,
   EmailMessage,
 } from '../interfaces/gmail-service.interface';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
+
+/**
+ * Detects the Google "Gmail API has not been used in project N before or it is
+ * disabled" response. Google's googleapis client surfaces this as either an
+ * Error with `code === 403` and `errors[].reason === 'accessNotConfigured'`,
+ * or as a plain string in `error.message`. We match on either to be safe.
+ */
+function isGmailApiDisabledError(error: unknown): boolean {
+  const e = error as {
+    code?: number;
+    errors?: { reason?: string; message?: string }[];
+    message?: string;
+  };
+  if (e?.code === 403) {
+    if (e.errors?.some((x) => x.reason === 'accessNotConfigured')) return true;
+    if (e.errors?.some((x) => /has not been used|is disabled/i.test(x.message ?? ''))) return true;
+  }
+  if (typeof e?.message === 'string') {
+    return /Gmail API has not been used|gmail.googleapis.com.*disabled/i.test(
+      e.message,
+    );
+  }
+  return false;
+}
 
 @Injectable()
 export class GmailService implements IGmailService {
   private readonly logger = new Logger(GmailService.name);
 
-  constructor(private readonly oauthService: OAuthService) {}
+  constructor(
+    private readonly oauthService: OAuthService,
+    private readonly appErrorEmitter: AppErrorEmitterService,
+  ) {}
 
   async getEmails(limit = 20, query?: string): Promise<EmailMessage[]> {
     const gmail = await this.getGmailClient();
@@ -24,7 +53,20 @@ export class GmailService implements IGmailService {
       listParams.q = query;
     }
 
-    const listResponse = await gmail.users.messages.list(listParams);
+    let listResponse;
+    try {
+      listResponse = await gmail.users.messages.list(listParams);
+    } catch (error) {
+      if (isGmailApiDisabledError(error)) {
+        this.appErrorEmitter.emit({
+          source: 'gmail',
+          code: AppErrorCodes.GMAIL_API_DISABLED,
+          message:
+            'Gmail API is disabled in your Google Cloud project. Open Google Cloud Console → APIs & Services → enable the "Gmail API," wait ~1 minute, then retry the sync.',
+        });
+      }
+      throw error;
+    }
     const messageIds = listResponse.data.messages ?? [];
 
     if (messageIds.length === 0) {

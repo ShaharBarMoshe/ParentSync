@@ -1,5 +1,7 @@
 import { GmailService } from './gmail.service';
 import { OAuthService } from '../../auth/services/oauth.service';
+import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 // Mock googleapis
 jest.mock('googleapis', () => ({
@@ -42,6 +44,7 @@ jest.mock('googleapis', () => ({
 describe('GmailService', () => {
   let service: GmailService;
   let mockOAuthService: jest.Mocked<OAuthService>;
+  let mockAppErrorEmitter: jest.Mocked<AppErrorEmitterService>;
 
   beforeEach(() => {
     mockOAuthService = {
@@ -51,7 +54,12 @@ describe('GmailService', () => {
       }),
     } as any;
 
-    service = new GmailService(mockOAuthService);
+    mockAppErrorEmitter = {
+      emit: jest.fn(),
+      clear: jest.fn(),
+    } as unknown as jest.Mocked<AppErrorEmitterService>;
+
+    service = new GmailService(mockOAuthService, mockAppErrorEmitter);
   });
 
   it('should be defined', () => {
@@ -73,5 +81,32 @@ describe('GmailService', () => {
   it('should pass query parameter', async () => {
     const emails = await service.getEmails(5, 'from:test@example.com');
     expect(emails).toHaveLength(2);
+  });
+
+  it('emits GMAIL_API_DISABLED when the project does not have Gmail enabled', async () => {
+    const { google } = jest.requireMock('googleapis');
+    const list = google.gmail().users.messages.list;
+    const apiErr = Object.assign(new Error('Gmail API has not been used in project 123 before or it is disabled'), {
+      code: 403,
+      errors: [{ reason: 'accessNotConfigured', message: 'Gmail API has not been used' }],
+    });
+    list.mockRejectedValueOnce(apiErr);
+
+    await expect(service.getEmails(10)).rejects.toThrow(/Gmail API/);
+    expect(mockAppErrorEmitter.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'gmail',
+        code: AppErrorCodes.GMAIL_API_DISABLED,
+      }),
+    );
+  });
+
+  it('does not emit GMAIL_API_DISABLED for unrelated errors', async () => {
+    const { google } = jest.requireMock('googleapis');
+    const list = google.gmail().users.messages.list;
+    list.mockRejectedValueOnce(new Error('Network unreachable'));
+
+    await expect(service.getEmails(10)).rejects.toThrow();
+    expect(mockAppErrorEmitter.emit).not.toHaveBeenCalled();
   });
 });

@@ -19,6 +19,9 @@ export const AppErrorCodes = {
   // Crypto / settings
   CRYPTO_DECRYPT_FAILED: 'CRYPTO_DECRYPT_FAILED',
 
+  // Gmail — Google project / API enablement
+  GMAIL_API_DISABLED: 'GMAIL_API_DISABLED',
+
   // LLM (in addition to per-status codes from OpenRouter / Gemini)
   LLM_ALL_PROVIDERS_FAILED: 'LLM_ALL_PROVIDERS_FAILED',
 } as const;
