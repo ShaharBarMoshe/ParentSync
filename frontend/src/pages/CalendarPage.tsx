@@ -49,8 +49,14 @@ export default function CalendarPage() {
   }, [loadEvents]);
 
   const filteredEvents = useMemo(() => {
-    if (filter === 'all') return events;
-    return events.filter((e) => e.source === filter);
+    // Only show events that are on the calendar — i.e. approved (or legacy
+    // pre-approval-flow events with status 'none'). Pending events haven't
+    // been confirmed yet and rejected ones explicitly shouldn't be shown.
+    const onCalendar = events.filter(
+      (e) => e.approvalStatus === 'approved' || e.approvalStatus === 'none',
+    );
+    if (filter === 'all') return onCalendar;
+    return onCalendar.filter((e) => e.source === filter);
   }, [events, filter]);
 
   const calendarEntries: CalendarEntry[] = useMemo(() => {
