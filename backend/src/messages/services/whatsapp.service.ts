@@ -383,6 +383,17 @@ export class WhatsAppService
         sent = await targetChat.sendMessage(text);
       }
 
+      // Mark the chat unread on the user's other devices so an approval /
+      // reminder card actually shows up as a notification on their phone.
+      // Best-effort: a markUnread failure never fails the send.
+      try {
+        await (targetChat as Chat & { markUnread?: () => Promise<void> }).markUnread?.();
+      } catch (markErr) {
+        this.logger.debug(
+          `markUnread failed on chat "${chatName}" (continuing): ${(markErr as Error).message}`,
+        );
+      }
+
       return sent.id._serialized;
     } catch (error) {
       this.appErrorEmitter.emit({
