@@ -27,6 +27,21 @@ function imgToBase64(filePath) {
 function buildHTML() {
   const icon = imgToBase64(ICON_SVG);
   const img = (name) => imgToBase64(path.join(SCREENSHOTS_DIR, `${name}.png`));
+
+  // Version-specific download URLs. Read from package.json so a `npm version`
+  // bump propagates everywhere on the next presentation regenerate. Pattern
+  // matches what electron-builder produces and what action-gh-release uploads.
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const VERSION = pkg.version;
+  const RELEASE_BASE = `https://github.com/ShaharBarMoshe/ParentSync/releases/download/v${VERSION}`;
+  const DL = {
+    appImage: `${RELEASE_BASE}/ParentSync-${VERSION}.AppImage`,
+    deb:      `${RELEASE_BASE}/parentsync_${VERSION}_amd64.deb`,
+    dmgArm:   `${RELEASE_BASE}/ParentSync-${VERSION}-arm64.dmg`,
+    dmgIntel: `${RELEASE_BASE}/ParentSync-${VERSION}.dmg`,
+    exe:      `${RELEASE_BASE}/ParentSync-Setup-${VERSION}.exe`,
+    page:     `https://github.com/ShaharBarMoshe/ParentSync/releases/tag/v${VERSION}`,
+  };
   const logo = (name) => {
     // Try png first, then ico
     const pngPath = path.join(LOGOS_DIR, `${name}.png`);
@@ -215,6 +230,25 @@ function buildHTML() {
   }
   .video-link:hover { background: #ffedd5; border-color: #fb923c; }
   .video-link strong { color: #c2410c; }
+
+  /* Big primary download button */
+  .download-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+    color: #ffffff !important;
+    border-radius: 10px;
+    text-decoration: none;
+    border: none;
+    font-weight: 600; font-size: 16px;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  }
+  .download-btn:hover { box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35); }
+  .download-btn small {
+    display: block; font-size: 11px; font-weight: 500; opacity: 0.85;
+    margin-top: 1px;
+  }
+  .download-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
 </style>
 </head>
 <body>
@@ -622,28 +656,27 @@ function buildHTML() {
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Quick Start — Get the App</h2>
-  <p>Pre-built downloads live on the GitHub Releases page. Pick the file for your operating system, then jump to the next slide.</p>
-  <div class="code-block" style="text-align: center; font-size: 22px; padding: 16px;">
-    👉 <a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></a></a>
+  <p>Click your platform — direct download from GitHub Releases v${VERSION}. Per-platform run instructions on the next slides.</p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
+    <div class="info-box" style="text-align: center;">
+      <p style="font-size: 36px; margin: 0;">🍎</p>
+      <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">macOS</p>
+      <a class="download-btn" href="${DL.dmgArm}" style="margin: 8px 0; font-size: 14px;">⬇️ Apple Silicon <small>arm64.dmg</small></a>
+      <a class="download-btn" href="${DL.dmgIntel}" style="margin: 4px 0; font-size: 14px;">⬇️ Intel <small>.dmg</small></a>
+    </div>
+    <div class="info-box" style="text-align: center;">
+      <p style="font-size: 36px; margin: 0;">🪟</p>
+      <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">Windows 10/11</p>
+      <a class="download-btn" href="${DL.exe}" style="margin: 8px 0;">⬇️ Installer <small>Setup-${VERSION}.exe</small></a>
+    </div>
+    <div class="info-box" style="text-align: center;">
+      <p style="font-size: 36px; margin: 0;">🐧</p>
+      <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">Linux</p>
+      <a class="download-btn" href="${DL.appImage}" style="margin: 8px 0; font-size: 14px;">⬇️ Portable <small>.AppImage</small></a>
+      <a class="download-btn" href="${DL.deb}" style="margin: 4px 0; font-size: 14px;">⬇️ Debian/Ubuntu <small>.deb</small></a>
+    </div>
   </div>
-  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 24px;">
-    <div class="info-box">
-      <p style="font-size: 32px; text-align: center; margin: 0;">🍎</p>
-      <p style="text-align: center; font-weight: 600; margin: 4px 0;">macOS</p>
-      <p style="font-size: 14px; text-align: center; margin: 0;">Download <code>.dmg</code><br>(see slide 22)</p>
-    </div>
-    <div class="info-box">
-      <p style="font-size: 32px; text-align: center; margin: 0;">🪟</p>
-      <p style="text-align: center; font-weight: 600; margin: 4px 0;">Windows</p>
-      <p style="font-size: 14px; text-align: center; margin: 0;">Download <code>.exe</code><br>(see slide 23)</p>
-    </div>
-    <div class="info-box">
-      <p style="font-size: 32px; text-align: center; margin: 0;">🐧</p>
-      <p style="text-align: center; font-weight: 600; margin: 4px 0;">Linux</p>
-      <p style="font-size: 14px; text-align: center; margin: 0;">Download <code>.AppImage</code> or <code>.deb</code><br>(see slide 24)</p>
-    </div>
-  </div>
-  <p style="margin-top: 16px; font-size: 15px; color: #64748b; text-align: center;">No account needed. No installer asking your password. Just download and run.</p>
+  <p style="margin-top: 16px; font-size: 14px; color: #64748b; text-align: center;">No account needed. All assets: <a href="${DL.page}">github.com/ShaharBarMoshe/ParentSync/releases/tag/v${VERSION}</a></p>
   <div class="slide-footer"><span>ParentSync — Quick Start</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
@@ -651,16 +684,19 @@ function buildHTML() {
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Run on macOS 🍎</h2>
+  <div class="download-row">
+    <a class="download-btn" href="${DL.dmgArm}">⬇️ Download — Apple Silicon <small>ParentSync-${VERSION}-arm64.dmg</small></a>
+    <a class="download-btn" href="${DL.dmgIntel}">⬇️ Download — Intel <small>ParentSync-${VERSION}.dmg</small></a>
+  </div>
   <div class="howto-cols">
     <div class="howto-col">
       <h3>Step by step</h3>
       <ol class="steps">
-        <li>Open <a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></a></li>
-        <li>Download <code>ParentSync-*.dmg</code></li>
-        <li><strong>Double-click</strong> the downloaded <code>.dmg</code> to open it</li>
+        <li>Click the right download above (M-series Mac → Apple Silicon; older Intel Mac → Intel)</li>
+        <li><strong>Double-click</strong> the <code>.dmg</code> in your Downloads folder</li>
         <li><strong>Drag</strong> the ParentSync icon into the <strong>Applications</strong> folder</li>
-        <li>Open <strong>Applications</strong> in Finder and double-click ParentSync</li>
-        <li>The first time only: macOS may say "Apple cannot check it for malicious software." <strong>Right-click</strong> the icon → <strong>Open</strong> → <strong>Open</strong> in the dialog</li>
+        <li>Open <strong>Applications</strong> and double-click ParentSync</li>
+        <li>First time only: macOS says "Apple cannot check it for malicious software."<br><strong>Right-click</strong> the icon → <strong>Open</strong> → <strong>Open</strong> in the dialog</li>
       </ol>
     </div>
     <div class="howto-col">
@@ -668,10 +704,10 @@ function buildHTML() {
       <ul>
         <li>The app window opens — click <strong>Settings</strong> (top bar) to start configuring</li>
         <li>An icon appears in your menu bar (top right) — right-click for Sync Now / Quit</li>
-        <li>The app stays running when you close the window; quit fully from the menu bar</li>
+        <li>Closing the window keeps it running; quit fully from the menu bar</li>
       </ul>
-      <div class="warning-box">
-        <p>⚠️ Don't have a <code>.dmg</code> in Releases yet? It's only built when someone has a Mac to package on. Until then: clone the repo and run <code>npm run package:mac</code>.</p>
+      <div class="info-box">
+        <p>📦 The build is unsigned (no Apple Developer certificate). The right-click → Open dance is only needed the first time.</p>
       </div>
     </div>
   </div>
@@ -682,14 +718,16 @@ function buildHTML() {
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Run on Windows 🪟</h2>
+  <div class="download-row">
+    <a class="download-btn" href="${DL.exe}">⬇️ Download Installer <small>ParentSync-Setup-${VERSION}.exe</small></a>
+  </div>
   <div class="howto-cols">
     <div class="howto-col">
       <h3>Step by step</h3>
       <ol class="steps">
-        <li>Open <a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></a></li>
-        <li>Download <code>ParentSync-Setup-*.exe</code></li>
-        <li><strong>Double-click</strong> the installer</li>
-        <li>Windows SmartScreen may say "Windows protected your PC."<br>Click <strong>"More info"</strong> → <strong>"Run anyway"</strong></li>
+        <li>Click the download button above</li>
+        <li><strong>Double-click</strong> the installer in your Downloads folder</li>
+        <li>Windows SmartScreen says "Windows protected your PC."<br>Click <strong>"More info"</strong> → <strong>"Run anyway"</strong></li>
         <li>Click through the installer (Next → Install → Finish)</li>
         <li>The app launches automatically and adds itself to the Start menu</li>
       </ol>
@@ -702,8 +740,8 @@ function buildHTML() {
         <li>Closing the window minimizes to the tray; right-click → Quit to exit fully</li>
         <li>Auto-starts on login by default</li>
       </ul>
-      <div class="warning-box">
-        <p>⚠️ Don't see a <code>.exe</code> in Releases yet? Windows builds are produced on a Windows machine. Until then: clone the repo on Windows and run <code>npm run package:win</code>.</p>
+      <div class="info-box">
+        <p>📦 The installer is unsigned (no Authenticode certificate). The SmartScreen "Run anyway" is only needed the first time.</p>
       </div>
     </div>
   </div>
@@ -714,27 +752,30 @@ function buildHTML() {
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Run on Linux 🐧</h2>
+  <div class="download-row">
+    <a class="download-btn" href="${DL.appImage}">⬇️ AppImage (any distro) <small>ParentSync-${VERSION}.AppImage</small></a>
+    <a class="download-btn" href="${DL.deb}">⬇️ .deb (Debian/Ubuntu) <small>parentsync_${VERSION}_amd64.deb</small></a>
+  </div>
   <div class="howto-cols">
     <div class="howto-col">
-      <h3>Easiest: AppImage (any distro)</h3>
+      <h3>AppImage (any distro)</h3>
       <ol class="steps">
-        <li>Open <a href="https://github.com/ShaharBarMoshe/ParentSync/releases"><strong>github.com/ShaharBarMoshe/ParentSync/releases</strong></a></li>
-        <li>Download <code>ParentSync-*.AppImage</code></li>
-        <li>Double-click won't work yet — files need to be marked as runnable. Two ways:
-          <div class="step-detail"><strong>Mouse:</strong> Right-click the file → <strong>Properties</strong> → <strong>Permissions</strong> → check <strong>"Allow executing as a program"</strong>.<br><strong>Terminal:</strong> <code>chmod +x ParentSync-*.AppImage</code></div></li>
-        <li>Now <strong>double-click</strong> it (or run <code>./ParentSync-*.AppImage</code>)</li>
+        <li>Click the AppImage download above</li>
+        <li>Files need to be marked runnable first. Two ways:
+          <div class="step-detail"><strong>Mouse:</strong> Right-click → <strong>Properties</strong> → <strong>Permissions</strong> → check <strong>"Allow executing as a program"</strong>.<br><strong>Terminal:</strong> <code>chmod +x ParentSync-${VERSION}.AppImage</code></div></li>
+        <li><strong>Double-click</strong> it (or <code>./ParentSync-${VERSION}.AppImage</code>)</li>
       </ol>
     </div>
     <div class="howto-col">
       <h3>Debian / Ubuntu: .deb</h3>
       <ol class="steps">
-        <li>Download <code>parentsync_*_amd64.deb</code></li>
-        <li>Double-click → opens in Software Center → click <strong>Install</strong></li>
-        <li>Or terminal: <code>sudo dpkg -i parentsync_*_amd64.deb</code></li>
+        <li>Click the .deb download above</li>
+        <li>Double-click → opens in Software Center → <strong>Install</strong></li>
+        <li>Or terminal: <code>sudo dpkg -i parentsync_${VERSION}_amd64.deb</code></li>
         <li>Launch from your application menu</li>
       </ol>
-      <h3 style="margin-top: 16px;">Auto-start on login (optional)</h3>
-      <p style="font-size: 15px;">After cloning the repo, run <code>npm run install:local</code> — it installs the AppImage as a systemd user service that starts on login and keeps the four most recent versions.</p>
+      <h3 style="margin-top: 12px;">Auto-start on login (optional)</h3>
+      <p style="font-size: 14px;">Clone the repo and run <code>npm run install:local</code> — registers the AppImage as a systemd user service.</p>
     </div>
   </div>
   <div class="slide-footer"><span>ParentSync — Quick Start</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>

@@ -1,5 +1,19 @@
 # User Guide
 
+## Download
+
+Pre-built binaries on the [GitHub Releases page](https://github.com/ShaharBarMoshe/ParentSync/releases/latest). Direct links:
+
+| Platform | File | Notes |
+|---|---|---|
+| 🍎 **macOS — Apple Silicon (M1/M2/M3/M4)** | [ParentSync-1.0.2-arm64.dmg](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2-arm64.dmg) | First launch: right-click → Open → Open |
+| 🍎 **macOS — Intel** | [ParentSync-1.0.2.dmg](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.dmg) | Same first-launch flow |
+| 🪟 **Windows 10/11** | [ParentSync-Setup-1.0.2.exe](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-Setup-1.0.2.exe) | SmartScreen → "More info" → "Run anyway" |
+| 🐧 **Linux — any distro** | [ParentSync-1.0.2.AppImage](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.AppImage) | `chmod +x` and run |
+| 🐧 **Debian / Ubuntu** | [parentsync_1.0.2_amd64.deb](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/parentsync_1.0.2_amd64.deb) | `sudo dpkg -i` or double-click |
+
+Per-platform run instructions: [interactive walkthrough](https://shaharbarmoshe.github.io/ParentSync/presentation.html#21).
+
 ## Overview
 
 ParentSync monitors your WhatsApp parent groups and Gmail for school-related messages, uses an LLM to extract events (field trips, meetings, deadlines, things-to-bring), routes each one through an optional WhatsApp approval channel, and syncs the survivors to your Google Calendar.

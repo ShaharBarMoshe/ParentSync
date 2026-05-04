@@ -9,15 +9,29 @@ Get ParentSync running on your machine step by step.
 - **Google Chrome** (for WhatsApp Web — whatsapp-web.js uses Chromium internally)
 - **libfuse2** (Linux only, for running AppImage): `sudo apt install libfuse2`
 
-## Quick Start
+## Quick Start — pre-built download
+
+Most users want a binary, not a build:
+
+| Platform | Direct download |
+|---|---|
+| 🍎 macOS — Apple Silicon | [ParentSync-1.0.2-arm64.dmg](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2-arm64.dmg) |
+| 🍎 macOS — Intel | [ParentSync-1.0.2.dmg](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.dmg) |
+| 🪟 Windows 10/11 | [ParentSync-Setup-1.0.2.exe](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-Setup-1.0.2.exe) |
+| 🐧 Linux (any distro) | [ParentSync-1.0.2.AppImage](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.AppImage) |
+| 🐧 Debian / Ubuntu | [parentsync_1.0.2_amd64.deb](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/parentsync_1.0.2_amd64.deb) |
+
+Or browse all assets on the [Releases page](https://github.com/ShaharBarMoshe/ParentSync/releases/latest).
+
+## Quick Start — build from source
 
 ```bash
 # 1. Clone and setup
-git clone <repo-url> && cd ParentSync
+git clone https://github.com/ShaharBarMoshe/ParentSync.git && cd ParentSync
 ./setup.sh
 
 # 2. Package the app
-npm run package:linux
+npm run package:linux  # or :mac / :win
 
 # 3. Run it
 chmod +x release/ParentSync-*.AppImage

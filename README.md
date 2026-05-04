@@ -12,6 +12,13 @@
 
 📊 **[View the interactive presentation →](https://shaharbarmoshe.github.io/ParentSync/presentation.html)** · [PDF](https://shaharbarmoshe.github.io/ParentSync/ParentSync-Presentation.pdf) · [Docs site](https://shaharbarmoshe.github.io/ParentSync/)
 
+### Download v1.0.2
+
+| 🍎 macOS — [Apple Silicon](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2-arm64.dmg) · [Intel](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.dmg) | 🪟 [Windows](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-Setup-1.0.2.exe) | 🐧 Linux — [AppImage](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.AppImage) · [.deb](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/parentsync_1.0.2_amd64.deb) |
+|---|---|---|
+
+Run instructions per platform: see the [User Guide](docs/USER-GUIDE.md#download) or the [Quick Start slides](https://shaharbarmoshe.github.io/ParentSync/presentation.html#21). Mac/Win builds are unsigned — first launch needs right-click → Open (Mac) / "Run anyway" (SmartScreen).
+
 | Dashboard | Calendar | Settings |
 |---|---|---|
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Calendar](docs/screenshots/calendar.png) | ![Settings](docs/screenshots/settings.png) |
