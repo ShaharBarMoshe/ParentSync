@@ -948,23 +948,25 @@ function buildHTML() {
   <div class="slide-footer"><span>ParentSync</span><span>27 / ${TOTAL_SLIDES}</span></div>
 </div>
 
-<!-- Slide 23: AI Feedback Loop -->
+<!-- Slide 28: You're in control of the AI -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
-  <h2>AI Feedback Loop</h2>
-  <p>The system prompt that tells the LLM how to extract events is fully editable, and the app learns from every 😢 reaction.</p>
+  <h2>You're in control of the AI 🎛️</h2>
+  <p style="font-size: 18px;">The AI never gets the last word — <strong>you do</strong>, in two complementary ways. The prompt sets the rules; your reactions tune the edge cases. Both feed into the same LLM call, and changes take effect on the next sync.</p>
   <div class="screenshot-grid">
     <div class="col">
-      <div class="label">AI Extraction Prompt — editable from Settings</div>
+      <div class="label">1. Edit the rules</div>
       <img src="${img('settings-prompt')}" alt="Settings — AI Extraction Prompt">
+      <p style="font-size: 14px; color: #64748b; margin-top: 8px; text-align: left;"><strong>Settings → AI Extraction Prompt.</strong> The whole system prompt is a textarea. Add an example, change wording, or hit <em>Reset to default</em>. Effective on the next sync.</p>
     </div>
     <div class="col">
-      <div class="label">Learned Exclusions — captured from 😢 reactions</div>
+      <div class="label">2. React to the results</div>
       <img src="${img('settings-exclusions')}" alt="Settings — Learned Exclusions">
+      <p style="font-size: 14px; color: #64748b; margin-top: 8px; text-align: left;"><strong>👍 / 😢 in WhatsApp</strong> — or the inline buttons on the Dashboard. Every 😢 captures the source as a <em>Learned Exclusion</em> (most recent 50 appended to the prompt). Take back a reaction to undo.</p>
     </div>
   </div>
-  <p style="margin-top: 16px; font-size: 16px; color: #64748b;">Every 😢 saves the source message + the wrong title. The most recent 50 are appended to the prompt as "do NOT extract events for messages similar to these," so the LLM stops repeating the mistake. The parse cache keys include a hash of the prompt + exclusions — so feedback closes on the next sync, not 24h later.</p>
-  <div class="slide-footer"><span>ParentSync — Feedback Loop</span><span>28 / ${TOTAL_SLIDES}</span></div>
+  <p style="margin-top: 12px; font-size: 14px; color: #64748b;">The parse cache keys include a hash of the prompt + exclusions — so feedback closes on the <strong>next</strong> sync, not 24 h later.</p>
+  <div class="slide-footer"><span>ParentSync — You're in control</span><span>28 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 24: In-App Approval -->

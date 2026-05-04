@@ -1,9 +1,11 @@
 # Customizable Prompt & Negative-Reaction Learning
 
-ParentSync's event extraction is driven by a system prompt sent to the LLM on every parse. Two settings give you direct control over how the AI behaves:
+ParentSync's event extraction is driven by a system prompt sent to the LLM on every parse. **You control both the rules and the edge cases**, in two complementary ways:
 
-1. **AI Extraction Prompt** — the prompt itself, fully editable.
-2. **Learned Exclusions** — messages you've rejected with 😢; the AI sees them on every parse and learns to skip similar ones.
+1. **AI Extraction Prompt** — the prompt itself, fully editable from Settings. Change the rules of the game.
+2. **Learned Exclusions** — messages you've rejected with 😢; the AI sees them on every parse and learns to skip similar ones. Tune the edge cases by reacting.
+
+You don't have to choose one or the other — they compose. The prompt is the floor (what the AI is told to look for); the exclusions are the carve-outs (specific messages it should never extract from again). Both feed into the same system prompt on every LLM call, and changes take effect on the next sync.
 
 ## Editing the prompt
 

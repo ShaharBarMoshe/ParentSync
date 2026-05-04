@@ -4,6 +4,15 @@
 
 ParentSync monitors your WhatsApp parent groups and Gmail for school-related messages, uses an LLM to extract events (field trips, meetings, deadlines, things-to-bring), routes each one through an optional WhatsApp approval channel, and syncs the survivors to your Google Calendar.
 
+## You're in control of the AI
+
+The AI never gets the last word — **you do**, in two complementary ways:
+
+1. **React to its suggestions.** Every extracted event is sent to your approval channel (or shown on the Dashboard with **Approve** / **Reject** buttons). React 👍 to publish, 😢 to reject. A 😢 also captures the source message as a *learned exclusion* — the AI sees those on every parse and learns to skip similar messages. Take back a reaction at any time to undo it. See [Event Approval](#event-approval) and [Learned Exclusions](#learned-exclusions).
+2. **Edit the prompt directly.** The system prompt that tells the LLM what counts as an event lives in **Settings → AI Extraction Prompt**. It's a regular textarea — change wording, add examples, or hit **Reset to default** if an edit hurts accuracy. See [AI Extraction Prompt](#ai-extraction-prompt) and the design doc at [Prompt Customization](PROMPT-CUSTOMIZATION.md).
+
+Together: the prompt sets the rules, your reactions tune the edge cases. No retraining, no waiting — changes take effect on the next sync.
+
 ## Navigation
 
 The top bar has four tabs:
