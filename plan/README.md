@@ -42,7 +42,8 @@
 | [Phase 15](phase15-qa-test-plan.md) | QA Test Plan Execution (91 test cases) | Done |
 | [Phase 16](phase16-google-tasks.md) | Google Tasks Integration (date-only → Tasks, timed → Events) | Done |
 | [Phase 17](phase17-batch-llm.md) | Batch LLM Parsing (all groups in single API call) | Done |
-| [Phase 18](phase18-customizable-prompt.md) | Customizable Prompt with Negative-Reaction Learning | Planned |
+| [Phase 18](phase18-customizable-prompt.md) | Customizable Prompt with Negative-Reaction Learning | Done |
+| [Phase 19](phase19-uninstall.md) | One-Click Uninstall From Settings (Linux/macOS/Windows) | Planned |
 
 ## Architecture
 

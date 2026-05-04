@@ -36,7 +36,7 @@ function buildHTML() {
     return '';
   };
 
-  const TOTAL_SLIDES = 29;
+  const TOTAL_SLIDES = 30;
 
   return `<!DOCTYPE html>
 <html>
@@ -872,7 +872,66 @@ function buildHTML() {
   <div class="slide-footer"><span>ParentSync</span><span>25 / ${TOTAL_SLIDES}</span></div>
 </div>
 
-<!-- Slide 22: Event Reminders -->
+<!-- Slide 26: Uninstalling -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Uninstalling 🗑️</h2>
+  <p style="font-size: 17px;">An in-app <strong>Settings → Danger Zone → Uninstall ParentSync</strong> button is planned (<a href="https://github.com/ShaharBarMoshe/ParentSync/blob/main/plan/phase19-uninstall.md">Phase 19</a>) — until then, here's the manual cleanup per platform. Add <code>--purge</code> / the data-removal step to also wipe your database, OAuth tokens, WhatsApp session, and logs.</p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 14px;">
+    <div>
+      <h3 style="color: #2563eb;">🐧 Linux</h3>
+      <div class="code-block" style="font-size: 12px; line-height: 1.4;">
+        # 1. systemd autostart<br>
+        systemctl --user stop parentsync.service<br>
+        systemctl --user disable parentsync.service<br>
+        rm -f ~/.config/systemd/user/parentsync.service<br>
+        <br>
+        # 2. binary + versions<br>
+        rm -f  ~/.local/bin/ParentSync.AppImage<br>
+        rm -rf ~/.local/share/parentsync<br>
+        rm -f  ~/.local/share/applications/parentsync.desktop<br>
+        <br>
+        # 3. (.deb only)<br>
+        sudo apt remove parentsync<br>
+        <br>
+        # 4. data — IRREVERSIBLE<br>
+        rm -rf ~/.config/parentsync
+      </div>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">🍎 macOS</h3>
+      <div class="code-block" style="font-size: 12px; line-height: 1.4;">
+        # 1. Quit ParentSync (menu bar)<br>
+        # 2. Drag /Applications/ParentSync.app to Trash<br>
+        <br>
+        # 3. data — IRREVERSIBLE<br>
+        rm -rf "$HOME/Library/Application Support/ParentSync"<br>
+        rm -rf "$HOME/Library/Logs/ParentSync"<br>
+        rm -rf "$HOME/Library/Caches/com.parentsync.app"<br>
+        rm -f  "$HOME/Library/Preferences/com.parentsync.app.plist"<br>
+        rm -f  "$HOME/Library/LaunchAgents/com.parentsync.app.plist"
+      </div>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">🪟 Windows</h3>
+      <div class="code-block" style="font-size: 12px; line-height: 1.4;">
+        # 1. Settings → Apps → ParentSync → Uninstall<br>
+        # (Handles binary, Start menu, registry)<br>
+        <br>
+        # 2. data — IRREVERSIBLE (PowerShell)<br>
+        Remove-Item -Recurse -Force "$env:APPDATA\\ParentSync"<br>
+        Remove-Item -Recurse -Force "$env:LOCALAPPDATA\\ParentSync"<br>
+        Remove-ItemProperty "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" "ParentSync"
+      </div>
+    </div>
+  </div>
+  <div class="info-box" style="margin-top: 12px;">
+    <p>📱 After removing user data, open WhatsApp on your phone → <strong>Settings → Linked Devices</strong> and remove the ParentSync entry to fully unlink.</p>
+  </div>
+  <div class="slide-footer"><span>ParentSync — Uninstall</span><span>26 / ${TOTAL_SLIDES}</span></div>
+</div>
+
+<!-- Slide 27: Event Reminders -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Event Reminders</h2>
@@ -886,7 +945,7 @@ function buildHTML() {
     <li>Each event is reminded at most once (<code>reminderSent</code> flag)</li>
   </ul>
   <p style="margin-top: 16px; font-size: 16px; color: #64748b;">See <code>docs/EVENT-REMINDERS.md</code> for the full specification.</p>
-  <div class="slide-footer"><span>ParentSync</span><span>26 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>27 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 23: AI Feedback Loop -->
@@ -905,7 +964,7 @@ function buildHTML() {
     </div>
   </div>
   <p style="margin-top: 16px; font-size: 16px; color: #64748b;">Every 😢 saves the source message + the wrong title. The most recent 50 are appended to the prompt as "do NOT extract events for messages similar to these," so the LLM stops repeating the mistake. The parse cache keys include a hash of the prompt + exclusions — so feedback closes on the next sync, not 24h later.</p>
-  <div class="slide-footer"><span>ParentSync — Feedback Loop</span><span>27 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Feedback Loop</span><span>28 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 24: In-App Approval -->
@@ -916,7 +975,7 @@ function buildHTML() {
     <img class="screenshot" src="${img('dashboard-approval')}" alt="Dashboard with approval pills + Approve/Reject buttons">
   </div>
   <div class="caption">Each upcoming event shows its status as a pill — 🟠 Pending, 🟢 Approved, 🔴 Rejected. Pending events have inline Approve / Reject buttons. Same effect as 👍 / 😢 in WhatsApp; reactions are reversible too — take back a 👍 to unsync from Google, take back a 😢 to clear the learned exclusion.</div>
-  <div class="slide-footer"><span>ParentSync — Approval</span><span>28 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Approval</span><span>29 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 <!-- Slide 25: Duplicate Suppression -->
@@ -934,7 +993,7 @@ function buildHTML() {
   <div class="info-box">
     <p>💡 The check pairs with the negative-feedback loop: even if a duplicate slips through, one 😢 reaction puts it in the learned-exclusions pool so it's gone for good.</p>
   </div>
-  <div class="slide-footer"><span>ParentSync — Duplicate Suppression</span><span>29 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Duplicate Suppression</span><span>30 / ${TOTAL_SLIDES}</span></div>
 </div>
 
 </body>

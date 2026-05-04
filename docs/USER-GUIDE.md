@@ -200,3 +200,63 @@ The app shows an icon in the system tray. Right-click for options:
 - **Open** — show the main window
 - **Sync Now** — trigger a sync
 - **Quit** — exit the app completely
+
+## Uninstalling
+
+> **Coming soon — in-app button.** Settings → Danger Zone → **Uninstall ParentSync** with a checkbox to also wipe your data. Until then, follow the manual steps below for your OS. See [Phase 19 plan](../plan/phase19-uninstall.md) for the design.
+
+What gets removed:
+- The app binary
+- The auto-start entry (so it doesn't relaunch on login)
+- *Optionally* your user data: SQLite database, OAuth tokens, WhatsApp Web session, encryption key, logs
+
+### Linux
+
+```bash
+# 1. Stop and remove the autostart unit
+systemctl --user stop parentsync.service
+systemctl --user disable parentsync.service
+rm -f ~/.config/systemd/user/parentsync.service
+systemctl --user daemon-reload
+
+# 2. Remove the app binary + versions + desktop entry
+rm -f  ~/.local/bin/ParentSync.AppImage
+rm -rf ~/.local/share/parentsync
+rm -f  ~/.local/share/applications/parentsync.desktop
+rm -f  ~/Desktop/ParentSync.desktop
+
+# 3. If installed from .deb
+sudo apt remove parentsync   # Debian/Ubuntu
+
+# 4. (Optional) wipe your data — IRREVERSIBLE
+rm -rf ~/.config/parentsync
+```
+
+### macOS
+
+1. Quit the app from the menu-bar icon.
+2. Drag **ParentSync** from `/Applications` to the Trash.
+3. (Optional) Remove user data:
+   ```bash
+   rm -rf ~/Library/Application\ Support/ParentSync
+   rm -rf ~/Library/Logs/ParentSync
+   rm -rf ~/Library/Caches/com.parentsync.app
+   rm -f  ~/Library/Preferences/com.parentsync.app.plist
+   rm -rf ~/Library/Saved\ Application\ State/com.parentsync.app.savedState
+   rm -f  ~/Library/LaunchAgents/com.parentsync.app.plist
+   ```
+
+### Windows
+
+1. **Settings → Apps → Installed apps → ParentSync → Uninstall** (runs the NSIS uninstaller — handles binary, Start menu, registry).
+2. (Optional) Wipe user data via PowerShell:
+   ```powershell
+   Remove-Item -Recurse -Force "$env:APPDATA\ParentSync"
+   Remove-Item -Recurse -Force "$env:LOCALAPPDATA\ParentSync"
+   Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" `
+     -Name "ParentSync" -ErrorAction SilentlyContinue
+   ```
+
+### After uninstalling — unlink WhatsApp
+
+If you removed user data, the WhatsApp Web session is gone but your phone may still list **ParentSync** under *Linked Devices*. Open WhatsApp on your phone → **Settings → Linked Devices** → tap the ParentSync entry → **Log out**.
