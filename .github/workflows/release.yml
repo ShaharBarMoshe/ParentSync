@@ -65,9 +65,13 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:native
 
+      # `--publish never` so electron-builder doesn't try to auto-upload to
+      # GitHub Releases on tag pushes (it would need a GH_TOKEN and would
+      # double up with the explicit softprops upload step below).
+
       - name: Package — Linux
         if: matrix.label == 'linux'
-        run: npx electron-builder --linux
+        run: npx electron-builder --linux --publish never
 
       - name: Package — macOS
         if: matrix.label == 'macos'
@@ -76,13 +80,13 @@ jobs:
         # time. Documented in the deck's "Run on macOS" slide.
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac --x64 --arm64 -c.mac.identity=null
+        run: npx electron-builder --mac --x64 --arm64 -c.mac.identity=null --publish never
 
       - name: Package — Windows
         if: matrix.label == 'windows'
         # Skip code signing (no certificate). Triggers Defender SmartScreen
         # on first run; user clicks "More info → Run anyway."
-        run: npx electron-builder --win
+        run: npx electron-builder --win --publish never
 
       - name: List built artifacts
         shell: bash
