@@ -276,6 +276,34 @@ function buildHTML() {
   <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
+<!-- Slide: Quick Start — Get the App (download buttons) -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Get the App</h2>
+  <p>Click your platform for a direct download from GitHub Releases v${VERSION}. Per-platform run instructions later in the deck (Quick Start section).</p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
+    <div class="info-box" style="text-align: center;">
+      <p style="font-size: 36px; margin: 0;">🍎</p>
+      <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">macOS</p>
+      <a class="download-btn" href="${DL.dmgArm}" style="margin: 8px 0; font-size: 14px;">⬇️ Apple Silicon <small>arm64.dmg</small></a>
+      <a class="download-btn" href="${DL.dmgIntel}" style="margin: 4px 0; font-size: 14px;">⬇️ Intel <small>.dmg</small></a>
+    </div>
+    <div class="info-box" style="text-align: center;">
+      <p style="font-size: 36px; margin: 0;">🪟</p>
+      <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">Windows 10/11</p>
+      <a class="download-btn" href="${DL.exe}" style="margin: 8px 0;">⬇️ Installer <small>Setup-${VERSION}.exe</small></a>
+    </div>
+    <div class="info-box" style="text-align: center;">
+      <p style="font-size: 36px; margin: 0;">🐧</p>
+      <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">Linux</p>
+      <a class="download-btn" href="${DL.appImage}" style="margin: 8px 0; font-size: 14px;">⬇️ Portable <small>.AppImage</small></a>
+      <a class="download-btn" href="${DL.deb}" style="margin: 4px 0; font-size: 14px;">⬇️ Debian/Ubuntu <small>.deb</small></a>
+    </div>
+  </div>
+  <p style="margin-top: 16px; font-size: 14px; color: #64748b; text-align: center;">No account needed. All assets: <a href="${DL.page}">github.com/ShaharBarMoshe/ParentSync/releases/tag/v${VERSION}</a></p>
+  <div class="slide-footer"><span>ParentSync — Get the App</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
+</div>
+
 <!-- Slide 3: How It Works -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
@@ -652,35 +680,7 @@ function buildHTML() {
   <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
-<!-- Slide 21: Quick Start — Where to download -->
-<div class="slide slide-content">
-  <div class="accent-bar"></div>
-  <h2>Quick Start — Get the App</h2>
-  <p>Click your platform — direct download from GitHub Releases v${VERSION}. Per-platform run instructions on the next slides.</p>
-  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
-    <div class="info-box" style="text-align: center;">
-      <p style="font-size: 36px; margin: 0;">🍎</p>
-      <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">macOS</p>
-      <a class="download-btn" href="${DL.dmgArm}" style="margin: 8px 0; font-size: 14px;">⬇️ Apple Silicon <small>arm64.dmg</small></a>
-      <a class="download-btn" href="${DL.dmgIntel}" style="margin: 4px 0; font-size: 14px;">⬇️ Intel <small>.dmg</small></a>
-    </div>
-    <div class="info-box" style="text-align: center;">
-      <p style="font-size: 36px; margin: 0;">🪟</p>
-      <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">Windows 10/11</p>
-      <a class="download-btn" href="${DL.exe}" style="margin: 8px 0;">⬇️ Installer <small>Setup-${VERSION}.exe</small></a>
-    </div>
-    <div class="info-box" style="text-align: center;">
-      <p style="font-size: 36px; margin: 0;">🐧</p>
-      <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">Linux</p>
-      <a class="download-btn" href="${DL.appImage}" style="margin: 8px 0; font-size: 14px;">⬇️ Portable <small>.AppImage</small></a>
-      <a class="download-btn" href="${DL.deb}" style="margin: 4px 0; font-size: 14px;">⬇️ Debian/Ubuntu <small>.deb</small></a>
-    </div>
-  </div>
-  <p style="margin-top: 16px; font-size: 14px; color: #64748b; text-align: center;">No account needed. All assets: <a href="${DL.page}">github.com/ShaharBarMoshe/ParentSync/releases/tag/v${VERSION}</a></p>
-  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
-</div>
-
-<!-- Slide 22: Quick Start — macOS -->
+<!-- Slide: Quick Start — macOS -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Run on macOS 🍎</h2>
