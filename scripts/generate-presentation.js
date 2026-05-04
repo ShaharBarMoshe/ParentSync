@@ -36,9 +36,9 @@ function buildHTML() {
     return '';
   };
 
-  const TOTAL_SLIDES = 30;
-
-  return `<!DOCTYPE html>
+  // Slide numbering is filled in post-build so reordering is trivial.
+  // Each footer holds `__SLIDE_NUM__ / __TOTAL_SLIDES__` placeholders.
+  const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -239,7 +239,7 @@ function buildHTML() {
     <li>Optional approval workflow via WhatsApp reactions (👍 approve / 😢 reject)</li>
     <li>All data stored locally on your machine — no cloud, no sign-up</li>
   </ul>
-  <div class="slide-footer"><span>ParentSync</span><span>2 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 3: How It Works -->
@@ -271,7 +271,7 @@ function buildHTML() {
       <div class="flow-desc">Events synced<br>automatically</div>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync</span><span>3 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 4: Dashboard -->
@@ -282,7 +282,7 @@ function buildHTML() {
     <img class="screenshot" src="${img('dashboard')}" alt="Dashboard">
   </div>
   <div class="caption">Sync status, recent messages, upcoming events, and sync history at a glance</div>
-  <div class="slide-footer"><span>ParentSync</span><span>4 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 5: Calendar -->
@@ -293,21 +293,10 @@ function buildHTML() {
     <img class="screenshot" src="${img('calendar')}" alt="Calendar">
   </div>
   <div class="caption">Full month/week/day calendar with events color-coded by source (WhatsApp or Email)</div>
-  <div class="slide-footer"><span>ParentSync</span><span>5 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
-<!-- Slide 6: Monitor -->
-<div class="slide slide-screenshot">
-  <div class="accent-bar"></div>
-  <h2>Monitor & Analytics</h2>
-  <div class="screenshot-container">
-    <img class="screenshot" src="${img('monitor')}" alt="Monitor">
-  </div>
-  <div class="caption">Messages scanned, events created, sync success rate, and channel activity charts</div>
-  <div class="slide-footer"><span>ParentSync</span><span>6 / ${TOTAL_SLIDES}</span></div>
-</div>
-
-<!-- Slide 7: Settings -->
+<!-- Slide: Settings -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Settings & Setup</h2>
@@ -321,7 +310,7 @@ function buildHTML() {
       <img src="${img('settings-schedule')}" alt="Settings - schedule">
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync</span><span>7 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 8: Dashboard Deep Dive -->
@@ -352,7 +341,7 @@ function buildHTML() {
       </ul>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — Dashboard</span><span>8 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Dashboard</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 9: Dashboard part 2 -->
@@ -390,108 +379,10 @@ function buildHTML() {
       </div>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — Dashboard</span><span>9 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Dashboard</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
-<!-- Slide 10: Monitor Deep Dive — Summary Cards -->
-<div class="slide slide-content">
-  <div class="accent-bar"></div>
-  <h2>Monitor — Summary Cards</h2>
-  <p>Six cards at the top give you a quick health check. Use the <strong>Period</strong> dropdown (7/30/90 days) and <strong>Child</strong> filter to narrow the view.</p>
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px 40px; margin-top: 16px;">
-    <div>
-      <h3 style="color: #2563eb;">💬 Messages Scanned</h3>
-      <p style="font-size: 17px;">Total WhatsApp + email messages collected. Green trend arrow shows change vs. previous period.</p>
-    </div>
-    <div>
-      <h3 style="color: #2563eb;">📅 Events Created</h3>
-      <p style="font-size: 17px;">How many calendar events the AI extracted from messages. Trend arrow compares to previous period.</p>
-    </div>
-    <div>
-      <h3 style="color: #2563eb;">⏱ Avg Sync Duration</h3>
-      <p style="font-size: 17px;">Average time per sync cycle (scanning + parsing). Under 30s is normal.</p>
-    </div>
-    <div>
-      <h3 style="color: #2563eb;">✅ Sync Success Rate</h3>
-      <p style="font-size: 17px;">Percentage of syncs that completed without errors. Green ≥80%, orange ≥50%, red below 50%.</p>
-    </div>
-    <div>
-      <h3 style="color: #2563eb;">📊 Most Active Channel</h3>
-      <p style="font-size: 17px;">The WhatsApp group or email source that generated the most messages in this period.</p>
-    </div>
-    <div>
-      <h3 style="color: #2563eb;">🔄 Last Sync</h3>
-      <p style="font-size: 17px;">Timestamp and status badge of the most recent sync. Tells you when data was last refreshed.</p>
-    </div>
-  </div>
-  <div class="slide-footer"><span>ParentSync — Monitor</span><span>10 / ${TOTAL_SLIDES}</span></div>
-</div>
-
-<!-- Slide 11: Monitor Deep Dive — Charts -->
-<div class="slide slide-content">
-  <div class="accent-bar"></div>
-  <h2>Monitor — Charts & Graphs</h2>
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px 40px; margin-top: 8px;">
-    <div>
-      <h3 style="color: #2563eb;">📈 Messages Over Time</h3>
-      <p style="font-size: 16px;"><strong>Line chart</strong> with two lines:<br>
-      <span style="color: #25d366;">●</span> <strong>Green</strong> = WhatsApp messages<br>
-      <span style="color: #ea4335;">●</span> <strong>Red</strong> = Email messages<br>
-      X-axis: dates, Y-axis: message count. Shows daily volume trends — helps spot when groups are most active.</p>
-    </div>
-    <div>
-      <h3 style="color: #2563eb;">📊 Events Per Channel</h3>
-      <p style="font-size: 16px;"><strong>Horizontal bar chart</strong> showing event count by WhatsApp group name. Each channel gets a different purple shade. Hover to see percentage of total. Identifies which groups generate the most calendar events.</p>
-    </div>
-    <div>
-      <h3 style="color: #2563eb;">📉 Sync History</h3>
-      <p style="font-size: 16px;"><strong>Combo chart</strong> — bars + line overlay.<br>
-      <strong>Bars</strong>: message count per sync (<span style="color: #22c55e;">green</span> = success, <span style="color: #f97316;">orange</span> = partial, <span style="color: #ef4444;">red</span> = failed)<br>
-      <strong>Line</strong>: sync duration in seconds (right axis)<br>
-      Spot slow syncs or recurring failures at a glance.</p>
-    </div>
-    <div>
-      <h3 style="color: #2563eb;">🗓 Channel Activity Heatmap</h3>
-      <p style="font-size: 16px;"><strong>Grid</strong> with channels as rows, dates as columns. Cell color intensity = message count. Darker purple = more messages. Hover any cell for exact count. Reveals which days and channels are busiest.</p>
-    </div>
-  </div>
-  <div class="slide-footer"><span>ParentSync — Monitor</span><span>11 / ${TOTAL_SLIDES}</span></div>
-</div>
-
-<!-- Slide 12: Common Errors & Troubleshooting -->
-<div class="slide slide-content">
-  <div class="accent-bar"></div>
-  <h2>Common Errors & Solutions</h2>
-  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px;">
-    <div class="warning-box">
-      <p>⚠️ <strong>"Sync failed"</strong><br><br>
-      WhatsApp may be disconnected, or OpenRouter key is missing/expired. Check Settings → WhatsApp status and OpenRouter API key.</p>
-    </div>
-    <div class="warning-box">
-      <p>⚠️ <strong>"0 Events Created" after sync</strong><br><br>
-      The AI didn't find any events in the messages. This is normal if messages are just chat. Only messages with dates/times get parsed into events.</p>
-    </div>
-    <div class="warning-box">
-      <p>⚠️ <strong>"Google OAuth not configured"</strong><br><br>
-      You haven't entered the Google Client ID and Secret yet. Go to Settings → Google OAuth and follow the setup steps (slide 16).</p>
-    </div>
-    <div class="warning-box">
-      <p>⚠️ <strong>"WhatsApp is not connected"</strong><br><br>
-      Session expired. Go to Settings → click "Connect WhatsApp" → scan QR code again with your phone.</p>
-    </div>
-    <div class="warning-box">
-      <p>⚠️ <strong>"Failed to load dashboard data"</strong><br><br>
-      Backend may still be starting. Wait a few seconds and click the <strong>refresh button</strong> (↻ top-right). If it persists, restart the app.</p>
-    </div>
-    <div class="warning-box">
-      <p>⚠️ <strong>Events not appearing on Google Calendar</strong><br><br>
-      Check: 1) Google Calendar account is connected (Settings), 2) If using approval channel, react 👍 to approve the event in WhatsApp.</p>
-    </div>
-  </div>
-  <div class="slide-footer"><span>ParentSync — Troubleshooting</span><span>12 / ${TOTAL_SLIDES}</span></div>
-</div>
-
-<!-- Slide 13: Data Flow & Refresh -->
+<!-- Slide: Data Flow & Refresh -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Getting & Refreshing Data</h2>
@@ -517,7 +408,7 @@ function buildHTML() {
       </div>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — Data</span><span>13 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Data</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 14: Section divider - How To -->
@@ -560,7 +451,7 @@ function buildHTML() {
       <a class="video-link" href="https://www.youtube.com/watch?v=GHzAxsXn24I" target="_blank" rel="noopener">📺 <strong>Video walkthrough</strong> — Gemini API Key in Google AI Studio (YouTube)</a>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>15 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 15b: How-To — OpenRouter (alternative) -->
@@ -594,7 +485,7 @@ function buildHTML() {
       <p style="margin-top: 12px; font-size: 15px; color: #64748b;">You can fill both keys; the active provider is whichever the build is wired to (Gemini by default).</p>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>16 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 16: How-To — Google OAuth -->
@@ -632,7 +523,7 @@ function buildHTML() {
       <a class="video-link" href="https://www.youtube.com/watch?v=-G6ak4E2rBg" target="_blank" rel="noopener">📺 <strong>Video walkthrough</strong> — Create OAuth 2.0 Client ID in Google Console (YouTube)</a>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>17 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 17: How-To — Google OAuth page 2 -->
@@ -664,7 +555,7 @@ function buildHTML() {
       </div>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>18 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 19: How-To — WhatsApp -->
@@ -702,7 +593,7 @@ function buildHTML() {
       <p style="margin-top: 12px; font-size: 16px; color: #64748b;">Then go to <strong>Children</strong> in Settings, add a child, and type the exact WhatsApp group name.</p>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>19 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — How-To</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 20: Architecture -->
@@ -724,7 +615,7 @@ function buildHTML() {
     </div>
   </div>
   <p style="margin-top: 24px; font-size: 18px;">All data stored locally on your machine. No cloud servers, no accounts to create. Just download, configure, and run.</p>
-  <div class="slide-footer"><span>ParentSync</span><span>20 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 21: Quick Start — Where to download -->
@@ -753,7 +644,7 @@ function buildHTML() {
     </div>
   </div>
   <p style="margin-top: 16px; font-size: 15px; color: #64748b; text-align: center;">No account needed. No installer asking your password. Just download and run.</p>
-  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>21 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 22: Quick Start — macOS -->
@@ -784,7 +675,7 @@ function buildHTML() {
       </div>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>22 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 23: Quick Start — Windows -->
@@ -816,7 +707,7 @@ function buildHTML() {
       </div>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>23 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 24: Quick Start — Linux -->
@@ -846,7 +737,7 @@ function buildHTML() {
       <p style="font-size: 15px;">After cloning the repo, run <code>npm run install:local</code> — it installs the AppImage as a systemd user service that starts on login and keeps the four most recent versions.</p>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>24 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Quick Start</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 25: Platform Support / Build from source -->
@@ -869,7 +760,7 @@ function buildHTML() {
   <p style="margin-top: 20px; text-align: center; font-size: 18px; color: #64748b;">
     Built with Electron | All data stored locally | Private use
   </p>
-  <div class="slide-footer"><span>ParentSync</span><span>25 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 26: Uninstalling -->
@@ -928,7 +819,7 @@ function buildHTML() {
   <div class="info-box" style="margin-top: 12px;">
     <p>📱 After removing user data, open WhatsApp on your phone → <strong>Settings → Linked Devices</strong> and remove the ParentSync entry to fully unlink.</p>
   </div>
-  <div class="slide-footer"><span>ParentSync — Uninstall</span><span>26 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Uninstall</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 27: Event Reminders -->
@@ -945,7 +836,7 @@ function buildHTML() {
     <li>Each event is reminded at most once (<code>reminderSent</code> flag)</li>
   </ul>
   <p style="margin-top: 16px; font-size: 16px; color: #64748b;">See <code>docs/EVENT-REMINDERS.md</code> for the full specification.</p>
-  <div class="slide-footer"><span>ParentSync</span><span>27 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 28: You're in control of the AI -->
@@ -966,7 +857,7 @@ function buildHTML() {
     </div>
   </div>
   <p style="margin-top: 12px; font-size: 14px; color: #64748b;">The parse cache keys include a hash of the prompt + exclusions — so feedback closes on the <strong>next</strong> sync, not 24 h later.</p>
-  <div class="slide-footer"><span>ParentSync — You're in control</span><span>28 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — You're in control</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 24: In-App Approval -->
@@ -977,7 +868,7 @@ function buildHTML() {
     <img class="screenshot" src="${img('dashboard-approval')}" alt="Dashboard with approval pills + Approve/Reject buttons">
   </div>
   <div class="caption">Each upcoming event shows its status as a pill — 🟠 Pending, 🟢 Approved, 🔴 Rejected. Pending events have inline Approve / Reject buttons. Same effect as 👍 / 😢 in WhatsApp; reactions are reversible too — take back a 👍 to unsync from Google, take back a 😢 to clear the learned exclusion.</div>
-  <div class="slide-footer"><span>ParentSync — Approval</span><span>29 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Approval</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 25: Duplicate Suppression -->
@@ -995,11 +886,146 @@ function buildHTML() {
   <div class="info-box">
     <p>💡 The check pairs with the negative-feedback loop: even if a duplicate slips through, one 😢 reaction puts it in the learned-exclusions pool so it's gone for good.</p>
   </div>
-  <div class="slide-footer"><span>ParentSync — Duplicate Suppression</span><span>30 / ${TOTAL_SLIDES}</span></div>
+  <div class="slide-footer"><span>ParentSync — Duplicate Suppression</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
+</div>
+
+<!-- Appendix: Monitor + troubleshooting (kept at the end as reference material) -->
+
+<!-- Slide: Monitor (screenshot) -->
+<div class="slide slide-screenshot">
+  <div class="accent-bar"></div>
+  <h2>Monitor & Analytics</h2>
+  <div class="screenshot-container">
+    <img class="screenshot" src="${img('monitor')}" alt="Monitor">
+  </div>
+  <div class="caption">Messages scanned, events created, sync success rate, and channel activity charts</div>
+  <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
+</div>
+
+<!-- Slide: Monitor — Summary Cards -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Monitor — Summary Cards</h2>
+  <p>Six cards at the top give you a quick health check. Use the <strong>Period</strong> dropdown (7/30/90 days) and <strong>Child</strong> filter to narrow the view.</p>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px 40px; margin-top: 16px;">
+    <div>
+      <h3 style="color: #2563eb;">💬 Messages Scanned</h3>
+      <p style="font-size: 17px;">Total WhatsApp + email messages collected. Green trend arrow shows change vs. previous period.</p>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">📅 Events Created</h3>
+      <p style="font-size: 17px;">How many calendar events the AI extracted from messages. Trend arrow compares to previous period.</p>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">⏱ Avg Sync Duration</h3>
+      <p style="font-size: 17px;">Average time per sync cycle (scanning + parsing). Under 30s is normal.</p>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">✅ Sync Success Rate</h3>
+      <p style="font-size: 17px;">Percentage of syncs that completed without errors. Green ≥80%, orange ≥50%, red below 50%.</p>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">📊 Most Active Channel</h3>
+      <p style="font-size: 17px;">The WhatsApp group or email source that generated the most messages in this period.</p>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">🔄 Last Sync</h3>
+      <p style="font-size: 17px;">Timestamp and status badge of the most recent sync. Tells you when data was last refreshed.</p>
+    </div>
+  </div>
+  <div class="slide-footer"><span>ParentSync — Monitor</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
+</div>
+
+<!-- Slide: Monitor — Charts & Graphs -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Monitor — Charts & Graphs</h2>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px 40px; margin-top: 8px;">
+    <div>
+      <h3 style="color: #2563eb;">📈 Messages Over Time</h3>
+      <p style="font-size: 16px;"><strong>Line chart</strong> with two lines:<br>
+      <span style="color: #25d366;">●</span> <strong>Green</strong> = WhatsApp messages<br>
+      <span style="color: #ea4335;">●</span> <strong>Red</strong> = Email messages<br>
+      X-axis: dates, Y-axis: message count. Shows daily volume trends — helps spot when groups are most active.</p>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">📊 Events Per Channel</h3>
+      <p style="font-size: 16px;"><strong>Horizontal bar chart</strong> showing event count by WhatsApp group name. Each channel gets a different purple shade. Hover to see percentage of total. Identifies which groups generate the most calendar events.</p>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">📉 Sync History</h3>
+      <p style="font-size: 16px;"><strong>Combo chart</strong> — bars + line overlay.<br>
+      <strong>Bars</strong>: message count per sync (<span style="color: #22c55e;">green</span> = success, <span style="color: #f97316;">orange</span> = partial, <span style="color: #ef4444;">red</span> = failed)<br>
+      <strong>Line</strong>: sync duration in seconds (right axis)<br>
+      Spot slow syncs or recurring failures at a glance.</p>
+    </div>
+    <div>
+      <h3 style="color: #2563eb;">🗓 Channel Activity Heatmap</h3>
+      <p style="font-size: 16px;"><strong>Grid</strong> with channels as rows, dates as columns. Cell color intensity = message count. Darker purple = more messages. Hover any cell for exact count. Reveals which days and channels are busiest.</p>
+    </div>
+  </div>
+  <div class="slide-footer"><span>ParentSync — Monitor</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
+</div>
+
+<!-- Slide: Common Errors & Troubleshooting -->
+<div class="slide slide-content">
+  <div class="accent-bar"></div>
+  <h2>Common Errors & Solutions</h2>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px;">
+    <div class="warning-box">
+      <p>⚠️ <strong>"Sync failed"</strong><br><br>
+      WhatsApp may be disconnected, or the LLM API key is missing/expired. Check Settings → WhatsApp status and Gemini / OpenRouter API key.</p>
+    </div>
+    <div class="warning-box">
+      <p>⚠️ <strong>"0 Events Created" after sync</strong><br><br>
+      The AI didn't find any events in the messages. This is normal if messages are just chat. Only messages with dates/times get parsed into events.</p>
+    </div>
+    <div class="warning-box">
+      <p>⚠️ <strong>"Google OAuth not configured"</strong><br><br>
+      You haven't entered the Google Client ID and Secret yet. Go to Settings → Google OAuth and follow the setup steps (slide 17).</p>
+    </div>
+    <div class="warning-box">
+      <p>⚠️ <strong>"WhatsApp is not connected"</strong><br><br>
+      Session expired. Go to Settings → click "Connect WhatsApp" → scan QR code again with your phone.</p>
+    </div>
+    <div class="warning-box">
+      <p>⚠️ <strong>"Failed to load dashboard data"</strong><br><br>
+      Backend may still be starting. Wait a few seconds and click the <strong>refresh button</strong> (↻ top-right). If it persists, restart the app.</p>
+    </div>
+    <div class="warning-box">
+      <p>⚠️ <strong>Events not appearing on Google Calendar</strong><br><br>
+      Check: 1) Google Calendar account is connected (Settings), 2) If using approval channel, react 👍 to approve the event in WhatsApp.</p>
+    </div>
+  </div>
+  <div class="slide-footer"><span>ParentSync — Troubleshooting</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 </body>
 </html>`;
+
+  // Renumber slide footers based on each slide's actual position in the
+  // document — not based on placeholder occurrence — so a slide without a
+  // footer (title, section divider) still counts toward the total and the
+  // visible "X / N" matches the page position you'd see in a PDF reader.
+  const slidePositions = [];
+  // Match only top-level slide containers (class starts with "slide ", note
+  // the trailing space) — not the inner ".slide-footer" divs.
+  const slideRegex = /<div class="slide [^"]*"/g;
+  let match;
+  while ((match = slideRegex.exec(html)) !== null) {
+    slidePositions.push(match.index);
+  }
+  slidePositions.push(html.length); // sentinel
+  const totalSlides = slidePositions.length - 1;
+
+  let out = html.slice(0, slidePositions[0]);
+  for (let i = 0; i < totalSlides; i++) {
+    const slideHtml = html.slice(slidePositions[i], slidePositions[i + 1]);
+    out += slideHtml
+      .replace(/__SLIDE_NUM__/g, String(i + 1))
+      .replace(/__TOTAL_SLIDES__/g, String(totalSlides));
+  }
+  return out;
 }
 
 async function main() {
