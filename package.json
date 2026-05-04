@@ -82,7 +82,8 @@
       "oneClick": true,
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "artifactName": "ParentSync-Setup-${version}.${ext}"
     }
   },
   "devDependencies": {
