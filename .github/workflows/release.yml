@@ -1,0 +1,101 @@
+name: Release
+
+# Builds Linux / macOS / Windows binaries on each platform's native runner
+# (cross-compiling Electron + native deps from one host is too brittle).
+# Triggers on:
+#   - a `v*` tag push (cuts a fresh release with all three artifacts)
+#   - manual workflow_dispatch with a release tag (re-runs against an
+#     existing release; useful for backfilling Mac/Win after the fact)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to attach binaries to (e.g. v1.0.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux
+            artifact_glob: 'release/ParentSync-*.AppImage release/parentsync_*_amd64.deb'
+          - os: macos-14
+            label: macos
+            artifact_glob: 'release/ParentSync-*.dmg release/ParentSync-*-mac.zip'
+          - os: windows-latest
+            label: windows
+            artifact_glob: 'release/ParentSync-Setup-*.exe'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.release_tag || github.ref }}
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (root)
+        run: npm ci --no-audit --no-fund
+
+      - name: Install dependencies (backend, frontend)
+        shell: bash
+        run: |
+          (cd backend && npm ci --no-audit --no-fund)
+          (cd frontend && npm ci --no-audit --no-fund)
+
+      - name: Build all
+        run: npm run build:all
+
+      - name: Rebuild native modules for Electron
+        run: npm run rebuild:native
+
+      - name: Package — Linux
+        if: matrix.label == 'linux'
+        run: npx electron-builder --linux
+
+      - name: Package — macOS
+        if: matrix.label == 'macos'
+        # Skip code signing (no Apple Developer account) — produces an
+        # unsigned .dmg + .zip. Users open via right-click → Open the first
+        # time. Documented in the deck's "Run on macOS" slide.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac --x64 --arm64 -c.mac.identity=null
+
+      - name: Package — Windows
+        if: matrix.label == 'windows'
+        # Skip code signing (no certificate). Triggers Defender SmartScreen
+        # on first run; user clicks "More info → Run anyway."
+        run: npx electron-builder --win
+
+      - name: List built artifacts
+        shell: bash
+        run: ls -lh release/ || dir release
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
+          fail_on_unmatched_files: false
+          files: |
+            release/ParentSync-*.AppImage
+            release/parentsync_*_amd64.deb
+            release/ParentSync-*.dmg
+            release/ParentSync-*-mac.zip
+            release/ParentSync-Setup-*.exe
