@@ -4,6 +4,7 @@ import type { Setting, AuthStatus, AuthPurpose, AccountStatus, Child } from '../
 import WhatsAppQRModal from '../components/WhatsAppQRModal';
 import PromptEditor from '../components/PromptEditor';
 import NegativeExamplesPanel from '../components/NegativeExamplesPanel';
+import UninstallModal from '../components/UninstallModal';
 import Icon from '../components/icons/Icon';
 
 // Google Calendar color palette
@@ -486,6 +487,8 @@ function ChildList({
 export default function SettingsPage() {
   const [form, setForm] = useState<SettingsForm>(DEFAULT_FORM);
   const [savedForm, setSavedForm] = useState<SettingsForm>(DEFAULT_FORM);
+  const [uninstallOpen, setUninstallOpen] = useState(false);
+  const [uninstallPurge, setUninstallPurge] = useState(false);
   const [status, setStatus] = useState<Status>({ type: 'idle' });
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [authStatus, setAuthStatus] = useState<AuthStatus>({
@@ -866,6 +869,41 @@ export default function SettingsPage() {
               </button>
             </div>
           </form>
+
+          <div className="settings-section danger-zone">
+            <h3 className="settings-section-title">
+              <Icon name="triangle-alert" size={16} /> Danger Zone
+            </h3>
+            <p className="settings-section-hint">
+              Uninstall ParentSync from this machine. The app and its
+              auto-start entry are removed; your data is removed only if you
+              tick the box. The cleanup script logs every step to a file you
+              can verify after the app closes.
+            </p>
+            <label className="form-checkbox" style={{ marginTop: 12 }}>
+              <input
+                type="checkbox"
+                checked={uninstallPurge}
+                onChange={(e) => setUninstallPurge(e.target.checked)}
+              />
+              <span>Also remove my data (database, OAuth tokens, WhatsApp session, encryption key, logs)</span>
+            </label>
+            <div className="settings-actions" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn btn--danger"
+                onClick={() => setUninstallOpen(true)}
+              >
+                <Icon name="trash-2" size={16} /> Uninstall ParentSync
+              </button>
+            </div>
+          </div>
+
+          <UninstallModal
+            open={uninstallOpen}
+            removeUserData={uninstallPurge}
+            onClose={() => setUninstallOpen(false)}
+          />
         </>
       )}
     </div>

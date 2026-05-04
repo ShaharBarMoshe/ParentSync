@@ -203,7 +203,9 @@ The app shows an icon in the system tray. Right-click for options:
 
 ## Uninstalling
 
-> **Coming soon — in-app button.** Settings → Danger Zone → **Uninstall ParentSync** with a checkbox to also wipe your data. Until then, follow the manual steps below for your OS. See [Phase 19 plan](../plan/phase19-uninstall.md) for the design.
+The easy way: **Settings → Danger Zone → Uninstall ParentSync**. Tick "Also remove my data" if you want a full wipe; type `UNINSTALL` to confirm. The app generates a per-platform cleanup script, runs it detached, and exits. The script logs every step to `~/parentsync-uninstall.log` (or `%TEMP%\parentsync-uninstall.log` on Windows) so you can verify what was removed.
+
+Manual steps below if you'd rather do it yourself.
 
 What gets removed:
 - The app binary

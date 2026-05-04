@@ -310,4 +310,19 @@ export const negativeExamplesApi = {
     api.delete<void>('/llm/negative-examples').then(() => undefined),
 };
 
+export interface UninstallResult {
+  ok: boolean;
+  message: string;
+  scriptPath: string;
+  logPath: string;
+  platform: string;
+}
+
+export const systemApi = {
+  uninstall: (removeUserData: boolean) =>
+    api
+      .post<UninstallResult>('/system/uninstall', { removeUserData })
+      .then((r) => r.data),
+};
+
 export default api;

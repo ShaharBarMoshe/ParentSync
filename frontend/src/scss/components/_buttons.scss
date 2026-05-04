@@ -63,6 +63,15 @@
     font-size: 13px;
   }
 
+  &--danger {
+    background: rgb(220, 38, 38);
+    color: #ffffff;
+
+    &:hover:not(:disabled) {
+      background: rgb(185, 28, 28);
+    }
+  }
+
   &__icon {
     flex-shrink: 0;
   }

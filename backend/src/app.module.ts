@@ -21,6 +21,7 @@ import { SyncModule } from './sync/sync.module';
 import { AuthModule } from './auth/auth.module';
 import { SharedModule } from './shared/shared.module';
 import { MonitorModule } from './monitor/monitor.module';
+import { SystemModule } from './system/system.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -68,6 +69,7 @@ import { HealthController } from './health/health.controller';
     AuthModule,
     SharedModule,
     MonitorModule,
+    SystemModule,
   ],
   controllers: [HealthController],
   providers: [
