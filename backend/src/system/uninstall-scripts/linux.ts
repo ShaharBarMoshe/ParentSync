@@ -33,11 +33,15 @@ log "ParentSync uninstall starting (removeUserData=${removeUserData})"
 
 # 1. Give the API response time to reach the browser, then make sure the app
 #    is fully stopped before we start removing files.
+#
+# IMPORTANT: pkill patterns must NOT match this script itself (its path
+# contains "parentsync"). We anchor on the AppImage filename and the
+# inner Electron process's --no-sandbox flag.
 sleep 2
 log "Stopping running ParentSync processes..."
 systemctl --user stop parentsync.service 2>/dev/null || true
-pkill -f 'ParentSync.*AppImage' 2>/dev/null || true
-pkill -f 'parentsync' 2>/dev/null || true
+pkill -f 'ParentSync\\.AppImage' 2>/dev/null || true
+pkill -f 'parentsync --no-sandbox' 2>/dev/null || true
 sleep 1
 
 # 2. Disable + remove the systemd user unit.
