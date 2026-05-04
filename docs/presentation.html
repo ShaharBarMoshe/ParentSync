@@ -33,6 +33,16 @@
   .slide-title h1 { font-size: 64px; font-weight: 800; margin-bottom: 16px; }
   .slide-title p { font-size: 24px; opacity: 0.9; max-width: 700px; line-height: 1.5; }
   .slide-title .version { font-size: 16px; opacity: 0.6; margin-top: 40px; }
+  .slide-title .credit { font-size: 14px; opacity: 0.7; margin-top: 8px; }
+  .slide-title .credit a { color: #ffffff; opacity: 1; border-bottom-color: rgba(255, 255, 255, 0.5); }
+
+  /* Section-divider slides (e.g. "How-To Guide") get the credit too */
+  .slide-section::after {
+    content: 'Created by Shahar Bar-Moshe';
+    position: absolute; bottom: 24px; left: 0; right: 0;
+    text-align: center;
+    font-size: 12px; color: rgba(255, 255, 255, 0.5);
+  }
 
   /* Section title slide */
   .slide-section {
@@ -155,12 +165,21 @@
   td { padding: 14px 24px; font-size: 18px; border-bottom: 1px solid #f1f5f9; }
   tr:nth-child(even) td { background: #f8fafc; }
 
-  /* Footer */
+  /* Footer — section LEFT, credit CENTER (::before), page RIGHT.
+     ::before is the first flex child by default; reorder with the order
+     property so section stays leftmost. */
   .slide-footer {
-    position: absolute; bottom: 20px; left: 80px; right: 80px;
-    display: flex; justify-content: space-between;
+    position: absolute; bottom: 16px; left: 72px; right: 72px;
+    display: flex; align-items: center; justify-content: space-between;
     font-size: 13px; color: #94a3b8;
   }
+  .slide-footer::before {
+    content: 'Created by Shahar Bar-Moshe';
+    order: 1; flex: 1; text-align: center;
+    font-size: 12px; color: #cbd5e1;
+  }
+  .slide-footer > span:first-child { order: 0; flex: 1; text-align: left; }
+  .slide-footer > span:last-child  { order: 2; flex: 1; text-align: right; }
 
   /* Accent bar */
   .accent-bar { position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #2563eb, #7c3aed); }
@@ -206,7 +225,8 @@
   <img class="logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiMyNTYzZWIiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjN2MzYWVkIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8IS0tIFJvdW5kZWQgc3F1YXJlIGJhY2tncm91bmQgLS0+CiAgPHJlY3Qgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHJ4PSIxMDgiIGZpbGw9InVybCgjYmcpIi8+CiAgPCEtLSBDYWxlbmRhciBib2R5IC0tPgogIDxyZWN0IHg9IjExMiIgeT0iMTY4IiB3aWR0aD0iMjg4IiBoZWlnaHQ9IjI0OCIgcng9IjI0IiBmaWxsPSJ3aGl0ZSIgb3BhY2l0eT0iMC45NSIvPgogIDwhLS0gQ2FsZW5kYXIgdG9wIGJhciAtLT4KICA8cmVjdCB4PSIxMTIiIHk9IjE2OCIgd2lkdGg9IjI4OCIgaGVpZ2h0PSI2NCIgcng9IjI0IiBmaWxsPSJ3aGl0ZSIvPgogIDxyZWN0IHg9IjExMiIgeT0iMjA4IiB3aWR0aD0iMjg4IiBoZWlnaHQ9IjI0IiBmaWxsPSJ3aGl0ZSIvPgogIDwhLS0gQ2FsZW5kYXIgdG9wIGJpbmRpbmcgcG9zdHMgLS0+CiAgPHJlY3QgeD0iMTg0IiB5PSIxMjgiIHdpZHRoPSIyMCIgaGVpZ2h0PSI2NCIgcng9IjEwIiBmaWxsPSJ3aGl0ZSIgb3BhY2l0eT0iMC45NSIvPgogIDxyZWN0IHg9IjMwOCIgeT0iMTI4IiB3aWR0aD0iMjAiIGhlaWdodD0iNjQiIHJ4PSIxMCIgZmlsbD0id2hpdGUiIG9wYWNpdHk9IjAuOTUiLz4KICA8IS0tIENhbGVuZGFyIGhlYWRlciBsaW5lIC0tPgogIDxsaW5lIHgxPSIxMzYiIHkxPSIyMzIiIHgyPSIzNzYiIHkyPSIyMzIiIHN0cm9rZT0iIzI1NjNlYiIgc3Ryb2tlLXdpZHRoPSIzIiBvcGFjaXR5PSIwLjMiLz4KICA8IS0tIFN5bmMgYXJyb3dzIChjaXJjdWxhcikgLS0+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMjU2LCAzMjgpIiBmaWxsPSJub25lIiBzdHJva2U9IiMyNTYzZWIiIHN0cm9rZS13aWR0aD0iMTYiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCI+CiAgICA8IS0tIFRvcCBhcmMgLS0+CiAgICA8cGF0aCBkPSJNLTQ4LC0zNiBBNjAsNjAgMCAwLDEgNDgsLTM2Ii8+CiAgICA8IS0tIEFycm93IGhlYWQgdG9wIC0tPgogICAgPHBhdGggZD0iTTM2LC02MiBMNDgsLTM2IEwyMiwtMzAiIHN0cm9rZS13aWR0aD0iMTQiLz4KICAgIDwhLS0gQm90dG9tIGFyYyAtLT4KICAgIDxwYXRoIGQ9Ik00OCwzNiBBNjAsNjAgMCAwLDEgLTQ4LDM2Ii8+CiAgICA8IS0tIEFycm93IGhlYWQgYm90dG9tIC0tPgogICAgPHBhdGggZD0iTS0zNiw2MiBMLTQ4LDM2IEwtMjIsMzAiIHN0cm9rZS13aWR0aD0iMTQiLz4KICA8L2c+Cjwvc3ZnPgo=" alt="ParentSync">
   <h1>ParentSync</h1>
   <p>Your family's WhatsApp and email messages, automatically organized into calendar events</p>
-  <span class="version">v1.0.1 | Desktop App for Linux, Windows & macOS</span>
+  <span class="version">v1.0.2 · Desktop App for Linux, Windows & macOS</span>
+  <span class="credit">Created by <a href="https://github.com/ShaharBarMoshe">Shahar Bar-Moshe</a></span>
 </div>
 
 <!-- Slide 2: What is ParentSync? -->

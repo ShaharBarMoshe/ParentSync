@@ -88,6 +88,16 @@ function buildHTML() {
   .slide-title h1 { font-size: 64px; font-weight: 800; margin-bottom: 16px; }
   .slide-title p { font-size: 24px; opacity: 0.9; max-width: 700px; line-height: 1.5; }
   .slide-title .version { font-size: 16px; opacity: 0.6; margin-top: 40px; }
+  .slide-title .credit { font-size: 14px; opacity: 0.7; margin-top: 8px; }
+  .slide-title .credit a { color: #ffffff; opacity: 1; border-bottom-color: rgba(255, 255, 255, 0.5); }
+
+  /* Section-divider slides (e.g. "How-To Guide") get the credit too */
+  .slide-section::after {
+    content: 'Created by Shahar Bar-Moshe';
+    position: absolute; bottom: 24px; left: 0; right: 0;
+    text-align: center;
+    font-size: 12px; color: rgba(255, 255, 255, 0.5);
+  }
 
   /* Section title slide */
   .slide-section {
@@ -210,12 +220,21 @@ function buildHTML() {
   td { padding: 14px 24px; font-size: 18px; border-bottom: 1px solid #f1f5f9; }
   tr:nth-child(even) td { background: #f8fafc; }
 
-  /* Footer */
+  /* Footer — section LEFT, credit CENTER (::before), page RIGHT.
+     ::before is the first flex child by default; reorder with the order
+     property so section stays leftmost. */
   .slide-footer {
-    position: absolute; bottom: 20px; left: 80px; right: 80px;
-    display: flex; justify-content: space-between;
+    position: absolute; bottom: 16px; left: 72px; right: 72px;
+    display: flex; align-items: center; justify-content: space-between;
     font-size: 13px; color: #94a3b8;
   }
+  .slide-footer::before {
+    content: 'Created by Shahar Bar-Moshe';
+    order: 1; flex: 1; text-align: center;
+    font-size: 12px; color: #cbd5e1;
+  }
+  .slide-footer > span:first-child { order: 0; flex: 1; text-align: left; }
+  .slide-footer > span:last-child  { order: 2; flex: 1; text-align: right; }
 
   /* Accent bar */
   .accent-bar { position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #2563eb, #7c3aed); }
@@ -261,7 +280,8 @@ function buildHTML() {
   <img class="logo" src="${icon}" alt="ParentSync">
   <h1>ParentSync</h1>
   <p>Your family's WhatsApp and email messages, automatically organized into calendar events</p>
-  <span class="version">v1.0.1 | Desktop App for Linux, Windows & macOS</span>
+  <span class="version">v${VERSION} · Desktop App for Linux, Windows & macOS</span>
+  <span class="credit">Created by <a href="https://github.com/ShaharBarMoshe">Shahar Bar-Moshe</a></span>
 </div>
 
 <!-- Slide 2: What is ParentSync? -->
