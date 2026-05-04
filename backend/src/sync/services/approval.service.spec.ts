@@ -258,6 +258,38 @@ describe('ApprovalService', () => {
         expect.objectContaining({ approvalStatus: ApprovalStatus.REJECTED }),
       );
     });
+
+    it('prefers event.sourceContent (merged group snapshot) over the single source message', async () => {
+      const mergedGroup =
+        '[10:00] mom1: hi everyone\n[10:02] teacher: trip on 2026-04-20\n[10:05] mom2: thanks';
+      const eventFromMidGroup = {
+        ...mockEvent,
+        sourceId: 'msg-1', // first message in the group, irrelevant chatter
+        sourceContent: mergedGroup,
+      };
+      eventRepository.findByApprovalMessageId.mockResolvedValue(eventFromMidGroup);
+      messageRepository.findById.mockResolvedValue({
+        id: 'msg-1',
+        content: 'hi everyone',
+        channel: 'Grade 3A Parents',
+      });
+
+      await service.handleReaction({
+        msgId: eventFromMidGroup.approvalMessageId,
+        reaction: '😢',
+        senderId: 'sender',
+        timestamp: 0,
+      });
+
+      // The captured negative example must be the FULL merged group text
+      // (what the LLM actually saw), not message #1's body.
+      expect(negativeExampleRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          messageContent: mergedGroup,
+          channel: 'Grade 3A Parents',
+        }),
+      );
+    });
   });
 
   describe('handleReaction', () => {

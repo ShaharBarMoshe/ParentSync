@@ -203,6 +203,7 @@ export class EventSyncService {
           meta.childId,
           meta.calendarColorId,
           approvalEnabled,
+          meta.mergedContent,
         );
         eventsCreated += result.eventsCreated;
 
@@ -386,6 +387,7 @@ export class EventSyncService {
     childId?: string,
     calendarColorId?: string,
     approvalEnabled = false,
+    mergedContent?: string,
   ): Promise<{ eventsCreated: number; savedEvents: CalendarEventEntity[] }> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -441,6 +443,10 @@ export class EventSyncService {
           location: parsed.location,
           source: firstMessage.source,
           sourceId: firstMessage.id,
+          // Snapshot what the LLM actually saw — the merged group text —
+          // so a 😢 rejection captures the right negative example, even
+          // when the event came from a later message in the proximity group.
+          sourceContent: mergedContent ?? null,
           childId: childId || undefined,
           calendarColorId: calendarColorId || undefined,
           syncType: parsed.time ? 'event' : 'task',

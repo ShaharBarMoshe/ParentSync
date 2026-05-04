@@ -210,14 +210,11 @@ export class ApprovalService {
       approvalStatus: ApprovalStatus.PENDING,
     });
 
-    if (!event.sourceId) return;
     try {
-      const sourceMessage = await this.messageRepository.findById(event.sourceId);
-      if (!sourceMessage?.content) return;
+      const { content } = await this.resolveNegativeSource(event);
+      if (!content) return;
       const removed =
-        await this.negativeExampleRepository.deleteByMessageContent(
-          sourceMessage.content,
-        );
+        await this.negativeExampleRepository.deleteByMessageContent(content);
       if (removed) {
         this.logger.log(
           `Removed negative example for un-rejected event "${event.title}"`,
@@ -227,6 +224,41 @@ export class ApprovalService {
       this.logger.warn(
         `Failed to remove negative example for event ${event.id}: ${(error as Error).message}`,
       );
+    }
+  }
+
+  /**
+   * Returns the content + channel that should be used as the negative-example
+   * key for this event. Prefers `event.sourceContent` (the merged group text
+   * the LLM actually saw); falls back to single-message lookup for events
+   * created before that column existed.
+   */
+  private async resolveNegativeSource(
+    event: CalendarEventEntity,
+  ): Promise<{ content: string | null; channel: string | null }> {
+    if (event.sourceContent && event.sourceContent.trim().length > 0) {
+      // For channel we still want the source message's channel name when we
+      // have it, so the Settings UI shows where it came from. Best-effort.
+      let channel: string | null = null;
+      if (event.sourceId) {
+        try {
+          const m = await this.messageRepository.findById(event.sourceId);
+          channel = m?.channel ?? null;
+        } catch {
+          // ignore — channel is decorative
+        }
+      }
+      return { content: event.sourceContent, channel };
+    }
+    if (!event.sourceId) return { content: null, channel: null };
+    try {
+      const m = await this.messageRepository.findById(event.sourceId);
+      return {
+        content: m?.content ?? null,
+        channel: m?.channel ?? null,
+      };
+    } catch {
+      return { content: null, channel: null };
     }
   }
 
@@ -297,17 +329,18 @@ export class ApprovalService {
     });
 
     // Capture as a negative example so the LLM stops repeating the mistake.
-    // Best-effort: the source message may have been pruned, in which case
-    // we just skip — the event is still marked rejected.
-    if (!event.sourceId) return;
+    // Prefer the merged-group snapshot we recorded at extraction time
+    // (event.sourceContent) — that's what the LLM actually saw. Fall back to
+    // a single-message lookup for legacy events created before sourceContent
+    // existed. Best-effort: skip silently if neither is available.
     try {
-      const sourceMessage = await this.messageRepository.findById(event.sourceId);
-      if (!sourceMessage?.content) return;
+      const { content, channel } = await this.resolveNegativeSource(event);
+      if (!content) return;
       await this.negativeExampleRepository.create({
-        messageContent: sourceMessage.content,
+        messageContent: content,
         extractedTitle: event.title,
         extractedDate: event.date ?? null,
-        channel: sourceMessage.channel ?? null,
+        channel,
       });
       this.logger.log(
         `Captured negative example for rejected event "${event.title}"`,

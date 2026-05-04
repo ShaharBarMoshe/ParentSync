@@ -46,6 +46,7 @@ describe('GoogleCalendarService', () => {
     location: 'School Hall',
     source: MessageSource.WHATSAPP,
     sourceId: 'msg-1',
+    sourceContent: null,
     googleEventId: null as unknown as string,
     syncType: 'event',
     googleTaskListId: null as unknown as string,

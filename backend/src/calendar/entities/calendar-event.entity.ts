@@ -39,6 +39,16 @@ export class CalendarEventEntity {
   @Index()
   sourceId: string;
 
+  /**
+   * Snapshot of the exact text the LLM saw when extracting this event.
+   * For batched proximity groups this is the merged content of all messages
+   * in the group — not just the first message — so a 😢 reject captures the
+   * right negative example. Null on legacy events created before this column
+   * existed; the rejection path falls back to looking up sourceId.
+   */
+  @Column({ type: 'text', nullable: true })
+  sourceContent: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   @Index()
   childId: string;

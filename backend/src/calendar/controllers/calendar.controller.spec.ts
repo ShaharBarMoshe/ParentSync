@@ -25,6 +25,7 @@ describe('CalendarController', () => {
     location: 'Tel Aviv',
     source: MessageSource.WHATSAPP,
     sourceId: 'msg-1',
+    sourceContent: null,
     childId: 'child-1',
     calendarColorId: null as unknown as string,
     googleEventId: null as unknown as string,
