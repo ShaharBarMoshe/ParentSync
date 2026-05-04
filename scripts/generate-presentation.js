@@ -71,7 +71,7 @@ function buildHTML() {
   .slide {
     width: 1280px;
     height: 720px;
-    padding: 60px 80px;
+    padding: 48px 72px;
     page-break-after: always;
     position: relative;
     overflow: hidden;
@@ -99,12 +99,12 @@ function buildHTML() {
   .slide-section p { font-size: 22px; opacity: 0.7; }
 
   /* Headers */
-  h2 { font-size: 40px; font-weight: 700; margin-bottom: 32px; color: #1e293b; }
-  h3 { font-size: 24px; font-weight: 600; margin-bottom: 16px; color: #475569; }
+  h2 { font-size: 36px; font-weight: 700; margin-bottom: 20px; color: #1e293b; }
+  h3 { font-size: 22px; font-weight: 600; margin-bottom: 12px; color: #475569; }
 
   /* Content slide */
   .slide-content { display: flex; flex-direction: column; }
-  .slide-content p { font-size: 20px; color: #475569; line-height: 1.6; margin-bottom: 16px; }
+  .slide-content p { font-size: 18px; color: #475569; line-height: 1.5; margin-bottom: 10px; }
   .slide-content ul { list-style: none; padding: 0; }
   .slide-content li {
     font-size: 20px; color: #334155; padding: 10px 0 10px 36px;
@@ -129,11 +129,13 @@ function buildHTML() {
 
   /* Two-column screenshot */
   .screenshot-grid {
-    display: flex; gap: 32px; flex: 1; align-items: center; margin-top: 16px;
+    display: flex; gap: 32px; flex: 1; min-height: 0;
+    align-items: stretch; margin-top: 12px;
   }
-  .screenshot-grid .col { flex: 1; text-align: center; }
+  .screenshot-grid .col { flex: 1; min-width: 0; text-align: center; display: flex; flex-direction: column; }
   .screenshot-grid img {
-    width: 100%; border-radius: 10px;
+    width: 100%; max-height: 320px; object-fit: contain;
+    border-radius: 10px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.1); border: 1px solid #e2e8f0;
   }
   .screenshot-grid .label { font-size: 16px; font-weight: 600; color: #2563eb; margin-bottom: 8px; }
@@ -152,38 +154,39 @@ function buildHTML() {
   /* Steps */
   .steps { counter-reset: step; padding: 0; list-style: none; }
   .steps li {
-    counter-increment: step; padding-left: 52px; margin-bottom: 16px;
-    font-size: 20px; color: #334155; position: relative; line-height: 1.5;
+    counter-increment: step; padding-left: 46px; margin-bottom: 10px;
+    font-size: 17px; color: #334155; position: relative; line-height: 1.45;
   }
   .steps li::before {
     content: counter(step); background: linear-gradient(135deg, #2563eb, #7c3aed);
-    color: white; width: 34px; height: 34px; border-radius: 50%;
+    color: white; width: 30px; height: 30px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 16px; font-weight: 700; position: absolute; left: 0; top: 2px;
+    font-size: 14px; font-weight: 700; position: absolute; left: 0; top: 0;
   }
-  .steps li .step-detail { font-size: 16px; color: #64748b; margin-top: 2px; }
+  .steps li .step-detail { font-size: 14px; color: #64748b; margin-top: 2px; }
 
   /* How-to card layout */
-  .howto-header { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
+  .howto-header { display: flex; align-items: center; gap: 20px; margin-bottom: 16px; }
   .howto-header img { width: 56px; height: 56px; border-radius: 12px; }
-  .howto-header .howto-title h2 { margin-bottom: 4px; }
-  .howto-header .howto-title p { font-size: 18px; color: #64748b; margin: 0; }
+  .howto-header .howto-title h2 { margin-bottom: 2px; }
+  .howto-header .howto-title p { font-size: 16px; color: #64748b; margin: 0; }
 
-  .howto-cols { display: flex; gap: 40px; flex: 1; }
-  .howto-col { flex: 1; }
+  .howto-cols { display: flex; gap: 32px; flex: 1; min-height: 0; }
+  .howto-col { flex: 1; min-width: 0; }
+  .howto-col p { font-size: 16px; }
 
   .info-box {
-    background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px;
-    padding: 16px 20px; margin: 16px 0;
+    background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px;
+    padding: 10px 14px; margin: 10px 0;
   }
-  .info-box p { font-size: 16px; color: #0369a1; margin: 0; }
+  .info-box p { font-size: 14px; color: #0369a1; margin: 0; }
   .info-box a { color: #2563eb; font-weight: 600; }
 
   .warning-box {
-    background: #fefce8; border: 1px solid #fde68a; border-radius: 12px;
-    padding: 16px 20px; margin: 16px 0;
+    background: #fefce8; border: 1px solid #fde68a; border-radius: 10px;
+    padding: 10px 14px; margin: 10px 0;
   }
-  .warning-box p { font-size: 16px; color: #92400e; margin: 0; }
+  .warning-box p { font-size: 14px; color: #92400e; margin: 0; }
 
   .code-block {
     background: #1e293b; color: #e2e8f0; border-radius: 8px;
@@ -580,8 +583,8 @@ function buildHTML() {
         <li>Create <strong>OAuth Client ID</strong> (Web app)
           <div class="step-detail">Redirect URI: <code>http://localhost:41932/api/auth/google/callback</code></div></li>
         <li>Copy <strong>Client ID</strong> and <strong>Client Secret</strong> into ParentSync Settings</li>
-        <li><strong>Tip:</strong> switch the consent screen to <em>"In production"</em> — Test mode tokens expire after 7 days</li>
       </ol>
+      <p style="font-size: 13px; color: #92400e; margin: 6px 0 0;"><strong>⚠ Tip:</strong> switch the consent screen to "In production" — Test-mode tokens expire after 7 days.</p>
       <a class="video-link" href="https://www.youtube.com/watch?v=-G6ak4E2rBg" target="_blank" rel="noopener">📺 <strong>Video walkthrough</strong> — Create OAuth 2.0 Client ID in Google Console (YouTube)</a>
     </div>
   </div>
