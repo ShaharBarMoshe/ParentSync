@@ -93,4 +93,35 @@ describe('TypeOrmMessageRepository', () => {
     const found = await repository.findById(message.id);
     expect(found).toBeNull();
   });
+
+  it('round-trips images through the JSON column', async () => {
+    const created = await repository.create({
+      source: MessageSource.WHATSAPP,
+      content: '',
+      timestamp: new Date(),
+      channel: 'ch',
+      images: [
+        { mimeType: 'image/jpeg', data: 'AAAA' },
+        { mimeType: 'image/png', data: 'BBBB' },
+      ],
+    });
+
+    const found = await repository.findById(created.id);
+    expect(found?.images).toEqual([
+      { mimeType: 'image/jpeg', data: 'AAAA' },
+      { mimeType: 'image/png', data: 'BBBB' },
+    ]);
+  });
+
+  it('persists null when images is omitted', async () => {
+    const created = await repository.create({
+      source: MessageSource.WHATSAPP,
+      content: 'plain text',
+      timestamp: new Date(),
+      channel: 'ch',
+    });
+
+    const found = await repository.findById(created.id);
+    expect(found?.images ?? null).toBeNull();
+  });
 });

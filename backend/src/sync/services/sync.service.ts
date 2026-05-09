@@ -353,6 +353,7 @@ export class SyncService {
               channel: msg.channel,
               childId: child.id,
               parsed: false,
+              images: msg.images && msg.images.length > 0 ? msg.images : null,
             });
             channelMessageCount++;
             channelMessages.push({

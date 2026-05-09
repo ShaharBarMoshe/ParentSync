@@ -198,6 +198,87 @@ describe('MessageParserService', () => {
     expect(calls[0][0]).toBe(calls[1][0]);
   });
 
+  describe('image input', () => {
+    it('forwards images to the LLM on the user message', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([{ title: 'School play', date: '2026-06-10' }]),
+      );
+
+      const images = [{ mimeType: 'image/jpeg', data: 'AAAA' }];
+      const events = await service.parseMessage('', '2026-05-10', images);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].title).toBe('School play');
+
+      const sent = mockLlmService.callLLM.mock.calls[0][0];
+      const userMsg = sent.find((m: any) => m.role === 'user');
+      expect(userMsg.images).toEqual(images);
+      // Empty content should not produce a "Message text:" block
+      expect(userMsg.content).not.toContain('Message text:');
+      expect(userMsg.content).toContain('1 attached image(s)');
+    });
+
+    it('uses different cache keys for the same text with vs without images', async () => {
+      mockLlmService.callLLM.mockResolvedValue('[]');
+
+      await service.parseMessage('flyer', '2026-05-10');
+      await service.parseMessage('flyer', '2026-05-10', [
+        { mimeType: 'image/png', data: 'ZZZZ' },
+      ]);
+
+      const calls = mockCacheManager.get.mock.calls;
+      expect(calls[0][0]).not.toBe(calls[1][0]);
+    });
+
+    it('routes image-bearing groups out of the batch path', async () => {
+      // Text-only batch should still hit the multi-message LLM call;
+      // image groups should be parsed individually.
+      mockLlmService.callLLM
+        // Per-message call for the image group
+        .mockResolvedValueOnce(
+          JSON.stringify([{ title: 'Image event', date: '2026-06-01' }]),
+        )
+        // Batch call for the two text-only groups
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            '1': [{ title: 'Text event A', date: '2026-06-02' }],
+            '2': [{ title: 'Text event B', date: '2026-06-03' }],
+          }),
+        );
+
+      const result = await service.parseMessageBatch(
+        [
+          {
+            id: 'img',
+            content: '',
+            images: [{ mimeType: 'image/jpeg', data: 'AAAA' }],
+          },
+          { id: 'a', content: 'text a' },
+          { id: 'b', content: 'text b' },
+        ],
+        '2026-05-10',
+      );
+
+      expect(mockLlmService.callLLM).toHaveBeenCalledTimes(2);
+      expect(result.get('img')?.[0].title).toBe('Image event');
+      expect(result.get('a')?.[0].title).toBe('Text event A');
+      expect(result.get('b')?.[0].title).toBe('Text event B');
+
+      // First call should be the per-message (image) call — no multi-message delimiters
+      const firstCall = mockLlmService.callLLM.mock.calls[0][0];
+      const firstUser = firstCall.find((m: any) => m.role === 'user');
+      expect(firstUser.images).toBeDefined();
+      expect(firstUser.content).not.toContain('===MESSAGE_');
+
+      // Second call is the text-only batch
+      const secondCall = mockLlmService.callLLM.mock.calls[1][0];
+      const secondUser = secondCall.find((m: any) => m.role === 'user');
+      expect(secondUser.images).toBeUndefined();
+      expect(secondUser.content).toContain('===MESSAGE_1===');
+      expect(secondUser.content).toContain('===MESSAGE_2===');
+    });
+  });
+
   describe('parseMessageBatch', () => {
     it('should return empty Map for empty input', async () => {
       const result = await service.parseMessageBatch([], '2026-04-13');

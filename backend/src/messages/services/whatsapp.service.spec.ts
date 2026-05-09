@@ -95,4 +95,192 @@ describe('WhatsAppService', () => {
     const result = await service.getChannelMessages('empty-channel');
     expect(result).toEqual([]);
   });
+
+  describe('image messages', () => {
+    /**
+     * Stub the Puppeteer-direct path so we control the raw message list,
+     * and stub `getMessageById` so we control downloadMedia(). Each test
+     * sets these up against the singleton mock client.
+     */
+    async function setupClient(
+      directRows: Array<Record<string, unknown>>,
+      messageById: Record<string, { downloadMedia: jest.Mock }>,
+    ) {
+      await service.initialize();
+      const { Client } = require('whatsapp-web.js');
+      const mockClient = new Client();
+      mockClient.getChats.mockResolvedValue([
+        { name: 'class', id: { _serialized: 'class@g.us' } },
+      ]);
+      mockClient.pupPage = {
+        evaluate: jest.fn().mockResolvedValue(directRows),
+      };
+      mockClient.getMessageById = jest.fn(async (id: string) => messageById[id]);
+      return mockClient;
+    }
+
+    it('keeps image-only messages and attaches downloaded image bytes', async () => {
+      await setupClient(
+        [
+          {
+            id: 'AAA',
+            body: '',
+            timestamp: 1_700_000_000,
+            from: 'sender@c.us',
+            hasMedia: true,
+            mediaType: 'image',
+          },
+        ],
+        {
+          AAA: {
+            downloadMedia: jest.fn().mockResolvedValue({
+              mimetype: 'image/jpeg',
+              data: 'BASE64BYTES',
+              filename: 'flyer.jpg',
+            }),
+          },
+        },
+      );
+
+      const result = await service.getChannelMessages('class');
+      expect(result).toHaveLength(1);
+      expect(result[0].content).toBe('');
+      expect(result[0].images).toEqual([
+        { mimeType: 'image/jpeg', data: 'BASE64BYTES' },
+      ]);
+    });
+
+    it('does not attach images to plain text messages', async () => {
+      await setupClient(
+        [
+          {
+            id: 'TXT',
+            body: 'just text',
+            timestamp: 1_700_000_000,
+            from: 'sender@c.us',
+            hasMedia: false,
+          },
+        ],
+        {},
+      );
+
+      const result = await service.getChannelMessages('class');
+      expect(result).toHaveLength(1);
+      expect(result[0].content).toBe('just text');
+      expect(result[0].images).toBeUndefined();
+    });
+
+    it('drops oversized images but keeps the message body', async () => {
+      const oversizedBase64 = 'A'.repeat(8 * 1024 * 1024); // ~6 MB decoded — over 4 MB cap
+      await setupClient(
+        [
+          {
+            id: 'BIG',
+            body: 'see flyer',
+            timestamp: 1_700_000_000,
+            from: 'sender@c.us',
+            hasMedia: true,
+            mediaType: 'image',
+          },
+        ],
+        {
+          BIG: {
+            downloadMedia: jest.fn().mockResolvedValue({
+              mimetype: 'image/jpeg',
+              data: oversizedBase64,
+            }),
+          },
+        },
+      );
+
+      const result = await service.getChannelMessages('class');
+      expect(result).toHaveLength(1);
+      expect(result[0].content).toBe('see flyer');
+      expect(result[0].images).toBeUndefined();
+    });
+
+    it('drops non-image media types (videos, documents, stickers)', async () => {
+      await setupClient(
+        [
+          {
+            id: 'VID',
+            body: '',
+            timestamp: 1_700_000_000,
+            from: 'sender@c.us',
+            hasMedia: true,
+            mediaType: 'video',
+          },
+          {
+            id: 'DOC',
+            body: '',
+            timestamp: 1_700_000_001,
+            from: 'sender@c.us',
+            hasMedia: true,
+            mediaType: 'document',
+          },
+        ],
+        {},
+      );
+
+      const result = await service.getChannelMessages('class');
+      expect(result).toHaveLength(0);
+    });
+
+    it('keeps a text+image message with both content and images attached', async () => {
+      await setupClient(
+        [
+          {
+            id: 'MIX',
+            body: 'school trip flyer',
+            timestamp: 1_700_000_000,
+            from: 'sender@c.us',
+            hasMedia: true,
+            mediaType: 'image',
+          },
+        ],
+        {
+          MIX: {
+            downloadMedia: jest.fn().mockResolvedValue({
+              mimetype: 'image/png',
+              data: 'PNGBYTES',
+            }),
+          },
+        },
+      );
+
+      const result = await service.getChannelMessages('class');
+      expect(result).toHaveLength(1);
+      expect(result[0].content).toBe('school trip flyer');
+      expect(result[0].images).toEqual([
+        { mimeType: 'image/png', data: 'PNGBYTES' },
+      ]);
+    });
+
+    it('continues without images when downloadMedia fails', async () => {
+      await setupClient(
+        [
+          {
+            id: 'FAIL',
+            body: 'caption',
+            timestamp: 1_700_000_000,
+            from: 'sender@c.us',
+            hasMedia: true,
+            mediaType: 'image',
+          },
+        ],
+        {
+          FAIL: {
+            downloadMedia: jest
+              .fn()
+              .mockRejectedValue(new Error('media decryption failed')),
+          },
+        },
+      );
+
+      const result = await service.getChannelMessages('class');
+      expect(result).toHaveLength(1);
+      expect(result[0].content).toBe('caption');
+      expect(result[0].images).toBeUndefined();
+    });
+  });
 });

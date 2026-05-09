@@ -7,6 +7,11 @@ import {
 } from 'typeorm';
 import { MessageSource } from '../../shared/enums/message-source.enum';
 
+export interface MessageImage {
+  mimeType: string;
+  data: string; // base64-encoded
+}
+
 @Entity('messages')
 export class MessageEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -36,6 +41,12 @@ export class MessageEntity {
   @Column({ type: 'varchar', nullable: true })
   @Index()
   childId: string;
+
+  // Inline images attached to the source message (WhatsApp media, Gmail
+  // attachments). Stored as JSON so the parser can re-feed them to a
+  // multimodal LLM without re-downloading. Null when the message is text-only.
+  @Column({ type: 'simple-json', nullable: true })
+  images: MessageImage[] | null;
 
   @CreateDateColumn()
   createdAt: Date;

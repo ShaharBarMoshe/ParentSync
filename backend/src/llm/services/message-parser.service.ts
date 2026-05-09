@@ -6,7 +6,7 @@ import {
   LLM_SERVICE,
   NEGATIVE_EXAMPLE_REPOSITORY,
 } from '../../shared/constants/injection-tokens';
-import type { ILLMService } from '../interfaces/llm-service.interface';
+import type { ILLMService, LlmInlineImage } from '../interfaces/llm-service.interface';
 import type { ParsedEvent, EventAction } from '../dto/parsed-event.dto';
 import type { INegativeExampleRepository } from '../interfaces/negative-example-repository.interface';
 import type { NegativeExampleEntity } from '../entities/negative-example.entity';
@@ -98,9 +98,10 @@ export class MessageParserService {
   async parseMessage(
     content: string,
     currentDate?: string,
+    images?: LlmInlineImage[],
   ): Promise<ParsedEvent[]> {
     const built = await this.buildSystemPrompt();
-    const cacheKey = this.getCacheKey(content, built.version);
+    const cacheKey = this.getCacheKey(content, built.version, images);
 
     // Check cache
     const cached = await this.cacheManager.get<ParsedEvent[]>(cacheKey);
@@ -112,11 +113,14 @@ export class MessageParserService {
 
     try {
       const dateContext = currentDate ?? new Date().toISOString().split('T')[0];
-      const userMessage = `Current date: ${dateContext}\n\nMessage to parse:\n${content}`;
+      const hasImages = !!(images && images.length > 0);
+      const userMessage = hasImages
+        ? `Current date: ${dateContext}\n\n${content ? `Message text:\n${content}\n\n` : ''}The message also contains ${images!.length} attached image(s). Extract any events visible in the image(s) — flyers, schedules, screenshots — using the same JSON format as for text messages.`
+        : `Current date: ${dateContext}\n\nMessage to parse:\n${content}`;
 
       const response = await this.llmService.callLLM([
         { role: 'system', content: built.prompt },
-        { role: 'user', content: userMessage },
+        { role: 'user', content: userMessage, images: hasImages ? images : undefined },
       ]);
 
       this.logger.log(
@@ -146,7 +150,7 @@ export class MessageParserService {
    * Falls back to individual parsing if the batch response can't be parsed.
    */
   async parseMessageBatch(
-    groups: { id: string; content: string }[],
+    groups: { id: string; content: string; images?: LlmInlineImage[] }[],
     currentDate?: string,
     perGroupDates?: string[],
   ): Promise<Map<string, ParsedEvent[]>> {
@@ -157,9 +161,9 @@ export class MessageParserService {
     const built = await this.buildSystemPrompt();
 
     // Check cache for each group; separate cached vs uncached
-    const uncached: { id: string; content: string }[] = [];
+    const uncached: { id: string; content: string; images?: LlmInlineImage[] }[] = [];
     for (const group of groups) {
-      const cacheKey = this.getCacheKey(group.content, built.version);
+      const cacheKey = this.getCacheKey(group.content, built.version, group.images);
       const cached = await this.cacheManager.get<ParsedEvent[]>(cacheKey);
       if (cached) {
         result.set(group.id, cached);
@@ -173,24 +177,41 @@ export class MessageParserService {
       return result;
     }
 
-    // Single group — use the simpler single-message flow
-    if (uncached.length === 1) {
-      // Find the per-group date for this uncached group
-      const groupIndex = groups.findIndex((g) => g.id === uncached[0].id);
+    // Image-bearing groups can't ride the text-only batch (the LLM gets one
+    // image bundle per request and can't tell which message owns which
+    // image). Parse them individually; let text-only groups still batch.
+    const imageGroups = uncached.filter((g) => g.images && g.images.length > 0);
+    const textOnly = uncached.filter((g) => !g.images || g.images.length === 0);
+
+    for (const g of imageGroups) {
+      const groupIndex = groups.findIndex((orig) => orig.id === g.id);
       const groupDate = perGroupDates?.[groupIndex] || currentDate;
-      const events = await this.parseMessage(uncached[0].content, groupDate);
-      result.set(uncached[0].id, events);
+      const events = await this.parseMessage(g.content, groupDate, g.images);
+      result.set(g.id, events);
+    }
+
+    if (textOnly.length === 0) return result;
+    // Continue the existing batch path with the text-only subset
+    const uncachedForBatch = textOnly;
+
+    // Single group — use the simpler single-message flow
+    if (uncachedForBatch.length === 1) {
+      // Find the per-group date for this uncached group
+      const groupIndex = groups.findIndex((g) => g.id === uncachedForBatch[0].id);
+      const groupDate = perGroupDates?.[groupIndex] || currentDate;
+      const events = await this.parseMessage(uncachedForBatch[0].content, groupDate);
+      result.set(uncachedForBatch[0].id, events);
       return result;
     }
 
     // Split large batches into chunks to avoid rate limits on free-tier models
     const MAX_BATCH_SIZE = 8;
-    if (uncached.length > MAX_BATCH_SIZE) {
+    if (uncachedForBatch.length > MAX_BATCH_SIZE) {
       this.logger.log(
-        `Splitting ${uncached.length} groups into chunks of ${MAX_BATCH_SIZE}`,
+        `Splitting ${uncachedForBatch.length} groups into chunks of ${MAX_BATCH_SIZE}`,
       );
-      for (let i = 0; i < uncached.length; i += MAX_BATCH_SIZE) {
-        const chunk = uncached.slice(i, i + MAX_BATCH_SIZE);
+      for (let i = 0; i < uncachedForBatch.length; i += MAX_BATCH_SIZE) {
+        const chunk = uncachedForBatch.slice(i, i + MAX_BATCH_SIZE);
         // Map per-group dates for this chunk
         const chunkDates = perGroupDates
           ? chunk.map((c) => {
@@ -211,7 +232,7 @@ export class MessageParserService {
     }
 
     this.logger.log(
-      `Batch parsing ${uncached.length} message groups in a single LLM call`,
+      `Batch parsing ${uncachedForBatch.length} message groups in a single LLM call`,
     );
 
     try {
@@ -227,13 +248,13 @@ export class MessageParserService {
 
       const userMessage =
         `Default current date: ${dateContext}\n\n` +
-        `Parse the following ${uncached.length} messages. Each message has its own "Current date" context — use THAT date (not the default) to resolve relative dates like "tomorrow", "next week", etc.\n` +
+        `Parse the following ${uncachedForBatch.length} messages. Each message has its own "Current date" context — use THAT date (not the default) to resolve relative dates like "tomorrow", "next week", etc.\n` +
         `Return a JSON object where each key is the message number (as a string) and each value is an array of events extracted from that message. ` +
         `Example format: {"1": [{"title":"...", "date":"..."}], "2": [], "3": [{"title":"...", "date":"...", "time":"..."}]}\n\n` +
         numberedMessages;
 
       // Use higher token limit for batch — more groups = more output
-      const maxTokens = Math.min(2048 + uncached.length * 512, 8192);
+      const maxTokens = Math.min(2048 + uncachedForBatch.length * 512, 8192);
       const response = await this.llmService.callLLM(
         [
           { role: 'system', content: built.prompt },
@@ -248,19 +269,19 @@ export class MessageParserService {
         `Batch LLM response (${response.length} chars): ${response.substring(0, 500)}`,
       );
 
-      const parsed = this.extractBatchJsonFromResponse(response, uncached.length);
+      const parsed = this.extractBatchJsonFromResponse(response, uncachedForBatch.length);
 
       if (parsed) {
-        for (let i = 0; i < uncached.length; i++) {
+        for (let i = 0; i < uncachedForBatch.length; i++) {
           const key = String(i + 1);
           const events = parsed[key] || [];
           const validated = this.validateEvents(events);
           this.logger.log(
             `Batch group ${key}: ${events.length} raw → ${validated.length} valid events`,
           );
-          result.set(uncached[i].id, validated);
+          result.set(uncachedForBatch[i].id, validated);
           // Cache each group individually
-          const cacheKey = this.getCacheKey(uncached[i].content, built.version);
+          const cacheKey = this.getCacheKey(uncachedForBatch[i].content, built.version);
           await this.cacheManager.set(cacheKey, validated, CACHE_TTL_SECONDS);
         }
         return result;
@@ -272,7 +293,7 @@ export class MessageParserService {
     }
 
     // Fallback: parse each group individually
-    for (const group of uncached) {
+    for (const group of uncachedForBatch) {
       const events = await this.parseMessage(group.content, currentDate);
       result.set(group.id, events);
     }
@@ -416,9 +437,21 @@ export class MessageParserService {
       }));
   }
 
-  private getCacheKey(content: string, promptVersion: string): string {
-    const hash = crypto.createHash('sha256').update(content).digest('hex');
-    return `msg-parse:${promptVersion}:${hash}`;
+  private getCacheKey(
+    content: string,
+    promptVersion: string,
+    images?: LlmInlineImage[],
+  ): string {
+    const hasher = crypto.createHash('sha256').update(content);
+    if (images && images.length > 0) {
+      for (const img of images) {
+        hasher.update(' img ');
+        hasher.update(img.mimeType);
+        hasher.update(' ');
+        hasher.update(img.data);
+      }
+    }
+    return `msg-parse:${promptVersion}:${hasher.digest('hex')}`;
   }
 
   /**

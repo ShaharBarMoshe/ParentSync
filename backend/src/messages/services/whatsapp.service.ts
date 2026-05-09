@@ -8,6 +8,7 @@ import * as qrcode from 'qrcode-terminal';
 import {
   IWhatsAppService,
   WhatsAppMessage,
+  WhatsAppMessageImage,
   WhatsAppMedia,
   WhatsAppConnectionStatus,
 } from '../interfaces/whatsapp-service.interface';
@@ -259,7 +260,7 @@ export class WhatsAppService
   private async fetchMessagesDirectly(
     chatId: string,
     limit: number,
-  ): Promise<Array<{ body: string; timestamp: number; author?: string; from: string; hasMedia: boolean }>> {
+  ): Promise<Array<{ id: string; body: string; timestamp: number; author?: string; from: string; hasMedia: boolean; mediaType?: string }>> {
     if (!this.client) {
       throw new Error('WhatsApp client is not connected.');
     }
@@ -295,14 +296,17 @@ export class WhatsAppService
           const from = typeof rawFrom === 'object' && rawFrom?._serialized
             ? rawFrom._serialized
             : (typeof rawFrom === 'string' ? rawFrom : '');
+          const id = m.id?._serialized || (typeof m.id === 'string' ? m.id : '');
 
           return {
+            id,
             body: m.body || '',
             timestamp: m.t,
             author,
             from,
             hasMedia: !!(m.mediaData || m.type === 'image' || m.type === 'video'
               || m.type === 'audio' || m.type === 'document' || m.type === 'sticker'),
+            mediaType: typeof m.type === 'string' ? m.type : undefined,
           };
         });
       },
@@ -318,22 +322,35 @@ export class WhatsAppService
     const targetChat = await this.findChatByName(channelName);
     const chatId = (targetChat as any).id?._serialized;
 
-    let rawMessages: Array<{ body: string; timestamp: number; author?: string; from: string; hasMedia: boolean }>;
+    let rawMessages: Array<{ id: string; body: string; timestamp: number; author?: string; from: string; hasMedia: boolean; mediaType?: string }>;
     try {
       rawMessages = await this.fetchMessagesDirectly(chatId, limit);
     } catch (error) {
       this.logger.warn(
         `Direct message fetch failed for "${channelName}", falling back to fetchMessages: ${error.message}`,
       );
-      // Fallback to original fetchMessages
+      // Fallback to original fetchMessages — also handles image media here
       try {
         const messages = await targetChat.fetchMessages({ limit });
-        return messages.map((msg) => ({
-          content: msg.body,
-          timestamp: new Date(msg.timestamp * 1000),
-          sender: msg.author || msg.from,
-          channel: channelName,
-        }));
+        const out: WhatsAppMessage[] = [];
+        for (const msg of messages) {
+          const isImage = msg.hasMedia && msg.type === 'image';
+          const hasText = !!(msg.body && msg.body.trim().length > 0);
+          if (!hasText && !isImage) continue;
+          let images: WhatsAppMessageImage[] | undefined;
+          if (isImage) {
+            const downloaded = await this.tryDownloadImage(msg);
+            if (downloaded) images = [downloaded];
+          }
+          out.push({
+            content: msg.body || '',
+            timestamp: new Date(msg.timestamp * 1000),
+            sender: msg.author || msg.from,
+            channel: channelName,
+            images,
+          });
+        }
+        return out;
       } catch (fallbackError) {
         this.logger.warn(
           `Failed to fetch messages from "${channelName}": ${fallbackError.message}`,
@@ -347,20 +364,77 @@ export class WhatsAppService
       }
     }
 
-    // Filter out media-only messages (images, videos, etc.) with no meaningful text
-    return rawMessages
-      .filter((msg) => {
-        if (!msg.body || msg.body.trim().length === 0) return false;
-        // Skip media messages where body is raw base64 data (not user text)
-        if (msg.hasMedia && msg.body.length > 200 && !/\s/.test(msg.body.slice(0, 100))) return false;
-        return true;
-      })
-      .map((msg) => ({
-      content: msg.body,
-      timestamp: new Date(msg.timestamp * 1000),
-      sender: msg.author || msg.from,
-      channel: channelName,
-    }));
+    // Keep messages with text OR an image; drop media types we can't use
+    // (videos, audio, documents, stickers) and pseudo-text base64 bodies.
+    const kept = rawMessages.filter((msg) => {
+      const isImage = msg.hasMedia && msg.mediaType === 'image';
+      const hasText = !!(msg.body && msg.body.trim().length > 0);
+      if (!hasText && !isImage) return false;
+      // Skip messages whose body is raw base64 data (not user text)
+      if (msg.hasMedia && hasText && msg.body.length > 200 && !/\s/.test(msg.body.slice(0, 100))) {
+        // Pure-base64 caption is junk — keep the image, drop the body
+        msg.body = '';
+        return isImage;
+      }
+      return true;
+    });
+
+    const result: WhatsAppMessage[] = [];
+    for (const msg of kept) {
+      let images: WhatsAppMessageImage[] | undefined;
+      if (msg.hasMedia && msg.mediaType === 'image' && msg.id) {
+        const downloaded = await this.tryDownloadImageById(msg.id);
+        if (downloaded) images = [downloaded];
+      }
+      result.push({
+        content: msg.body || '',
+        timestamp: new Date(msg.timestamp * 1000),
+        sender: msg.author || msg.from,
+        channel: channelName,
+        images,
+      });
+    }
+    return result;
+  }
+
+  // Cap matches Gemini's effective inline-image limit and keeps SQLite DB
+  // bounded — most WhatsApp images compress well below this. Larger images
+  // are dropped with a warning rather than silently sent.
+  private static readonly MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+
+  private async tryDownloadImageById(messageId: string): Promise<WhatsAppMessageImage | null> {
+    if (!this.client) return null;
+    try {
+      const msg = await this.client.getMessageById(messageId);
+      if (!msg) return null;
+      return this.tryDownloadImage(msg);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to load message ${messageId} for image download: ${(error as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  private async tryDownloadImage(msg: Message): Promise<WhatsAppMessageImage | null> {
+    try {
+      const media = await msg.downloadMedia();
+      if (!media || !media.data || !media.mimetype) return null;
+      // Roughly base64 → bytes (3 bytes per 4 chars). Avoid decoding for size.
+      const approxBytes = Math.floor((media.data.length * 3) / 4);
+      if (approxBytes > WhatsAppService.MAX_IMAGE_BYTES) {
+        this.logger.warn(
+          `Skipping oversized image (${Math.round(approxBytes / 1024)}KB > ${Math.round(WhatsAppService.MAX_IMAGE_BYTES / 1024)}KB cap)`,
+        );
+        return null;
+      }
+      return { mimeType: media.mimetype, data: media.data };
+    } catch (error) {
+      this.logger.warn(
+        `Failed to download image media: ${(error as Error).message}`,
+      );
+      return null;
+    }
   }
 
   async sendMessage(

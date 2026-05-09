@@ -1,8 +1,19 @@
+export interface WhatsAppMessageImage {
+  mimeType: string;
+  data: string; // base64-encoded
+}
+
 export interface WhatsAppMessage {
   content: string;
   timestamp: Date;
   sender: string;
   channel: string;
+  /**
+   * Inline images attached to the message (school flyers, screenshots, etc.).
+   * Forwarded to the LLM as multimodal input so we can extract events from
+   * pictures that have no accompanying caption.
+   */
+  images?: WhatsAppMessageImage[];
 }
 
 export interface WhatsAppMedia {

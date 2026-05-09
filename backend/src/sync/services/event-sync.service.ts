@@ -127,6 +127,7 @@ export class EventSyncService {
       childId?: string;
       calendarColorId?: string;
       mergedContent: string;
+      mergedImages: { mimeType: string; data: string }[];
       messageDate: string;
     }[] = [];
 
@@ -155,12 +156,18 @@ export class EventSyncService {
       }, 0);
       const messageDate = new Date(latestTimestamp).toISOString().split('T')[0];
 
+      // Collect all images from messages in this group. We send them as one
+      // bundle to the LLM since group-level extraction can't reliably
+      // attribute a single image back to its individual message.
+      const mergedImages = group.flatMap((m) => m.images ?? []);
+
       groupMeta.push({
         group,
         childName,
         childId: firstMessage.childId,
         calendarColorId,
         mergedContent: this.mergeGroupContent(group),
+        mergedImages,
         messageDate,
       });
     }
@@ -171,6 +178,7 @@ export class EventSyncService {
     const batchInput = groupMeta.map((meta, i) => ({
       id: String(i),
       content: meta.mergedContent,
+      images: meta.mergedImages.length > 0 ? meta.mergedImages : undefined,
     }));
     const fallbackDate = new Date().toISOString().split('T')[0];
     const batchResult = await this.messageParserService.parseMessageBatch(

@@ -91,6 +91,44 @@ describe('OpenRouterService', () => {
     expect(httpService.post).toHaveBeenCalledTimes(1);
   });
 
+  it('translates image input into OpenAI multimodal content parts', async () => {
+    httpService.post.mockReturnValue(of(mockSuccessResponse));
+
+    await service.callLLM([
+      {
+        role: 'user',
+        content: 'extract events from this flyer',
+        images: [{ mimeType: 'image/png', data: 'BASE64DATA' }],
+      },
+    ]);
+
+    const [, sentBody] = httpService.post.mock.calls[0];
+    const userMsg = (sentBody as any).messages.find(
+      (m: any) => m.role === 'user',
+    );
+    expect(Array.isArray(userMsg.content)).toBe(true);
+    expect(userMsg.content[0]).toEqual({
+      type: 'text',
+      text: 'extract events from this flyer',
+    });
+    expect(userMsg.content[1]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'data:image/png;base64,BASE64DATA' },
+    });
+  });
+
+  it('keeps plain string content for text-only messages', async () => {
+    httpService.post.mockReturnValue(of(mockSuccessResponse));
+
+    await service.callLLM([{ role: 'user', content: 'just text' }]);
+
+    const [, sentBody] = httpService.post.mock.calls[0];
+    const userMsg = (sentBody as any).messages.find(
+      (m: any) => m.role === 'user',
+    );
+    expect(userMsg.content).toBe('just text');
+  });
+
   it('should make a successful LLM call', async () => {
     httpService.post.mockReturnValue(of(mockSuccessResponse));
 

@@ -78,10 +78,20 @@ export class GeminiService implements ILLMService, OnModuleInit {
       .join('\n');
     const contents = messages
       .filter((m) => m.role !== 'system')
-      .map((m) => ({
-        role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
-        parts: [{ text: m.content }],
-      }));
+      .map((m) => {
+        const parts: Array<
+          { text: string } | { inlineData: { mimeType: string; data: string } }
+        > = [{ text: m.content }];
+        if (m.role === 'user' && m.images?.length) {
+          for (const img of m.images) {
+            parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+          }
+        }
+        return {
+          role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
+          parts,
+        };
+      });
 
     for (let attempt = 1; attempt <= maxAttempts + rateLimitRetries; attempt++) {
       try {

@@ -71,18 +71,38 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
     const maxAttempts = MAX_RETRIES;
     let rateLimitRetries = 0;
 
+    // Translate any LlmMessage.images into OpenAI multimodal `content` arrays
+    // (image_url with data: URLs). Messages without images keep the plain
+    // string `content` shape so non-vision models continue to work as before.
+    const wireMessages = messages.map((m) => {
+      if (m.role === 'user' && m.images?.length) {
+        const parts: Array<
+          | { type: 'text'; text: string }
+          | { type: 'image_url'; image_url: { url: string } }
+        > = [{ type: 'text', text: m.content }];
+        for (const img of m.images) {
+          parts.push({
+            type: 'image_url',
+            image_url: { url: `data:${img.mimeType};base64,${img.data}` },
+          });
+        }
+        return { role: m.role, content: parts };
+      }
+      return { role: m.role, content: m.content };
+    });
+
     for (let attempt = 1; attempt <= maxAttempts + rateLimitRetries; attempt++) {
       try {
         const body = {
           model,
-          messages,
+          messages: wireMessages,
           temperature,
           max_tokens: maxTokens,
         };
 
         this.logger.log(
           `LLM request POST ${OPENROUTER_API_URL} (attempt: ${attempt})\n` +
-          JSON.stringify(body, null, 2),
+          JSON.stringify(body, this.redactImageDataForLog, 2),
         );
 
         const response = await firstValueFrom(
@@ -173,6 +193,15 @@ export class OpenRouterService implements ILLMService, OnModuleInit {
       timestamp: new Date().toISOString(),
     });
   }
+
+  private redactImageDataForLog = (key: string, value: unknown): unknown => {
+    if (key === 'url' && typeof value === 'string' && value.startsWith('data:')) {
+      const semi = value.indexOf(';');
+      const prefix = semi > 0 ? value.slice(0, semi + 1) : 'data:';
+      return `${prefix}base64,[REDACTED ${value.length} chars]`;
+    }
+    return value;
+  };
 
   private sanitizeError(message?: string): string {
     if (!message) return 'Unknown error';
