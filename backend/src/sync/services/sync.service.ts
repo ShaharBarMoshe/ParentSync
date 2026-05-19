@@ -414,15 +414,15 @@ export class SyncService {
 
     const channelStartedAt = new Date().toISOString();
 
-    // Format the date as YYYY/MM/DD for Gmail query
-    const year = since.getFullYear();
-    const month = String(since.getMonth() + 1).padStart(2, '0');
-    const day = String(since.getDate()).padStart(2, '0');
-    const afterDate = `${year}/${month}/${day}`;
+    // Use Unix-timestamp form so the cutoff is exact to the second.
+    // The date-only form (after:YYYY/MM/DD) rounded to local-TZ day
+    // boundaries and could either re-fetch yesterday's mail or skip
+    // anything that arrived earlier the same day as the last scan.
+    const afterTimestamp = Math.floor(since.getTime() / 1000);
+    const fromFilter = emails.map((e) => `"${e}"`).join(' OR ');
+    const query = `from:(${fromFilter}) after:${afterTimestamp}`;
 
-    const fromFilter = emails.join(' OR ');
-    const query = `from:(${fromFilter}) after:${afterDate}`;
-
+    // No default limit — GmailService paginates until exhausted.
     const fetchedEmails = await this.gmailService.getEmails(undefined, query);
     let totalMessages = 0;
     const gmailMessages: { sender: string; content: string; timestamp: string }[] = [];

@@ -41,40 +41,32 @@ export class GmailService implements IGmailService {
     private readonly appErrorEmitter: AppErrorEmitterService,
   ) {}
 
-  async getEmails(limit = 20, query?: string): Promise<EmailMessage[]> {
+  // Gmail caps a single page at 500. We chain pages until we've collected
+  // up to `limit` IDs or run out — historically `getEmails(undefined, q)`
+  // silently capped at 20 and dropped teacher mail beyond that.
+  private static readonly DEFAULT_LIMIT = 500;
+  private static readonly GMAIL_PAGE_SIZE = 500;
+
+  async getEmails(limit?: number, query?: string): Promise<EmailMessage[]> {
     const gmail = await this.getGmailClient();
+    const effectiveLimit = limit ?? GmailService.DEFAULT_LIMIT;
+    // Gmail's default search excludes Spam / Trash / Drafts — teacher
+    // mass-mail occasionally lands in Spam and would otherwise be invisible.
+    // Caller-supplied `in:` clauses are respected.
+    const effectiveQuery = this.applyDefaultScope(query);
 
-    const listParams: gmail_v1.Params$Resource$Users$Messages$List = {
-      userId: 'me',
-      maxResults: limit,
-    };
-
-    if (query) {
-      listParams.q = query;
-    }
-
-    let listResponse;
-    try {
-      listResponse = await gmail.users.messages.list(listParams);
-    } catch (error) {
-      if (isGmailApiDisabledError(error)) {
-        this.appErrorEmitter.emit({
-          source: 'gmail',
-          code: AppErrorCodes.GMAIL_API_DISABLED,
-          message:
-            'Gmail API is disabled in your Google Cloud project. Open Google Cloud Console → APIs & Services → enable the "Gmail API," wait ~1 minute, then retry the sync.',
-        });
-      }
-      throw error;
-    }
-    const messageIds = listResponse.data.messages ?? [];
+    const messageIds = await this.listAllMessageIds(
+      gmail,
+      effectiveQuery,
+      effectiveLimit,
+    );
 
     if (messageIds.length === 0) {
       return [];
     }
 
     const emails: EmailMessage[] = [];
-    for (const { id } of messageIds) {
+    for (const id of messageIds) {
       if (!id) continue;
       try {
         const email = await this.fetchEmailDetails(gmail, id);
@@ -84,12 +76,76 @@ export class GmailService implements IGmailService {
       }
     }
 
+    this.logger.log(
+      `Gmail fetched ${emails.length} emails (query: "${effectiveQuery ?? '<none>'}", limit: ${effectiveLimit})`,
+    );
+
     return emails;
   }
 
   async getEmailsSince(since: Date): Promise<EmailMessage[]> {
     const timestamp = Math.floor(since.getTime() / 1000);
-    return this.getEmails(100, `after:${timestamp}`);
+    return this.getEmails(undefined, `after:${timestamp}`);
+  }
+
+  /**
+   * Iterates pages of `users.messages.list` until either `limit` IDs are
+   * collected or Gmail stops returning a nextPageToken.
+   */
+  private async listAllMessageIds(
+    gmail: gmail_v1.Gmail,
+    query: string | undefined,
+    limit: number,
+  ): Promise<string[]> {
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+
+    do {
+      const remaining = limit - ids.length;
+      if (remaining <= 0) break;
+
+      const pageSize = Math.min(remaining, GmailService.GMAIL_PAGE_SIZE);
+      const listParams: gmail_v1.Params$Resource$Users$Messages$List = {
+        userId: 'me',
+        maxResults: pageSize,
+      };
+      if (query) listParams.q = query;
+      if (pageToken) listParams.pageToken = pageToken;
+
+      let response;
+      try {
+        response = await gmail.users.messages.list(listParams);
+      } catch (error) {
+        if (isGmailApiDisabledError(error)) {
+          this.appErrorEmitter.emit({
+            source: 'gmail',
+            code: AppErrorCodes.GMAIL_API_DISABLED,
+            message:
+              'Gmail API is disabled in your Google Cloud project. Open Google Cloud Console → APIs & Services → enable the "Gmail API," wait ~1 minute, then retry the sync.',
+          });
+        }
+        throw error;
+      }
+
+      for (const m of response.data.messages ?? []) {
+        if (m.id) ids.push(m.id);
+        if (ids.length >= limit) break;
+      }
+      pageToken = response.data.nextPageToken ?? undefined;
+    } while (pageToken);
+
+    return ids;
+  }
+
+  /**
+   * Prepends `in:anywhere` so Spam / Trash / Drafts are included in the
+   * search. Skipped when the caller already specified a location filter
+   * (`in:`, `is:`, `label:`).
+   */
+  private applyDefaultScope(query?: string): string | undefined {
+    if (!query) return 'in:anywhere';
+    if (/\b(in|is|label):/i.test(query)) return query;
+    return `in:anywhere ${query}`;
   }
 
   private async getGmailClient(): Promise<gmail_v1.Gmail> {

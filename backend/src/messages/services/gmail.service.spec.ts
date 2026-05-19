@@ -83,6 +83,91 @@ describe('GmailService', () => {
     expect(emails).toHaveLength(2);
   });
 
+  it('prepends in:anywhere so spam/trash mail is searched too', async () => {
+    const { google } = jest.requireMock('googleapis');
+    const list = google.gmail().users.messages.list as jest.Mock;
+    list.mockClear();
+
+    await service.getEmails(5, 'from:test@example.com');
+
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ q: 'in:anywhere from:test@example.com' }),
+    );
+  });
+
+  it('respects a caller-supplied location filter', async () => {
+    const { google } = jest.requireMock('googleapis');
+    const list = google.gmail().users.messages.list as jest.Mock;
+    list.mockClear();
+
+    await service.getEmails(5, 'in:inbox from:teacher@school.edu');
+
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ q: 'in:inbox from:teacher@school.edu' }),
+    );
+  });
+
+  it('follows nextPageToken until all matching ids are collected', async () => {
+    const { google } = jest.requireMock('googleapis');
+    const list = google.gmail().users.messages.list as jest.Mock;
+    list.mockReset();
+    list
+      .mockResolvedValueOnce({
+        data: {
+          messages: Array.from({ length: 250 }, (_, i) => ({ id: `p1-${i}` })),
+          nextPageToken: 'tok-2',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          messages: [{ id: 'p2-0' }, { id: 'p2-1' }],
+        },
+      });
+
+    const emails = await service.getEmails(undefined, 'after:1700000000');
+
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ pageToken: 'tok-2' }),
+    );
+    expect(emails).toHaveLength(252);
+  });
+
+  it('stops paginating once the requested limit is reached', async () => {
+    const { google } = jest.requireMock('googleapis');
+    const list = google.gmail().users.messages.list as jest.Mock;
+    list.mockReset();
+    list.mockResolvedValueOnce({
+      data: {
+        messages: Array.from({ length: 30 }, (_, i) => ({ id: `m-${i}` })),
+        nextPageToken: 'tok-2',
+      },
+    });
+
+    const emails = await service.getEmails(10, 'after:1700000000');
+
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(list.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ maxResults: 10 }),
+    );
+    expect(emails).toHaveLength(10);
+  });
+
+  it('defaults the limit to 500 when undefined is passed', async () => {
+    const { google } = jest.requireMock('googleapis');
+    const list = google.gmail().users.messages.list as jest.Mock;
+    list.mockReset();
+    list.mockResolvedValueOnce({
+      data: { messages: [{ id: 'a' }] },
+    });
+
+    await service.getEmails(undefined);
+
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ maxResults: 500 }),
+    );
+  });
+
   it('emits GMAIL_API_DISABLED when the project does not have Gmail enabled', async () => {
     const { google } = jest.requireMock('googleapis');
     const list = google.gmail().users.messages.list;
