@@ -115,7 +115,7 @@ export class MessageParserService {
       const dateContext = currentDate ?? new Date().toISOString().split('T')[0];
       const hasImages = !!(images && images.length > 0);
       const userMessage = hasImages
-        ? `Current date: ${dateContext}\n\n${content ? `Message text:\n${content}\n\n` : ''}The message also contains ${images!.length} attached image(s). Extract any events visible in the image(s) — flyers, schedules, screenshots — using the same JSON format as for text messages.`
+        ? `Current date: ${dateContext}\n\n${content ? `Message text:\n${content}\n\n` : ''}The message also contains ${images!.length} attached image(s). Extract any events visible in the image(s) — flyers, schedules, screenshots — and return a top-level JSON ARRAY of events: [{...}, {...}]. DO NOT use the numbered-object {"1": [...]} format — that shape is reserved for batched-text calls only. Return [] if no event is visible.`
         : `Current date: ${dateContext}\n\nMessage to parse:\n${content}`;
 
       const response = await this.llmService.callLLM([
@@ -362,15 +362,15 @@ export class MessageParserService {
     const trimmed = response.trim();
     try {
       const parsed = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) return parsed;
-      return [];
+      return this.coerceToEventArray(parsed);
     } catch {
       // Try extracting JSON from markdown code blocks
       const jsonMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
         try {
           const parsed = JSON.parse(jsonMatch[1].trim());
-          if (Array.isArray(parsed)) return parsed;
+          const arr = this.coerceToEventArray(parsed);
+          if (arr.length > 0) return arr;
         } catch {
           // fall through
         }
@@ -390,6 +390,32 @@ export class MessageParserService {
       this.logger.warn('Could not extract JSON array from LLM response');
       return [];
     }
+  }
+
+  /**
+   * Accepts either:
+   *   - a plain array `[ev1, ev2, ...]` (the documented single-message shape)
+   *   - a batched-object `{"1": [...], "2": [...]}` that some models return
+   *     even when only one message was sent (notably Gemini Flash Lite when
+   *     given image-only input). The latter is flattened into a single
+   *     array because there's only one source message — the keys are just
+   *     noise in that case.
+   *
+   * Anything else collapses to []; the caller logs a warning.
+   */
+  private coerceToEventArray(parsed: unknown): unknown[] {
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === 'object') {
+      const values = Object.values(parsed as Record<string, unknown>);
+      if (values.length > 0 && values.every((v) => Array.isArray(v))) {
+        const flat = (values as unknown[][]).flat();
+        this.logger.log(
+          `Flattened batch-shaped response ({${Object.keys(parsed as object).join(',')}}) into a ${flat.length}-event array`,
+        );
+        return flat;
+      }
+    }
+    return [];
   }
 
   private validateEvents(events: unknown[]): ParsedEvent[] {

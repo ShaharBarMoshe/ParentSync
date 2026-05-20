@@ -198,6 +198,50 @@ describe('MessageParserService', () => {
     expect(calls[0][0]).toBe(calls[1][0]);
   });
 
+  describe('batch-shaped response on a single-message call', () => {
+    it('flattens {"1": [...]} into the event array', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify({
+          '1': [
+            { title: 'School play', date: '2026-06-10' },
+            { title: 'Bake sale', date: '2026-06-15' },
+          ],
+        }),
+      );
+
+      const events = await service.parseMessage('flyer', '2026-05-10', [
+        { mimeType: 'image/png', data: 'AAAA' },
+      ]);
+
+      expect(events).toHaveLength(2);
+      expect(events.map((e) => e.title)).toEqual(['School play', 'Bake sale']);
+    });
+
+    it('flattens multi-key batch-shapes by union (single-call case)', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify({
+          '1': [{ title: 'Event A', date: '2026-06-10' }],
+          '2': [{ title: 'Event B', date: '2026-06-11' }],
+        }),
+      );
+
+      const events = await service.parseMessage('flyer', '2026-05-10', [
+        { mimeType: 'image/png', data: 'AAAA' },
+      ]);
+
+      expect(events.map((e) => e.title)).toEqual(['Event A', 'Event B']);
+    });
+
+    it('ignores an object whose values are not all arrays', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify({ message: 'no events', count: 0 }),
+      );
+
+      const events = await service.parseMessage('flyer', '2026-05-10');
+      expect(events).toHaveLength(0);
+    });
+  });
+
   describe('image input', () => {
     it('forwards images to the LLM on the user message', async () => {
       mockLlmService.callLLM.mockResolvedValue(
