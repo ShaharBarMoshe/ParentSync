@@ -9,6 +9,7 @@ import { EventSyncService } from './services/event-sync.service';
 import { ApprovalService } from './services/approval.service';
 import { EventDismissalService } from './services/event-dismissal.service';
 import { EventReminderService } from './services/event-reminder.service';
+import { MessageDeduplicationService } from './services/message-deduplication.service';
 import { SyncController } from './controllers/sync.controller';
 import { ApprovalController } from './controllers/approval.controller';
 import {
@@ -43,6 +44,7 @@ import { SettingsModule } from '../settings/settings.module';
     ApprovalService,
     EventDismissalService,
     EventReminderService,
+    MessageDeduplicationService,
   ],
   exports: [
     SyncService,
@@ -50,6 +52,7 @@ import { SettingsModule } from '../settings/settings.module';
     ApprovalService,
     EventDismissalService,
     EventReminderService,
+    MessageDeduplicationService,
   ],
 })
 export class SyncModule {}

@@ -1,4 +1,10 @@
-import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SETTINGS_REPOSITORY } from '../shared/constants/injection-tokens';
 import type { ISettingsRepository } from './interfaces/settings-repository.interface';
@@ -9,7 +15,7 @@ import { CryptoService } from '../shared/crypto/crypto.service';
 import { SENSITIVE_SETTING_KEYS } from './constants/setting-keys';
 
 @Injectable()
-export class SettingsService {
+export class SettingsService implements OnModuleInit {
   private readonly logger = new Logger(SettingsService.name);
 
   constructor(
@@ -18,6 +24,27 @@ export class SettingsService {
     private readonly eventEmitter: EventEmitter2,
     private readonly cryptoService: CryptoService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    // Single source of seeding truth — keys that need a default on first run.
+    await this.seedDefaultIfMissing('dedup_enabled', 'true');
+    await this.seedDefaultIfMissing('dedup_threshold', '0.92');
+    await this.seedDefaultIfMissing('dedup_debug_verbose', 'false');
+    await this.seedDefaultIfMissing('metric.event_dedup_llm_fires', '0');
+    await this.seedDefaultIfMissing('metric.events_created_total', '0');
+  }
+
+  /**
+   * Seed a default value for `key` if (and only if) it is currently unset or
+   * empty. Idempotent and safe to call on every boot — never overwrites a
+   * user-set value.
+   */
+  async seedDefaultIfMissing(key: string, value: string): Promise<void> {
+    const existing = await this.settingsRepository.findByKey(key);
+    if (existing && existing.value && existing.value.length > 0) return;
+    await this.settingsRepository.upsert(key, value);
+    this.logger.log(`Seeded default setting key=${key}`);
+  }
 
   private isSensitive(key: string): boolean {
     return SENSITIVE_SETTING_KEYS.has(key);

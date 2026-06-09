@@ -30,6 +30,8 @@ interface SettingsForm {
   googleClientSecret: string;
   googleRedirectUri: string;
   approvalChannel: string;
+  dedupEnabled: string;
+  dedupThreshold: string;
 }
 
 const SETTING_KEYS = {
@@ -40,6 +42,8 @@ const SETTING_KEYS = {
   googleClientSecret: 'google_client_secret',
   googleRedirectUri: 'google_redirect_uri',
   approvalChannel: 'approval_channel',
+  dedupEnabled: 'dedup_enabled',
+  dedupThreshold: 'dedup_threshold',
 } as const;
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -133,6 +137,8 @@ const DEFAULT_FORM: SettingsForm = {
   googleClientSecret: '',
   googleRedirectUri: 'http://localhost:41932/api/auth/google/callback',
   approvalChannel: '',
+  dedupEnabled: 'true',
+  dedupThreshold: '0.92',
 };
 
 type Status = { type: 'idle' } | { type: 'loading' } | { type: 'saving' } | { type: 'success'; message: string } | { type: 'error'; message: string };
@@ -577,6 +583,8 @@ export default function SettingsPage() {
       googleClientSecret: map.get(SETTING_KEYS.googleClientSecret) ?? DEFAULT_FORM.googleClientSecret,
       googleRedirectUri: map.get(SETTING_KEYS.googleRedirectUri) ?? DEFAULT_FORM.googleRedirectUri,
       approvalChannel: map.get(SETTING_KEYS.approvalChannel) ?? DEFAULT_FORM.approvalChannel,
+      dedupEnabled: map.get(SETTING_KEYS.dedupEnabled) ?? DEFAULT_FORM.dedupEnabled,
+      dedupThreshold: map.get(SETTING_KEYS.dedupThreshold) ?? DEFAULT_FORM.dedupThreshold,
     };
   }
 
@@ -851,6 +859,45 @@ export default function SettingsPage() {
                 <label htmlFor="approvalChannel" className="form-label">Approval Channel</label>
                 <input id="approvalChannel" type="text" className="form-input" value={form.approvalChannel} onChange={(e) => handleChange('approvalChannel', e.target.value)} placeholder="e.g., Family Calendar Approvals" />
                 <span className="form-hint">WhatsApp group name for approving events before they sync to Google Calendar. Leave empty to auto-sync without approval.</span>
+              </div>
+            </div>
+
+            {/* Deduplication */}
+            <div className="settings-section">
+              <h3 className="settings-section-title"><Icon name="list-filter" size={16} /> Deduplication</h3>
+              <p className="settings-section-hint">
+                Suppress approval alerts and calendar events when the same school flyer
+                is forwarded across multiple WhatsApp groups.
+              </p>
+              <div className="form-field">
+                <label className="form-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={form.dedupEnabled !== 'false'}
+                    onChange={(e) => handleChange('dedupEnabled', e.target.checked ? 'true' : 'false')}
+                  />
+                  <span>Skip duplicate messages</span>
+                </label>
+              </div>
+              <div className="form-field">
+                <label htmlFor="dedupThreshold" className="form-label">
+                  Similarity threshold: <strong>{Number(form.dedupThreshold).toFixed(2)}</strong>
+                </label>
+                <input
+                  id="dedupThreshold"
+                  type="range"
+                  min="0.80"
+                  max="0.99"
+                  step="0.01"
+                  className="form-input"
+                  value={form.dedupThreshold}
+                  onChange={(e) => handleChange('dedupThreshold', e.target.value)}
+                  disabled={form.dedupEnabled === 'false'}
+                />
+                <span className="form-hint">
+                  Higher = fewer skipped, lower = more aggressive deduplication. Default 0.92 catches
+                  most forwards without dropping real new events.
+                </span>
               </div>
             </div>
 

@@ -20,6 +20,10 @@ import { CalendarEventEntity } from '../../calendar/entities/calendar-event.enti
 import { MessageEntity } from '../../messages/entities/message.entity';
 import { ApprovalService } from './approval.service';
 import { EventDismissalService } from './event-dismissal.service';
+import {
+  MessageDeduplicationService,
+  DedupResult,
+} from './message-deduplication.service';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
@@ -46,6 +50,7 @@ export class EventSyncService {
     private readonly approvalService: ApprovalService,
     private readonly eventDismissalService: EventDismissalService,
     private readonly appErrorEmitter: AppErrorEmitterService,
+    private readonly dedupService: MessageDeduplicationService,
   ) {}
 
   async syncSingleEventToGoogle(event: CalendarEventEntity): Promise<void> {
@@ -129,6 +134,7 @@ export class EventSyncService {
       mergedContent: string;
       mergedImages: { mimeType: string; data: string }[];
       messageDate: string;
+      dedup?: DedupResult;
     }[] = [];
 
     for (const group of messageGroups) {
@@ -172,26 +178,64 @@ export class EventSyncService {
       });
     }
 
-    // Batch parse all groups in a single LLM call
+    // Phase 20 — semantic dedup pre-filter. Split groups into "already seen"
+    // (skip the LLM entirely) and "fresh" (send to the batch parser). Dedup
+    // is fail-open: an error on a single group falls through to the fresh
+    // path; this loop never throws.
+    const freshIndices: number[] = [];
+    const duplicateIndices: number[] = [];
+    let dupSimSum = 0;
+    for (let i = 0; i < groupMeta.length; i++) {
+      const meta = groupMeta[i];
+      const dedup = await this.dedupService.findDuplicateOf(meta.mergedContent);
+      meta.dedup = dedup;
+      if (dedup.match) {
+        duplicateIndices.push(i);
+        dupSimSum += dedup.match.similarity;
+      } else {
+        freshIndices.push(i);
+      }
+    }
+
+    if (duplicateIndices.length > 0) {
+      const avgSim = dupSimSum / duplicateIndices.length;
+      this.logger.log(
+        `Dedup pass: ${duplicateIndices.length}/${groupMeta.length} groups skipped (avgSim=${avgSim.toFixed(3)})`,
+      );
+      await this.markDuplicatesAsParsed(
+        duplicateIndices.map((i) => groupMeta[i]),
+      );
+      messagesParsed += duplicateIndices.reduce(
+        (sum, i) => sum + groupMeta[i].group.length,
+        0,
+      );
+    }
+
+    const freshGroups = freshIndices.map((i) => groupMeta[i]);
+
+    // Batch parse fresh groups in a single LLM call.
     // Each group's content includes its own date context (based on message timestamps)
-    // so relative dates like "tomorrow" resolve relative to when the message was sent
-    const batchInput = groupMeta.map((meta, i) => ({
-      id: String(i),
-      content: meta.mergedContent,
-      images: meta.mergedImages.length > 0 ? meta.mergedImages : undefined,
-    }));
-    const fallbackDate = new Date().toISOString().split('T')[0];
-    const batchResult = await this.messageParserService.parseMessageBatch(
-      batchInput,
-      fallbackDate,
-      groupMeta.map((meta) => meta.messageDate),
-    );
+    // so relative dates like "tomorrow" resolve relative to when the message was sent.
+    let batchResult = new Map<string, ParsedEvent[]>();
+    if (freshGroups.length > 0) {
+      const batchInput = freshGroups.map((meta, i) => ({
+        id: String(i),
+        content: meta.mergedContent,
+        images: meta.mergedImages.length > 0 ? meta.mergedImages : undefined,
+      }));
+      const fallbackDate = new Date().toISOString().split('T')[0];
+      batchResult = await this.messageParserService.parseMessageBatch(
+        batchInput,
+        fallbackDate,
+        freshGroups.map((meta) => meta.messageDate),
+      );
+    }
 
     const approvalEnabled = await this.approvalService.isApprovalEnabled();
 
-    // Process each group's parsed events
-    for (let i = 0; i < groupMeta.length; i++) {
-      const meta = groupMeta[i];
+    // Process each fresh group's parsed events
+    for (let i = 0; i < freshGroups.length; i++) {
+      const meta = freshGroups[i];
       const parsedEvents = batchResult.get(String(i)) || [];
 
       // Split into creation events and dismissal events
@@ -212,8 +256,12 @@ export class EventSyncService {
           meta.calendarColorId,
           approvalEnabled,
           meta.mergedContent,
+          meta.dedup,
         );
         eventsCreated += result.eventsCreated;
+        for (let n = 0; n < result.eventsCreated; n++) {
+          await this.incrementMetric('metric.events_created_total');
+        }
 
         // Send newly created events for approval if enabled (skip past events)
         if (approvalEnabled) {
@@ -388,6 +436,51 @@ export class EventSyncService {
       .join('\n');
   }
 
+  /**
+   * Marks all messages in every duplicate group as parsed and stamps them
+   * with the matched message's embedding + content hash, so a third
+   * forward can match via the cheap hash path.
+   *
+   * Runs in a single transaction per `db-use-transactions`. Fail-open: a
+   * rollback is logged and the messages stay unparsed so the next sync can
+   * retry rather than silently dropping them.
+   */
+  private async markDuplicatesAsParsed(
+    duplicateGroups: {
+      group: MessageEntity[];
+      dedup?: DedupResult;
+    }[],
+  ): Promise<void> {
+    if (duplicateGroups.length === 0) return;
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      for (const dg of duplicateGroups) {
+        const embedding = dg.dedup?.embedding ?? null;
+        const contentHash = dg.dedup?.contentHash ?? null;
+        for (const msg of dg.group) {
+          await queryRunner.manager.update(MessageEntity, msg.id, {
+            parsed: true,
+            embedding,
+            contentHash,
+          });
+          this.logger.debug(
+            `Skipped duplicate group channel=${msg.channel} msgId=${msg.id} similarity=${(dg.dedup?.match?.similarity ?? 0).toFixed(3)} matchType=${dg.dedup?.match?.exact ? 'hash' : 'embedding'}`,
+          );
+        }
+      }
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      this.logger.warn(
+        `Dedup mark-as-parsed transaction rolled back, will retry next sync: ${(err as Error).message}`,
+      );
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   private async createEventsInTransaction(
     group: MessageEntity[],
     parsedEvents: ParsedEvent[],
@@ -396,6 +489,7 @@ export class EventSyncService {
     calendarColorId?: string,
     approvalEnabled = false,
     mergedContent?: string,
+    dedup?: DedupResult,
   ): Promise<{ eventsCreated: number; savedEvents: CalendarEventEntity[] }> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -478,14 +572,24 @@ export class EventSyncService {
         });
       }
 
-      // Mark all messages in the group as parsed
+      // Mark all messages in the group as parsed. When the dedup pass
+      // produced a fresh embedding + hash, persist them on every message in
+      // the group so a future forward can match via the cheap hash path.
+      const embedding = dedup?.embedding ?? null;
+      const contentHash = dedup?.contentHash ?? null;
       for (const msg of group) {
         await queryRunner.manager.update(MessageEntity, msg.id, {
           parsed: true,
+          embedding,
+          contentHash,
         });
       }
 
       await queryRunner.commitTransaction();
+
+      if (embedding && contentHash) {
+        this.logger.log(`Persisted embeddings on ${group.length} message rows`);
+      }
 
       return { eventsCreated, savedEvents };
     } catch (error) {
@@ -599,9 +703,37 @@ export class EventSyncService {
           description: sibling.description,
         },
       );
-      if (same) return true;
+      if (same) {
+        this.logger.debug(
+          `LLM event dedup fired candidateTitle="${candidate.title}" siblingTitle="${sibling.title}" date=${candidate.date} time=${candidate.time}`,
+        );
+        await this.incrementMetric('metric.event_dedup_llm_fires');
+        return true;
+      }
     }
     return false;
+  }
+
+  /**
+   * Increments a small integer counter stored under a settings key. Best-
+   * effort — failures are swallowed; metrics should never break a sync.
+   */
+  private async incrementMetric(key: string): Promise<void> {
+    try {
+      let current = 0;
+      try {
+        const existing = await this.settingsService.findByKey(key);
+        const parsed = Number.parseInt(existing.value, 10);
+        if (!Number.isNaN(parsed)) current = parsed;
+      } catch {
+        // Settings seeder usually creates this, but if it's gone we start at 0.
+      }
+      await this.settingsService.create({ key, value: String(current + 1) });
+    } catch (err) {
+      this.logger.debug(
+        `Failed to increment metric ${key}: ${(err as Error).message}`,
+      );
+    }
   }
 
   private isDateInPast(

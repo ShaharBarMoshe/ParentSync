@@ -151,4 +151,75 @@ describe('SettingsService', () => {
       );
     });
   });
+
+  describe('seedDefaultIfMissing', () => {
+    it('calls upsert when key is missing', async () => {
+      repository.findByKey.mockResolvedValue(null);
+      repository.upsert.mockResolvedValue(mockSetting);
+
+      await service.seedDefaultIfMissing('dedup_threshold', '0.92');
+
+      expect(repository.upsert).toHaveBeenCalledWith('dedup_threshold', '0.92');
+    });
+
+    it('does NOT overwrite an existing value', async () => {
+      repository.findByKey.mockResolvedValue({
+        ...mockSetting,
+        key: 'dedup_threshold',
+        value: '0.85',
+      });
+
+      await service.seedDefaultIfMissing('dedup_threshold', '0.92');
+
+      expect(repository.upsert).not.toHaveBeenCalled();
+    });
+
+    it('treats an empty string as missing and writes the default', async () => {
+      repository.findByKey.mockResolvedValue({
+        ...mockSetting,
+        key: 'dedup_threshold',
+        value: '',
+      });
+      repository.upsert.mockResolvedValue(mockSetting);
+
+      await service.seedDefaultIfMissing('dedup_threshold', '0.92');
+
+      expect(repository.upsert).toHaveBeenCalledWith('dedup_threshold', '0.92');
+    });
+
+    it('is idempotent — second call is a no-op once the value is set', async () => {
+      repository.findByKey
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          ...mockSetting,
+          key: 'dedup_threshold',
+          value: '0.92',
+        });
+      repository.upsert.mockResolvedValue(mockSetting);
+
+      await service.seedDefaultIfMissing('dedup_threshold', '0.92');
+      await service.seedDefaultIfMissing('dedup_threshold', '0.92');
+
+      expect(repository.upsert).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('onModuleInit', () => {
+    it('seeds dedup_enabled, dedup_threshold, and the metric counters', async () => {
+      repository.findByKey.mockResolvedValue(null);
+      repository.upsert.mockResolvedValue(mockSetting);
+
+      await service.onModuleInit();
+
+      const seededKeys = repository.upsert.mock.calls.map((c) => c[0]);
+      expect(seededKeys).toEqual(
+        expect.arrayContaining([
+          'dedup_enabled',
+          'dedup_threshold',
+          'metric.event_dedup_llm_fires',
+          'metric.events_created_total',
+        ]),
+      );
+    });
+  });
 });

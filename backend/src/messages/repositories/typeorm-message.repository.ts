@@ -1,12 +1,17 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MessageEntity } from '../entities/message.entity';
 import { MessageSource } from '../../shared/enums/message-source.enum';
-import { IMessageRepository } from '../interfaces/message-repository.interface';
+import {
+  IMessageRepository,
+  ParsedMessageEmbeddingRow,
+} from '../interfaces/message-repository.interface';
 
 @Injectable()
 export class TypeOrmMessageRepository implements IMessageRepository {
+  private readonly logger = new Logger(TypeOrmMessageRepository.name);
+
   constructor(
     @InjectRepository(MessageEntity)
     private readonly repo: Repository<MessageEntity>,
@@ -29,6 +34,32 @@ export class TypeOrmMessageRepository implements IMessageRepository {
       where: { parsed: false },
       order: { timestamp: 'ASC' },
     });
+  }
+
+  async findParsedWithEmbeddings(
+    since: Date,
+    limit = 1000,
+  ): Promise<ParsedMessageEmbeddingRow[]> {
+    this.logger.debug(
+      `findParsedWithEmbeddings since=${since.toISOString()} limit=${limit}`,
+    );
+    const rows = await this.repo
+      .createQueryBuilder('m')
+      .select(['m.id', 'm.embedding', 'm.contentHash'])
+      .where('m.parsed = :parsed', { parsed: true })
+      .andWhere('m.embedding IS NOT NULL')
+      .andWhere('m.timestamp >= :since', { since })
+      .orderBy('m.timestamp', 'DESC')
+      .limit(limit)
+      .getMany();
+
+    if (rows.length === limit) {
+      this.logger.warn(
+        `findParsedWithEmbeddings hit row cap (${limit}), older candidates not considered — consider lowering lookback`,
+      );
+    }
+
+    return rows;
   }
 
   async existsByChannelTimestampContent(

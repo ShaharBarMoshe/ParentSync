@@ -162,7 +162,13 @@ Optional. Enter a WhatsApp group name. New events will be sent to that group wit
 
 You can also approve/reject directly from the [Dashboard](#upcoming-events-7-days) without opening WhatsApp.
 
-**Duplicate suppression.** When the LLM extracts a new event whose date+time slot is already occupied by another non-rejected event for the same child, the backend asks the LLM "are these the same gathering?" — if yes, the new event is silently rejected and never reaches your approval channel. This prevents the same party / appointment / playdate from showing up twice with different titles.
+**Duplicate suppression.** Three layers, smallest to largest:
+
+1. **Message-level semantic dedup.** Before the LLM ever sees an incoming forward, ParentSync embeds it and compares against recently-parsed messages. Byte-identical forwards short-circuit on a SHA-256 hash; near-identical paraphrases (similarity ≥ 0.92 by default) are caught by Gemini embeddings. This is the layer you feel — fewer approval alerts when the same flyer ricochets across multiple parent groups.
+2. **Exact event dedup.** After parsing, the backend skips creating a row that already exists with the same (title, date, time, child).
+3. **LLM event dedup.** When two events land in the same date+time slot for the same child but with different titles, the backend asks the LLM "are these the same gathering?" — if yes, the new event is silently rejected.
+
+You can tune the message-level layer in **Settings → Deduplication** (see below). See `docs/semantic-dedup.md` for the design and threshold guidance.
 
 Leave the channel empty to sync events directly to Google Calendar without approval.
 
@@ -185,6 +191,11 @@ If you regret a 😢 reaction, you have two ways to undo:
 2. In Settings, click the X on the exclusion row.
 
 Read [Prompt Customization](PROMPT-CUSTOMIZATION.md) for cap, token cost, and cache behavior.
+
+### Deduplication
+- **Skip duplicate messages** — toggles the message-level dedup (`dedup_enabled`). Default on. When off, every forwarded message goes to the LLM (the post-parse layers still apply).
+- **Similarity threshold** — slider from 0.80 → 0.99 (`dedup_threshold`). Lower = more aggressive, higher = fewer skipped. Default **0.92** catches most forwards without dropping real new events.
+- Pointer: see [Semantic Deduplication](semantic-dedup.md) for the design, threshold guidance, and failure-mode → action table.
 
 ### Save & Reset
 - **Save Settings** — saves all the form fields

@@ -28,8 +28,8 @@ Clean Architecture + Hexagonal (Ports & Adapters) on **NestJS**, organized by **
 | `SettingsModule` | User settings CRUD |
 | `MessagesModule` | WhatsApp scraping, Gmail fetching, message storage |
 | `CalendarModule` | Calendar events, Google Calendar sync |
-| `LlmModule` | OpenRouter API client, message parsing |
-| `SyncModule` | Scheduled sync orchestration, event-driven flow, WhatsApp approval channel |
+| `LlmModule` | LLM client, message parsing, `EMBEDDING_SERVICE` (Gemini `text-embedding-004`) |
+| `SyncModule` | Scheduled sync orchestration, event-driven flow, WhatsApp approval channel, `MessageDeduplicationService` (semantic pre-filter) |
 | `AuthModule` | OAuth 2.0 flows for Google APIs |
 | `MonitorModule` | Analytics aggregation, charts data |
 | `SharedModule` | Common entities, config, utilities |
@@ -80,6 +80,9 @@ Skills in `.agents/skills/` provide domain knowledge for implementation:
 - **architecture-patterns** — Clean Architecture, Hexagonal Architecture, DDD. Complements NestJS module structure.
 - **scss-best-practices** — SCSS coding guidelines, 7-1 file architecture, mixins, variables, and maintainable stylesheet patterns. Use for all frontend styling work.
 - **ui-ux-pro-max** — UI/UX design system, typography, colors, icons, and React performance patterns. Use for frontend UI development.
+- **rag-implementation** — RAG pipeline patterns: embeddings, vector stores, retrieval strategies, reranking. Use when implementing semantic search or deduplication.
+- **vector-index-tuning** — HNSW vs flat index selection, quantization, recall/latency tradeoffs. Use when choosing index type or tuning search parameters.
+- **evaluate-rag** — Hamel Husain's RAG eval methodology: error-analysis-first, retrieval vs generation metrics separated, adversarial test set construction. Use when designing eval for any embedding-based pipeline (search, dedup, classification).
 
 ## Key Commands
 

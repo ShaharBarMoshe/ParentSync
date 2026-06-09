@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { GeminiService } from './services/gemini.service';
+import { GeminiEmbeddingService } from './services/gemini-embedding.service';
 import { MessageParserService } from './services/message-parser.service';
 import { LlmRateLimiter } from './guards/llm-throttle.guard';
 import { LlmQueueProcessor } from './queue/llm-queue.processor';
@@ -11,6 +12,7 @@ import { NegativeExampleEntity } from './entities/negative-example.entity';
 import { TypeOrmNegativeExampleRepository } from './repositories/typeorm-negative-example.repository';
 import {
   LLM_SERVICE,
+  EMBEDDING_SERVICE,
   NEGATIVE_EXAMPLE_REPOSITORY,
 } from '../shared/constants/injection-tokens';
 import { SettingsModule } from '../settings/settings.module';
@@ -31,6 +33,10 @@ import { SettingsModule } from '../settings/settings.module';
       useClass: GeminiService,
     },
     {
+      provide: EMBEDDING_SERVICE,
+      useClass: GeminiEmbeddingService,
+    },
+    {
       provide: NEGATIVE_EXAMPLE_REPOSITORY,
       useClass: TypeOrmNegativeExampleRepository,
     },
@@ -40,6 +46,7 @@ import { SettingsModule } from '../settings/settings.module';
   ],
   exports: [
     LLM_SERVICE,
+    EMBEDDING_SERVICE,
     MessageParserService,
     LlmRateLimiter,
     LlmQueueProcessor,

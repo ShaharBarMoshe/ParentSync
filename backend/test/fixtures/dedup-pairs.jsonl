@@ -1,0 +1,8 @@
+// Scaffold fixture for Phase 20.9 eval. Replace with real WhatsApp pairs
+// produced by `scripts/dedup-error-analysis.ts` on the user's database.
+// Each row is JSON: { a, b, isDuplicate, category, aSender?, bSender?, aChannel?, bChannel? }
+{"a":"Reminder: school trip tomorrow at 9am, bring water bottle","b":"FW: Reminder: school trip tomorrow at 9am, bring water bottle","isDuplicate":true,"category":"identical_forward","aChannel":"Grade3A","bChannel":"Grade3B"}
+{"a":"Class trip Monday 10am","b":"Class trip Tuesday 10am","isDuplicate":false,"category":"same_topic_different_date"}
+{"a":"Parent meeting tomorrow 19:30","b":"Reminder: parent meeting tomorrow at 7:30 PM 😊","isDuplicate":true,"category":"paraphrased_forward"}
+{"a":"Yossi's class trip Monday","b":"Dana's class trip Monday","isDuplicate":false,"category":"same_topic_different_child"}
+{"a":"Birthday party Saturday at the park","b":"School newsletter — weekly update","isDuplicate":false,"category":"unrelated"}

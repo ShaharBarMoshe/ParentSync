@@ -48,6 +48,19 @@ export class MessageEntity {
   @Column({ type: 'simple-json', nullable: true })
   images: MessageImage[] | null;
 
+  // Gemini text-embedding-004 vector of the merged-group content at parse
+  // time. Used by MessageDeduplicationService to short-circuit forwards of
+  // the same flyer across multiple WhatsApp groups. Null for historical
+  // messages parsed before Phase 20 — they are excluded from similarity.
+  @Column({ type: 'simple-json', nullable: true })
+  embedding: number[] | null;
+
+  // SHA-256 of the merged-group content. Set in the same write as `embedding`
+  // and used for the byte-identical fast path that skips the embedding API.
+  @Column({ type: 'varchar', nullable: true })
+  @Index()
+  contentHash: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

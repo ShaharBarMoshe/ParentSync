@@ -64,8 +64,8 @@ ParentSync is a private-use desktop application built with Electron, wrapping a 
 | `SettingsModule` | User settings CRUD, stored in SQLite |
 | `MessagesModule` | WhatsApp scraping (whatsapp-web.js), Gmail fetching, message storage |
 | `CalendarModule` | Calendar events CRUD, Google Calendar sync |
-| `LlmModule` | LLM client (Gemini default, OpenRouter alternative), message-to-event parsing, configurable system prompt, negative-example pool |
-| `SyncModule` | Scheduled sync orchestration, event-driven flow, WhatsApp approval channel |
+| `LlmModule` | LLM client (Gemini default, OpenRouter alternative), message-to-event parsing, configurable system prompt, negative-example pool, **`EMBEDDING_SERVICE` (Gemini `text-embedding-004`) for semantic dedup** |
+| `SyncModule` | Scheduled sync orchestration, event-driven flow, WhatsApp approval channel, **`MessageDeduplicationService` (semantic pre-filter)** |
 | `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) |
 | `MonitorModule` | Analytics aggregation, charts data |
 | `SharedModule` | Common entities, config, utilities, crypto, logging |
@@ -80,6 +80,7 @@ All external services are behind injection tokens so they can be swapped in test
 | `GMAIL_SERVICE` | `IGmailService` | `GmailOAuth2Adapter` |
 | `GOOGLE_CALENDAR_SERVICE` | `IGoogleCalendarService` | `GoogleCalendarOAuth2Adapter` |
 | `LLM_SERVICE` | `ILLMService` | `GeminiService` (default; `OpenRouterService` available) |
+| `EMBEDDING_SERVICE` | `IEmbeddingService` | `GeminiEmbeddingService` (Gemini `text-embedding-004`) |
 | `SETTINGS_REPOSITORY` | `ISettingsRepository` | `TypeOrmSettingsRepository` |
 | `NEGATIVE_EXAMPLE_REPOSITORY` | `INegativeExampleRepository` | `TypeOrmNegativeExampleRepository` |
 | `DISMISSAL_REPOSITORY` | `IDismissalRepository` | `TypeOrmDismissalRepository` |
@@ -106,15 +107,27 @@ React + TypeScript + Vite. No state management library — just React state + AP
 2. SyncService calls WhatsAppService → scrapes messages from configured channels
 3. SyncService calls GmailService → fetches emails from teacher addresses
 4. Messages stored in SQLite via MessageRepository
-5. SyncService sends messages to MessageParserService → LLM
+5. SyncService groups messages by channel + proximity.
+   `MessageDeduplicationService` filters groups already-seen via SHA-256 hash
+   or embedding similarity (default threshold 0.92, Gemini
+   `text-embedding-004`). Duplicate groups are marked parsed and skip
+   steps 6–8 entirely.
+6. SyncService sends fresh groups to MessageParserService → LLM
    (Gemini by default; user-overridable system prompt; recent negative
    examples appended; cache key folds in prompt-version hash)
-6. Events stored in CalendarEventRepository (status: pending_approval)
-7. Pre-approval duplicate check:
-   a. For each new event, look up siblings at same date+time+child
-   b. Ask LLM "are these the same gathering?"
-   c. If yes → mark new event REJECTED, skip approval message
-8. If approval channel configured:
+7. Events stored in CalendarEventRepository (status: pending_approval)
+8. **Multi-layer duplicate suppression** (each layer catches what the
+   previous one misses):
+   1. **Message dedup** (step 5 above, before LLM) — semantic skip of
+      forwarded flyers across groups
+   2. **Exact event dedup** — for each newly-parsed event, look up an
+      existing row by (title, date, time, child_id) and skip if present
+   3. **LLM event dedup** — for each new event sharing a date+time slot
+      with a sibling, ask the LLM whether they refer to the same
+      gathering. If yes → mark REJECTED, skip approval message.
+      *Provisional; counter `metric.event_dedup_llm_fires` tracks hit rate
+      for a 4-week review.*
+9. If approval channel configured:
    a. Event sent to WhatsApp group with ICS attachment
    b. User reacts 👍 (approve), 😢 (reject), or removes either reaction
       (undo). The same can be done in-app via the Dashboard.
@@ -123,10 +136,13 @@ React + TypeScript + Vite. No state management library — just React state + AP
       NegativeExample
    e. Removing 👍 → unsync from Google Calendar, back to PENDING
    f. Removing 😢 → delete the matching NegativeExample, back to PENDING
-9. If no approval channel: events sync directly to Google Calendar
-10. Blocking failures along the way emit `app.error` events through
+10. If no approval channel: events sync directly to Google Calendar
+11. Blocking failures along the way emit `app.error` events through
     AppErrorEmitterService → SSE → frontend ErrorModal
 ```
+
+See `docs/semantic-dedup.md` for the design details and threshold-tuning
+guidance.
 
 ### OAuth Flow
 
@@ -165,6 +181,6 @@ The Electron main process (`electron/main.ts`):
 | whatsapp-web.js (not direct API) | No official WhatsApp API for personal accounts |
 | LLM behind a port (Gemini default, OpenRouter swappable) | Easy provider switching; tests inject a mock |
 | System prompt as a setting + negative-example pool | User-driven feedback loop without retraining; cache key folds in a hash of both so updates take effect on the next sync |
-| Pre-approval LLM-based duplicate check | Catches "same gathering, different framing" cases that exact-match dedup misses |
+| Multi-layer duplicate suppression (semantic message dedup → exact event dedup → LLM event dedup) | Three orthogonal layers — embeddings catch byte- and paraphrase-level forwards before the LLM; exact dedup catches LLM nondeterminism; the LLM tiebreaker catches "same gathering, different framing." See `docs/semantic-dedup.md`. |
 | Centralised AppErrorEmitterService with per-code dedupe | One source of truth for what bubbles up to the frontend ErrorModal; retry loops can't flood the modal |
 | Inline SVG icon system | Zero dependencies, type-safe, no icon font overhead |

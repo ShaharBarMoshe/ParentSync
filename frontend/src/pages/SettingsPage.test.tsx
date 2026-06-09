@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserRouter } from 'react-router-dom';
@@ -26,6 +26,18 @@ vi.mock('../services/api', () => ({
     getStatus: vi.fn(),
     reconnect: vi.fn(),
     getEventsUrl: vi.fn(),
+  },
+  llmPromptApi: {
+    get: vi.fn().mockResolvedValue({ key: '', value: '', description: '' }),
+    save: vi.fn(),
+    reset: vi.fn(),
+  },
+  negativeExamplesApi: {
+    list: vi.fn().mockResolvedValue({ items: [] }),
+    remove: vi.fn(),
+  },
+  syncApi: {
+    resetSyncState: vi.fn(),
   },
 }));
 
@@ -168,8 +180,8 @@ describe('SettingsPage', () => {
     await user.click(screen.getByRole('button', { name: '12p' }));
     expect(screen.getByRole('button', { name: '12p' })).toHaveAttribute('aria-pressed', 'true');
 
-    // Reset
-    await user.click(screen.getByRole('button', { name: /reset/i }));
+    // Reset (the form-level button — `^Reset$` to avoid PromptEditor's "Reset to default")
+    await user.click(screen.getByRole('button', { name: /^reset$/i }));
     expect(screen.getByRole('button', { name: '12p' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: '9a' })).toHaveAttribute('aria-pressed', 'true');
   });
@@ -475,6 +487,31 @@ describe('SettingsPage', () => {
       const radiogroup = screen.getByRole('radiogroup', { name: /calendar color/i });
       const swatches = within(radiogroup).getAllByRole('radio');
       expect(swatches).toHaveLength(12);
+    });
+  });
+
+  describe('Deduplication section', () => {
+    it('saves a new dedup_threshold value via the slider', async () => {
+      const user = userEvent.setup();
+      mockSettingsApi.getAll.mockResolvedValue([
+        { id: '1', key: 'dedup_enabled', value: 'true', updatedAt: '2026-06-01T00:00:00Z' },
+        { id: '2', key: 'dedup_threshold', value: '0.92', updatedAt: '2026-06-01T00:00:00Z' },
+      ]);
+      renderPage();
+
+      const slider = await screen.findByLabelText(/similarity threshold/i);
+      expect(slider).toHaveAttribute('type', 'range');
+      expect((slider as HTMLInputElement).value).toBe('0.92');
+
+      // Range inputs don't accept typed input — fire a change event directly.
+      fireEvent.change(slider, { target: { value: '0.95' } });
+
+      const saveBtn = screen.getByRole('button', { name: /save settings/i });
+      await user.click(saveBtn);
+
+      await waitFor(() => {
+        expect(mockSettingsApi.create).toHaveBeenCalledWith('dedup_threshold', '0.95');
+      });
     });
   });
 });

@@ -17,6 +17,7 @@ import { GoogleTasksScopeError } from '../../calendar/services/google-tasks.serv
 import { MessageSource } from '../../shared/enums/message-source.enum';
 import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
+import { MessageDeduplicationService } from './message-deduplication.service';
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
   return {
@@ -45,6 +46,7 @@ describe('EventSyncService', () => {
   let approvalService: any;
   let eventDismissalService: any;
   let appErrorEmitter: any;
+  let dedupService: any;
   let queryRunner: any;
 
   beforeEach(async () => {
@@ -89,6 +91,15 @@ describe('EventSyncService', () => {
 
     settingsService = {
       findByKey: jest.fn().mockRejectedValue(new Error('Not found')),
+      create: jest.fn().mockResolvedValue({}),
+    };
+
+    dedupService = {
+      findDuplicateOf: jest.fn().mockResolvedValue({
+        match: null,
+        contentHash: 'h',
+        embedding: null,
+      }),
     };
 
     childService = {
@@ -151,6 +162,7 @@ describe('EventSyncService', () => {
         { provide: ApprovalService, useValue: approvalService },
         { provide: EventDismissalService, useValue: eventDismissalService },
         { provide: AppErrorEmitterService, useValue: appErrorEmitter },
+        { provide: MessageDeduplicationService, useValue: dedupService },
       ],
     }).compile();
 
@@ -950,12 +962,12 @@ describe('EventSyncService', () => {
       expect(queryRunner.manager.update).toHaveBeenCalledWith(
         expect.anything(),
         'msg-1',
-        { parsed: true },
+        expect.objectContaining({ parsed: true }),
       );
       expect(queryRunner.manager.update).toHaveBeenCalledWith(
         expect.anything(),
         'msg-2',
-        { parsed: true },
+        expect.objectContaining({ parsed: true }),
       );
     });
 
@@ -1087,6 +1099,7 @@ describe('EventSyncService', () => {
     });
 
     it('should handle mix of create and cancel events in same group', async () => {
+      jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
       const mockMessage = makeMessage({
         id: 'msg-mix',
         content: 'new event and cancel old',
@@ -1105,6 +1118,7 @@ describe('EventSyncService', () => {
 
       const result = await service.syncEvents();
 
+      jest.useRealTimers();
       expect(result.eventsCreated).toBe(1);
       expect(eventDismissalService.processDismissal).toHaveBeenCalledTimes(1);
     });
@@ -1131,7 +1145,7 @@ describe('EventSyncService', () => {
       expect(queryRunner.manager.update).toHaveBeenCalledWith(
         expect.anything(),
         'msg-only-cancel',
-        { parsed: true },
+        expect.objectContaining({ parsed: true }),
       );
     });
 
@@ -1159,6 +1173,89 @@ describe('EventSyncService', () => {
       const mergedContent = messageParserService.parseMessage.mock.calls[0][0];
       expect(mergedContent).toContain('unknown: hello');
       expect(mergedContent).toContain('+972 50-111-1111: world');
+    });
+  });
+
+  describe('semantic dedup integration', () => {
+    it('skips LLM and approval for groups identified as duplicates', async () => {
+      messageRepository.findUnparsed.mockResolvedValue([
+        makeMessage({ id: 'm1', content: 'flyer' }),
+      ]);
+      dedupService.findDuplicateOf.mockResolvedValue({
+        match: { matchedMessageId: 'old1', similarity: 1.0, exact: true },
+        contentHash: 'h',
+        embedding: [0.1, 0.2],
+      });
+
+      const result = await service.syncEvents();
+
+      expect(messageParserService.parseMessageBatch).not.toHaveBeenCalled();
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+      expect(result.messagesParsed).toBe(1);
+      // Embedding + hash should be stamped on the message row
+      expect(queryRunner.manager.update).toHaveBeenCalledWith(
+        expect.anything(),
+        'm1',
+        expect.objectContaining({
+          parsed: true,
+          embedding: [0.1, 0.2],
+          contentHash: 'h',
+        }),
+      );
+    });
+
+    it('only fresh groups go to the LLM when mixed with duplicates', async () => {
+      messageRepository.findUnparsed.mockResolvedValue([
+        makeMessage({ id: 'fresh', channel: 'A', content: 'something new' }),
+        makeMessage({ id: 'dup', channel: 'B', content: 'forwarded flyer' }),
+      ]);
+      dedupService.findDuplicateOf.mockImplementation(
+        async (content: string) => {
+          if (content.includes('forwarded')) {
+            return {
+              match: { matchedMessageId: 'old', similarity: 0.97, exact: false },
+              contentHash: 'h-dup',
+              embedding: [0.5],
+            };
+          }
+          return {
+            match: null,
+            contentHash: 'h-fresh',
+            embedding: [0.9],
+          };
+        },
+      );
+
+      await service.syncEvents();
+
+      expect(messageParserService.parseMessageBatch).toHaveBeenCalledTimes(1);
+      const batchArg = messageParserService.parseMessageBatch.mock.calls[0][0];
+      expect(batchArg).toHaveLength(1);
+      expect(batchArg[0].content).toContain('something new');
+    });
+
+    it('reuses the embedding stashed by dedup (never re-embeds for fresh)', async () => {
+      messageRepository.findUnparsed.mockResolvedValue([
+        makeMessage({ id: 'fresh', content: 'unique' }),
+      ]);
+      const fixedEmbedding = [0.42, 0.43];
+      dedupService.findDuplicateOf.mockResolvedValue({
+        match: null,
+        contentHash: 'h-fresh',
+        embedding: fixedEmbedding,
+      });
+
+      await service.syncEvents();
+
+      expect(queryRunner.manager.update).toHaveBeenCalledWith(
+        expect.anything(),
+        'fresh',
+        expect.objectContaining({
+          parsed: true,
+          embedding: fixedEmbedding,
+          contentHash: 'h-fresh',
+        }),
+      );
     });
   });
 });
