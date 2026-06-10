@@ -10,7 +10,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-TypeORM-003B57?logo=sqlite&logoColor=white)
 
-📊 **[View the interactive presentation →](https://shaharbarmoshe.github.io/ParentSync/presentation.html)** · [PDF](https://shaharbarmoshe.github.io/ParentSync/ParentSync-Presentation.pdf) · [Docs site](https://shaharbarmoshe.github.io/ParentSync/)
+📊 **[View the interactive presentation →](https://shaharbarmoshe.github.io/ParentSync/presentation.html)** · [PDF](https://shaharbarmoshe.github.io/ParentSync/ParentSync-Presentation.pdf) · [Message pipeline →](https://shaharbarmoshe.github.io/ParentSync/message-pipeline.html) · [Docs site](https://shaharbarmoshe.github.io/ParentSync/)
 
 ### Download v1.0.2
 
@@ -95,6 +95,7 @@ Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 | [Event Dismissal](docs/EVENT-DISMISSAL.md) | Cancel / delay detection design |
 | [Event Reminders](docs/EVENT-REMINDERS.md) | The 24h-before-event reminder pipeline |
 | [Google Tasks](docs/GOOGLE-TASKS.md) | Timed events vs. date-only tasks |
+| [Message pipeline](https://shaharbarmoshe.github.io/ParentSync/message-pipeline.html) | End-to-end sync flow: ingest → dedup → LLM parse → approval → calendar |
 | [Implementation plan](plan/README.md) | The phased plan that drove development |
 
 ## Getting Started
