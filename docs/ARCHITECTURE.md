@@ -37,10 +37,10 @@ ParentSync is a private-use desktop application built with Electron, wrapping a 
               │                               │              │
         ┌─────┴─────┐  ┌──────────┐  ┌──────┴─────┐  ┌────┴────┐
         │  SQLite    │  │ WhatsApp │  │  Google    │  │  LLM    │
-        │  (TypeORM) │  │ Web.js   │  │  APIs      │  │ (Gemini │
-        │            │  │(Puppeteer│  │(Gmail,     │  │  default│
-        │ ~/.config/ │  │ managed) │  │ Calendar,  │  │  OpenR. │
-        │ ParentSync/│  │          │  │ Tasks)     │  │  alt)   │
+        │  (TypeORM) │  │ Web.js   │  │  APIs      │  │ (Gemini)│
+        │            │  │(Puppeteer│  │(Gmail,     │  │         │
+        │ ~/.config/ │  │ managed) │  │ Calendar,  │  │         │
+        │ ParentSync/│  │          │  │ Tasks)     │  │         │
         └────────────┘  └──────────┘  └────────────┘  └─────────┘
 ```
 
@@ -64,7 +64,7 @@ ParentSync is a private-use desktop application built with Electron, wrapping a 
 | `SettingsModule` | User settings CRUD, stored in SQLite |
 | `MessagesModule` | WhatsApp scraping (whatsapp-web.js), Gmail fetching, message storage |
 | `CalendarModule` | Calendar events CRUD, Google Calendar sync |
-| `LlmModule` | LLM client (Gemini default, OpenRouter alternative), message-to-event parsing, configurable system prompt, negative-example pool, **`EMBEDDING_SERVICE` (Gemini `text-embedding-004`) for semantic dedup** |
+| `LlmModule` | Gemini client, embeddings (`text-embedding-004`), message-to-event parsing, configurable system prompt, negative-example pool |
 | `SyncModule` | Scheduled sync orchestration, event-driven flow, WhatsApp approval channel, **`MessageDeduplicationService` (semantic pre-filter)** |
 | `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) |
 | `MonitorModule` | Analytics aggregation, charts data |
@@ -79,7 +79,7 @@ All external services are behind injection tokens so they can be swapped in test
 | `MESSAGE_REPOSITORY` | `IMessageRepository` | `TypeOrmMessageRepository` |
 | `GMAIL_SERVICE` | `IGmailService` | `GmailOAuth2Adapter` |
 | `GOOGLE_CALENDAR_SERVICE` | `IGoogleCalendarService` | `GoogleCalendarOAuth2Adapter` |
-| `LLM_SERVICE` | `ILLMService` | `GeminiService` (default; `OpenRouterService` available) |
+| `LLM_SERVICE` | `ILLMService` | `GeminiService` |
 | `EMBEDDING_SERVICE` | `IEmbeddingService` | `GeminiEmbeddingService` (Gemini `text-embedding-004`) |
 | `SETTINGS_REPOSITORY` | `ISettingsRepository` | `TypeOrmSettingsRepository` |
 | `NEGATIVE_EXAMPLE_REPOSITORY` | `INegativeExampleRepository` | `TypeOrmNegativeExampleRepository` |
@@ -179,7 +179,7 @@ The Electron main process (`electron/main.ts`):
 | `synchronize: true` always | No dev/prod split, private-use app |
 | OAuth tokens encrypted at rest | Protect Google API tokens if device is compromised |
 | whatsapp-web.js (not direct API) | No official WhatsApp API for personal accounts |
-| LLM behind a port (Gemini default, OpenRouter swappable) | Easy provider switching; tests inject a mock |
+| LLM behind a port (Gemini implementation; mock adapter for tests) | Tests inject a mock without touching the real API |
 | System prompt as a setting + negative-example pool | User-driven feedback loop without retraining; cache key folds in a hash of both so updates take effect on the next sync |
 | Multi-layer duplicate suppression (semantic message dedup → exact event dedup → LLM event dedup) | Three orthogonal layers — embeddings catch byte- and paraphrase-level forwards before the LLM; exact dedup catches LLM nondeterminism; the LLM tiebreaker catches "same gathering, different framing." See `docs/semantic-dedup.md`. |
 | Centralised AppErrorEmitterService with per-code dedupe | One source of truth for what bubbles up to the frontend ErrorModal; retry loops can't flood the modal |

@@ -75,6 +75,23 @@ describe('Settings (e2e)', () => {
       .expect(404);
   });
 
+  it('POST /api/settings should reject openrouter_api_key (key no longer supported)', () => {
+    return request(app.getHttpServer())
+      .post('/api/settings')
+      .send({ key: 'openrouter_api_key', value: 'sk-abc123' })
+      .expect(400)
+      .expect((res) => {
+        expect(res.body.message).toBeDefined();
+      });
+  });
+
+  it('POST /api/settings should reject openrouter_model (key no longer supported)', () => {
+    return request(app.getHttpServer())
+      .post('/api/settings')
+      .send({ key: 'openrouter_model', value: 'gpt-4' })
+      .expect(400);
+  });
+
   it('POST /api/settings should reject invalid data (empty key)', () => {
     return request(app.getHttpServer())
       .post('/api/settings')

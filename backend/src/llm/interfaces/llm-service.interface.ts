@@ -9,7 +9,7 @@ export interface LlmMessage {
   /**
    * Optional inline images attached to a `user` message. Adapters translate
    * these into the provider-native multimodal format (Gemini `inlineData`
-   * parts, OpenAI/OpenRouter `image_url` parts). Ignored on system/assistant
+   * parts, OpenAI-style `image_url` parts). Ignored on system/assistant
    * messages — only `user` messages carry image input.
    */
   images?: LlmInlineImage[];

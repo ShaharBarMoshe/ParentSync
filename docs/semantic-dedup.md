@@ -131,3 +131,8 @@ window; retire Layer 3 if the rate stays below 5 %.
 - **Cache.** The Gemini embedding adapter holds an in-process LRU of 128
   entries keyed on SHA-256 of the text, so identical content within a
   single sync incurs at most one API call.
+
+## Follow-up TODOs
+
+- **Phase 21.6** — After 3 releases that include Phase 21's boot-time OpenRouter key purge, remove the `purgeStaleOpenRouterKeys()` block from `SettingsService.onModuleInit()`. Tag the commit referencing phase21-openrouter-removal.md.
+- **presentation.html / PDF** — Regenerate the presentation slides (currently reference OpenRouter). Do this the next time the presentation is updated for unrelated reasons.

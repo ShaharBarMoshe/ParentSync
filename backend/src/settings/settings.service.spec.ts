@@ -78,13 +78,13 @@ describe('SettingsService', () => {
     it('should return value as-is when key is not in SENSITIVE_SETTING_KEYS', async () => {
       const setting = {
         id: '2',
-        key: 'openrouter_api_key',
-        value: 'sk-or-v1-abcdef1234567890',
+        key: 'gemini_api_key',
+        value: 'AIzaSyAbcdef1234567890',
         updatedAt: new Date(),
       };
       repository.findByKey.mockResolvedValue(setting);
-      const result = await service.findByKey('openrouter_api_key');
-      expect(result.value).toBe('sk-or-v1-abcdef1234567890');
+      const result = await service.findByKey('gemini_api_key');
+      expect(result.value).toBe('AIzaSyAbcdef1234567890');
     });
   });
 
@@ -92,13 +92,13 @@ describe('SettingsService', () => {
     it('should return value as-is (alias for findByKey)', async () => {
       const setting = {
         id: '2',
-        key: 'openrouter_api_key',
-        value: 'sk-or-v1-secret',
+        key: 'gemini_api_key',
+        value: 'AIzaSy-secret',
         updatedAt: new Date(),
       };
       repository.findByKey.mockResolvedValue(setting);
-      const result = await service.findByKeyDecrypted('openrouter_api_key');
-      expect(result.value).toBe('sk-or-v1-secret');
+      const result = await service.findByKeyDecrypted('gemini_api_key');
+      expect(result.value).toBe('AIzaSy-secret');
     });
   });
 
@@ -220,6 +220,32 @@ describe('SettingsService', () => {
           'metric.events_created_total',
         ]),
       );
+    });
+
+    it('purges stale openrouter_api_key and openrouter_model rows on boot', async () => {
+      const staleRow = { ...mockSetting, key: 'openrouter_api_key', value: 'sk-old' };
+      repository.findByKey.mockImplementation((key) => {
+        if (key === 'openrouter_api_key') return Promise.resolve(staleRow);
+        return Promise.resolve(null);
+      });
+      repository.upsert.mockResolvedValue(mockSetting);
+      repository.delete.mockResolvedValue();
+
+      await service.onModuleInit();
+
+      expect(repository.delete).toHaveBeenCalledWith('openrouter_api_key');
+    });
+
+    it('does not call delete when no stale OpenRouter rows exist', async () => {
+      repository.findByKey.mockResolvedValue(null);
+      repository.upsert.mockResolvedValue(mockSetting);
+      repository.delete.mockResolvedValue();
+
+      await service.onModuleInit();
+
+      const deletedKeys = repository.delete.mock.calls.map((c) => c[0]);
+      expect(deletedKeys).not.toContain('openrouter_api_key');
+      expect(deletedKeys).not.toContain('openrouter_model');
     });
   });
 });

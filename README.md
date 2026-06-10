@@ -35,7 +35,7 @@ It's also a deliberately end-to-end engineering exercise: a real Electron app wi
 
 - **End-to-end Electron desktop app** — single AppImage / `.exe` / `.dmg`. Backend, frontend, and Chromium are all packaged together; SQLite lives in the OS user-data directory.
 - **Clean Architecture + Hexagonal (Ports & Adapters)** on NestJS. Every external dependency (Gmail, Google Calendar, the LLM, WhatsApp) sits behind an injection token with a swappable mock adapter.
-- **LLM-driven extraction with cost controls** — batched parsing, prompt-engineered for Hebrew + English, structured output validated by class-validator DTOs. Gemini by default; OpenRouter swap-in supported.
+- **LLM-driven extraction with cost controls** — batched parsing, prompt-engineered for Hebrew + English, structured output validated by class-validator DTOs. Powered by Google Gemini (multimodal: text + image, via `@google/genai`).
 - **Cancellation & delay detection** — the parser doesn't just create events; it recognizes "המפגש בוטל" / "נדחה ל-…" and updates or removes the existing calendar entry. ([docs](docs/EVENT-DISMISSAL.md))
 - **You're in control of the AI** — two complementary ways to steer extraction: (a) **edit the system prompt** directly in Settings (textarea, Reset-to-default escape hatch), and (b) **react to suggestions** — 👍 to publish, 😢 to drop and capture the source as a *learned exclusion* the LLM sees on every parse. Reactions are reversible (take back a 👍 → unsync from Google; take back a 😢 → drop the exclusion). Both paths land in the same LLM call; changes take effect on the next sync. ([docs](docs/PROMPT-CUSTOMIZATION.md))
 - **WhatsApp approval channel + in-app approval** — every extracted event is posted to a dedicated chat with an ICS attachment, *and* shown on the Dashboard with inline Approve / Reject buttons. ([docs](docs/USER-GUIDE.md))
@@ -63,8 +63,8 @@ It's also a deliberately end-to-end engineering exercise: a real Electron app wi
                                                                   │
                        ┌──────────────────────────────────────────┼──────────┐
                        ▼                  ▼                       ▼          ▼
-                  Gmail API       Google Calendar API       OpenRouter   WhatsApp Web
-                                                              (LLM)     (whatsapp-web.js)
+                  Gmail API       Google Calendar API         Gemini   WhatsApp Web
+                                                              (LLM)   (whatsapp-web.js)
 ```
 
 Each NestJS feature module owns its domain (entities, repositories, services, controllers). External services are accessed only through interfaces — `IGmailService`, `IGoogleCalendarService`, `ILLMService`, `IMessageRepository`, `ISettingsRepository` — wired via DI tokens, so tests swap in mocks with `Test.createTestingModule().overrideProvider()`.
@@ -79,7 +79,7 @@ Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 | Frontend | React 19 + TypeScript + Vite, SCSS (7-1 architecture) |
 | Backend | NestJS 10 + TypeScript, class-validator, `@nestjs/config` (Joi) |
 | Persistence | SQLite via TypeORM, stored in OS user-data dir |
-| AI | OpenRouter (model-agnostic), prompt-engineered extraction with structured DTOs |
+| AI | Google Gemini (multimodal), prompt-engineered extraction with structured DTOs |
 | WhatsApp | `whatsapp-web.js` with in-app QR onboarding, persisted session |
 | Email & Calendar | Gmail API & Google Calendar API (OAuth 2.0 + PKCE) |
 | Testing | Jest, Supertest, Vitest, Puppeteer |
@@ -116,7 +116,7 @@ You'll then need:
 
 | What | How |
 |---|---|
-| **OpenRouter API key** (required for parsing) | Settings UI → `openrouter_api_key` ([get one](https://openrouter.ai/keys)) |
+| **Gemini API key** (required for parsing) | Settings UI → `gemini_api_key` ([get one](https://aistudio.google.com/app/apikey)) |
 | **Google OAuth client** (Gmail + Calendar) | Settings UI → `google_client_id` / `google_client_secret` ([Cloud Console](https://console.cloud.google.com/apis/credentials)) |
 
 ### Run

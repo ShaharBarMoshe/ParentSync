@@ -13,7 +13,7 @@
 **Key Features**:
 - WhatsApp channel monitoring at user-selected hours (configurable hour picker, 0–23)
 - Email integration (via Gmail API)
-- LLM-powered content parsing (OpenRouter)
+- LLM-powered content parsing (Google Gemini)
 - Automatic Google Calendar event creation
 - **WhatsApp approval channel** — events sent to a WhatsApp group with ICS file; react 👍 to approve or 😢 to reject (any order, any time)
 - User settings management
@@ -45,6 +45,7 @@
 | [Phase 18](phase18-customizable-prompt.md) | Customizable Prompt with Negative-Reaction Learning | Done |
 | [Phase 19](phase19-uninstall.md) | One-Click Uninstall From Settings (Linux/macOS/Windows) | Done |
 | [Phase 20](phase20-semantic-dedup.md) | Semantic Deduplication via Gemini Embeddings (skip forwarded flyers before the LLM) | Done |
+| [Phase 21](phase21-openrouter-removal.md) | Remove dormant OpenRouter adapter + align docs | Done |
 
 ## Architecture
 

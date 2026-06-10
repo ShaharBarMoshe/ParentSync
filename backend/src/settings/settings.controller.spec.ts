@@ -17,8 +17,8 @@ describe('SettingsController', () => {
 
   const mockSensitiveSetting: UserSettingEntity = {
     id: '2',
-    key: 'openrouter_api_key',
-    value: 'sk-1234567890abcdef',
+    key: 'gemini_api_key',
+    value: 'AIzaSyAbcdef1234567890',
     updatedAt: new Date(),
   };
 
@@ -62,7 +62,7 @@ describe('SettingsController', () => {
 
       expect(result).toHaveLength(3);
       expect(result[0].value).toBe('daily');
-      expect(result[1].value).toBe('sk-1234567890abcdef');
+      expect(result[1].value).toBe('AIzaSyAbcdef1234567890');
       expect(result[2].value).toBe('GOCSPX-abcdefgh1234');
     });
 
@@ -95,11 +95,11 @@ describe('SettingsController', () => {
     it('should return value as-is when key is not in SENSITIVE_SETTING_KEYS', async () => {
       service.findByKey.mockResolvedValue(mockSensitiveSetting);
 
-      const result = await controller.findByKey('openrouter_api_key');
+      const result = await controller.findByKey('gemini_api_key');
 
-      expect(result.value).toBe('sk-1234567890abcdef');
+      expect(result.value).toBe('AIzaSyAbcdef1234567890');
       expect(result.id).toBe('2');
-      expect(result.key).toBe('openrouter_api_key');
+      expect(result.key).toBe('gemini_api_key');
     });
   });
 

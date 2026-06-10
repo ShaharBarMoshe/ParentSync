@@ -136,10 +136,10 @@ Each child has:
 Click **Save** after making changes. Click **Remove** to delete a child (with confirmation).
 
 ### LLM API key
-ParentSync uses Gemini (`gemini_api_key`) by default. OpenRouter (`openrouter_api_key`) is also supported as a fallback provider. Configure whichever you have a key for; the model name is configurable per provider.
+
+ParentSync uses **Google Gemini** for parsing. Get an API key at [Google AI Studio](https://aistudio.google.com/app/apikey) (free tier available) and paste it under Settings → AI Extraction → API Key. The default model is `gemini-2.0-flash`; change it in the Model field.
 
 - 📺 Video walkthrough — [Get a Gemini API Key in Google AI Studio](https://www.youtube.com/watch?v=GHzAxsXn24I)
-- 📺 Video walkthrough — [Get an OpenRouter API Key](https://www.youtube.com/watch?v=JYw6yFzVi44)
 
 ### Google OAuth
 Advanced — only change these if you're using your own Google Cloud project:

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-ParentSync is a private-use desktop application (Electron) that aggregates WhatsApp channels and Gmail emails into a unified task manager, using LLM-powered parsing (OpenRouter) to automatically create events on a family Google Calendar.
+ParentSync is a private-use desktop application (Electron) that aggregates WhatsApp channels and Gmail emails into a unified task manager, using LLM-powered parsing (Google Gemini) to automatically create events on a family Google Calendar.
 
 Single-user app — no app-level authentication, no dev/prod distinction. Compiled into a standalone executable (AppImage on Linux, .exe on Windows, .dmg on macOS). Also works in the browser during development. WhatsApp Web integration uses whatsapp-web.js (manages its own Chromium instance).
 
@@ -13,7 +13,7 @@ Single-user app — no app-level authentication, no dev/prod distinction. Compil
 - **Backend**: NestJS + TypeScript
 - **Database**: SQLite via TypeORM (stored in OS user-data directory)
 - **ORM**: TypeORM (`@nestjs/typeorm`)
-- **External APIs**: Gmail API, Google Calendar API (OAuth 2.0), OpenRouter API
+- **External APIs**: Gmail API, Google Calendar API (OAuth 2.0), Google Gemini API
 - **WhatsApp**: whatsapp-web.js with in-app QR code authentication
 - **Packaging**: electron-builder (NSIS/DMG/AppImage)
 
@@ -56,7 +56,7 @@ backend/
     settings/        # SettingsModule (controller, service, dto, repository)
     messages/        # MessagesModule (whatsapp.service, gmail.service, repository)
     calendar/        # CalendarModule (google-calendar.service, event.repository)
-    llm/             # LlmModule (openrouter.service, parser.service)
+    llm/             # LlmModule (gemini.service, gemini-embedding.service, parser.service)
     sync/            # SyncModule (sync.service, scheduler)
     auth/            # AuthModule (oauth.service, guards)
     monitor/         # MonitorModule (aggregation service, analytics endpoints)

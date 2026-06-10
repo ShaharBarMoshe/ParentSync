@@ -22,7 +22,7 @@ export const AppErrorCodes = {
   // Gmail — Google project / API enablement
   GMAIL_API_DISABLED: 'GMAIL_API_DISABLED',
 
-  // LLM (in addition to per-status codes from OpenRouter / Gemini)
+  // LLM (in addition to per-status codes from Gemini)
   LLM_ALL_PROVIDERS_FAILED: 'LLM_ALL_PROVIDERS_FAILED',
 } as const;
 

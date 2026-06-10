@@ -32,6 +32,30 @@ export class SettingsService implements OnModuleInit {
     await this.seedDefaultIfMissing('dedup_debug_verbose', 'false');
     await this.seedDefaultIfMissing('metric.event_dedup_llm_fires', '0');
     await this.seedDefaultIfMissing('metric.events_created_total', '0');
+
+    // Phase 21: purge stale OpenRouter keys — keep for 3 releases, then remove (Phase 21.6).
+    await this.purgeStaleOpenRouterKeys();
+  }
+
+  private async purgeStaleOpenRouterKeys(): Promise<void> {
+    const staleKeys = ['openrouter_api_key', 'openrouter_model'];
+    try {
+      let deleted = 0;
+      for (const key of staleKeys) {
+        const row = await this.settingsRepository.findByKey(key);
+        if (row) {
+          await this.settingsRepository.delete(key);
+          deleted++;
+        }
+      }
+      if (deleted > 0) {
+        this.logger.log(
+          `Removed ${deleted} stale OpenRouter setting rows (provider no longer supported)`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to purge stale OpenRouter settings: ${err?.message}`);
+    }
   }
 
   /**

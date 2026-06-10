@@ -99,18 +99,11 @@ Under "Sync Schedule":
 
 ### Step 6: Set Up the LLM provider
 
-ParentSync uses **Gemini** by default, with **OpenRouter** as an alternative provider you can also configure.
+ParentSync uses **Google Gemini** (free tier available at [Google AI Studio](https://aistudio.google.com/apikey)).
 
-**Option A — Gemini (default):**
 1. Get an API key from [Google AI Studio](https://aistudio.google.com/apikey) — 📺 [video walkthrough](https://www.youtube.com/watch?v=GHzAxsXn24I)
 2. Paste it under "Gemini AI" > "API Key" in Settings
 3. The default model (`gemini-2.5-flash-lite`) is fast and cheap; change it only if you want a different model
-4. Click **Save Settings**
-
-**Option B — OpenRouter:**
-1. Get an API key from [OpenRouter](https://openrouter.ai/keys) — 📺 [video walkthrough](https://www.youtube.com/watch?v=JYw6yFzVi44)
-2. Paste it under "OpenRouter" > "API Key" in Settings
-3. Pick a model
 4. Click **Save Settings**
 
 ### Step 7: Test It

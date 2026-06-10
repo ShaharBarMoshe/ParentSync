@@ -11,7 +11,7 @@ describe('LlmLoggingInterceptor', () => {
 
   const mockContext = {
     getHandler: () => ({ name: 'callLLM' }),
-    getClass: () => ({ name: 'OpenRouterService' }),
+    getClass: () => ({ name: 'GeminiService' }),
   } as unknown as ExecutionContext;
 
   it('should be defined', () => {
