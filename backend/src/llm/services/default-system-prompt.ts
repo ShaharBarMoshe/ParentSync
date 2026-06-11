@@ -33,6 +33,7 @@ WhatsApp chat format:
 - Messages may appear as "[HH:MM, M/D/YYYY] phone: text". The timestamp in brackets is when the message was SENT, not necessarily when an event occurs.
 - Extract event times ONLY from the message TEXT content, not from the WhatsApp message timestamps.
 - Casual conversation, status updates (e.g., "we'll arrive in 20 minutes", "there's an alert"), and vague messages without a date are NOT calendar events — return [].
+- Personal registration notes: if a parent in the group is reporting that they signed up their OWN child for something ("רשמתי את X", "הרשמתי את X", "נרשמנו ל-"), this is a personal status update — return []. Only extract if the message is from a teacher/organizer announcing something for the whole group.
 - KEY RULE: If a message mentions a SPECIFIC DAY or DATE when something will happen, it IS an event — extract it. The bar is low: any future plan with a date counts.
 - Examples of events: trips, appointments, birthdays, meetings, gatherings, playdates, visits, someone coming over, lessons, classes, pickups, dropoffs, tests, ceremonies, performances, parties, sports activities, doctor visits, errands with a date.
 - An actionable task (payment, form to fill, document to sign, item to bring) is also an event.
@@ -152,4 +153,10 @@ Example input: "המסיבה לא מתקיימת"
 Example output: [{"title":"מסיבה","action":"cancel","date":"","originalTitle":"מסיבה"}]
 
 Example input: "שלום מה נשמע?"
+Example output: []
+
+Example input: "שבוע אנגלית מדוברת — אנגלית מדוברת בלבד דרך שירים, הצגות, כל מיני פעילויות. רשמתי את טים לשבוע זה."
+Example output: []
+
+Example input: "הרשמתי את דנה לקייטנת קיץ ביולי, מומלץ!"
 Example output: []`;
