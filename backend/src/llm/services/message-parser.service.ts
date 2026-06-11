@@ -1,4 +1,4 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, OnModuleInit } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import * as crypto from 'crypto';
@@ -25,7 +25,7 @@ interface BuiltPrompt {
 const CACHE_TTL_SECONDS = 86400; // 24 hours
 
 @Injectable()
-export class MessageParserService {
+export class MessageParserService implements OnModuleInit {
   private readonly logger = new Logger(MessageParserService.name);
 
   constructor(
@@ -35,6 +35,13 @@ export class MessageParserService {
     @Inject(NEGATIVE_EXAMPLE_REPOSITORY)
     private readonly negativeExampleRepository: INegativeExampleRepository,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.settingsService.seedDefaultIfMissing(
+      LLM_SYSTEM_PROMPT_KEY,
+      DEFAULT_SYSTEM_PROMPT,
+    );
+  }
 
   /**
    * Composes the final system prompt: user prompt (or default) + a block

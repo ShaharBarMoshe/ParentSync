@@ -26,6 +26,7 @@ describe('MessageParserService', () => {
 
     mockSettingsService = {
       findByKey: jest.fn().mockRejectedValue(new Error('Not found')),
+      seedDefaultIfMissing: jest.fn().mockResolvedValue(undefined),
     };
 
     mockNegativeExampleRepo = {
@@ -756,6 +757,16 @@ describe('MessageParserService', () => {
       const withNegatives = await service.buildSystemPrompt();
 
       expect(withNegatives.version).not.toEqual(noNegatives.version);
+    });
+  });
+
+  describe('onModuleInit', () => {
+    it('seeds the default system prompt in the DB if not already set', async () => {
+      await service.onModuleInit();
+      expect(mockSettingsService.seedDefaultIfMissing).toHaveBeenCalledWith(
+        'llm_system_prompt',
+        expect.stringContaining('You are a calendar event extractor'),
+      );
     });
   });
 });

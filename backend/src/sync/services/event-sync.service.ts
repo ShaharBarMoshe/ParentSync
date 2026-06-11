@@ -263,13 +263,17 @@ export class EventSyncService {
           await this.incrementMetric('metric.events_created_total');
         }
 
-        // Send newly created events for approval if enabled (skip past events)
+        // Send newly created events for approval if enabled (skip past + today)
         if (approvalEnabled) {
           const now = new Date();
+          const today = now.toISOString().split('T')[0];
           for (const savedEvent of result.savedEvents) {
-            if (this.isEventInPast(savedEvent, now)) {
+            if (
+            this.isEventInPast(savedEvent, now) ||
+            (savedEvent.date === today && !!savedEvent.time)
+          ) {
               this.logger.log(
-                `Skipping approval for past event "${savedEvent.title}" (${savedEvent.date}${savedEvent.time ? ' ' + savedEvent.time : ''}) — auto-approving`,
+                `Skipping approval for same-day/past event "${savedEvent.title}" (${savedEvent.date}${savedEvent.time ? ' ' + savedEvent.time : ''}) — auto-approving`,
               );
               await this.eventRepository.update(savedEvent.id, {
                 approvalStatus: ApprovalStatus.NONE,
