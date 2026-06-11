@@ -14,6 +14,17 @@ export interface IEventRepository {
     childId: string | null | undefined,
     excludeId: string,
   ): Promise<CalendarEventEntity[]>;
+  /**
+   * All non-rejected events on the same date for the given child, regardless
+   * of time. Used to catch same-day duplicates extracted with different times
+   * from related messages in the same channel.
+   * Excludes the event being checked.
+   */
+  findSameDayForChild(
+    date: string,
+    childId: string | null | undefined,
+    excludeId: string,
+  ): Promise<CalendarEventEntity[]>;
   findById(id: string): Promise<CalendarEventEntity | null>;
   findUnsynced(): Promise<CalendarEventEntity[]>;
   create(event: Partial<CalendarEventEntity>): Promise<CalendarEventEntity>;

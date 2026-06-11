@@ -40,6 +40,21 @@ export class TypeOrmEventRepository implements IEventRepository {
     });
   }
 
+  findSameDayForChild(
+    date: string,
+    childId: string | null | undefined,
+    excludeId: string,
+  ): Promise<CalendarEventEntity[]> {
+    return this.repo.find({
+      where: {
+        date,
+        childId: (childId ?? IsNull()) as never,
+        id: Not(excludeId),
+        approvalStatus: Not(ApprovalStatus.REJECTED),
+      },
+    });
+  }
+
   findById(id: string): Promise<CalendarEventEntity | null> {
     return this.repo.findOneBy({ id });
   }

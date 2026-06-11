@@ -52,6 +52,7 @@ describe('CalendarController', () => {
       findAll: jest.fn(),
       findInDateRange: jest.fn(),
       findSameSlotForChild: jest.fn(),
+      findSameDayForChild: jest.fn(),
       findById: jest.fn(),
       findUnsynced: jest.fn(),
       create: jest.fn(),

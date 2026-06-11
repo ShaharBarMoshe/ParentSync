@@ -61,6 +61,7 @@ describe('EventSyncService', () => {
       ),
       findUnsynced: jest.fn().mockResolvedValue([]),
       findSameSlotForChild: jest.fn().mockResolvedValue([]),
+      findSameDayForChild: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
       findByTitleDateTimeChild: jest.fn().mockResolvedValue(null),
     };
@@ -663,6 +664,47 @@ describe('EventSyncService', () => {
           ? Promise.resolve({ value: 'Family' })
           : Promise.reject(new Error('Not found')),
       );
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+
+      await service.syncEvents();
+
+      expect(messageParserService.eventsAreIdentical).toHaveBeenCalled();
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ approvalStatus: 'rejected' }),
+      );
+
+      jest.useRealTimers();
+    });
+
+    it('suppresses approval when same-day sibling has a different time but LLM says same gathering', async () => {
+      jest.useFakeTimers({ now: new Date('2026-06-11T12:00:00') });
+
+      messageRepository.findUnparsed.mockResolvedValue([
+        makeMessage({
+          id: 'msg-shul2',
+          content: 'טקס פרידה וחנוכת בית הכנסת הזמני ב-18:00',
+          timestamp: new Date('2026-06-11T11:00:00'),
+        }),
+      ]);
+      childService.findById.mockResolvedValue(null);
+      messageParserService.parseMessageBatch.mockResolvedValue(
+        new Map([['0', [{ title: 'טקס פרידה וחנוכת בית הכנסת', date: '2026-06-12', time: '18:00', description: '', location: '' }]]]),
+      );
+      // slot siblings: nothing at exactly 18:00
+      eventRepository.findSameSlotForChild.mockResolvedValue([]);
+      // day siblings: the earlier 16:45 event is already in the DB
+      const existing = {
+        id: 'existing-shul',
+        title: 'פרידה מהיכל התפילה מעיין ברוך וקבלת שבת',
+        date: '2026-06-12',
+        time: '16:45',
+        childId: null,
+        approvalStatus: 'pending_approval',
+      };
+      eventRepository.findSameDayForChild.mockResolvedValue([existing]);
+      messageParserService.eventsAreIdentical.mockResolvedValue(true);
       approvalService.isApprovalEnabled.mockResolvedValue(true);
 
       await service.syncEvents();

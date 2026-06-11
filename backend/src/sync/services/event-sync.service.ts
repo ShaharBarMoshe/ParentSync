@@ -677,12 +677,28 @@ export class EventSyncService {
   private async detectDuplicateOfExisting(
     candidate: CalendarEventEntity,
   ): Promise<boolean> {
-    const siblings = await this.eventRepository.findSameSlotForChild(
-      candidate.date,
-      candidate.time,
-      candidate.childId,
-      candidate.id,
-    );
+    // Check both exact-slot siblings AND all same-day siblings so we catch
+    // cases where the LLM extracted different times from related messages
+    // about the same real-world gathering (e.g. 16:45 vs 18:00 for the same event).
+    const [slotSiblings, daySiblings] = await Promise.all([
+      this.eventRepository.findSameSlotForChild(
+        candidate.date,
+        candidate.time,
+        candidate.childId,
+        candidate.id,
+      ),
+      this.eventRepository.findSameDayForChild(
+        candidate.date,
+        candidate.childId,
+        candidate.id,
+      ),
+    ]);
+    const seen = new Set<string>();
+    const siblings = [...slotSiblings, ...daySiblings].filter((s) => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
     if (siblings.length === 0) return false;
 
     for (const sibling of siblings) {
