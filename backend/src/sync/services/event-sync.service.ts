@@ -677,7 +677,6 @@ export class EventSyncService {
   private async detectDuplicateOfExisting(
     candidate: CalendarEventEntity,
   ): Promise<boolean> {
-    if (!candidate.time) return false;
     const siblings = await this.eventRepository.findSameSlotForChild(
       candidate.date,
       candidate.time,

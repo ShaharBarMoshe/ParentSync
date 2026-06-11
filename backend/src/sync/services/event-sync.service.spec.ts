@@ -677,6 +677,44 @@ describe('EventSyncService', () => {
       jest.useRealTimers();
     });
 
+    it('suppresses approval for date-only duplicate (same event, no time, different channels)', async () => {
+      jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
+
+      messageRepository.findUnparsed.mockResolvedValue([
+        makeMessage({
+          id: 'msg-dateonly-dup',
+          content: 'אירוע סיום שנה ביום חמישי',
+          timestamp: new Date('2026-04-04T11:00:00'),
+        }),
+      ]);
+      childService.findById.mockResolvedValue(null);
+      messageParserService.parseMessageBatch.mockResolvedValue(
+        new Map([['0', [{ title: 'אירוע סיום שנה', date: '2026-04-10', time: undefined, description: '', location: '' }]]]),
+      );
+      const existing = {
+        id: 'existing-dateonly',
+        title: 'אירוע סוף שנה',
+        date: '2026-04-10',
+        time: null,
+        childId: null,
+        approvalStatus: 'pending_approval',
+      };
+      eventRepository.findSameSlotForChild.mockResolvedValue([existing]);
+      messageParserService.eventsAreIdentical.mockResolvedValue(true);
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+
+      await service.syncEvents();
+
+      expect(messageParserService.eventsAreIdentical).toHaveBeenCalled();
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ approvalStatus: 'rejected' }),
+      );
+
+      jest.useRealTimers();
+    });
+
     it('still sends for approval when LLM judges siblings as different', async () => {
       jest.useFakeTimers({ now: new Date('2026-04-04T12:00:00') });
 
