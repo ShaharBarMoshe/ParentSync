@@ -267,7 +267,7 @@ If you need to trigger the cleanup immediately without waiting for 04:00, use th
 curl -X POST http://localhost:41932/monitor/db-maintenance
 ```
 
-**Backup:** `parentsync.db.bak` is a hot-copy created before each maintenance run. If the DB ever won't open, stop the app, rename the corrupt file, and rename the `.bak` to restore it.
+**Safety:** a hot-backup is created at the start of each maintenance window and deleted automatically on success. If the process is interrupted mid-run you may find a `parentsync.db.bak` in the data directory — that is the safe copy. To restore: stop the app, delete the corrupt `.db` file, and rename `.bak` to `.db`.
 
 ## Uninstalling
 

@@ -165,7 +165,6 @@ The Electron main process (`electron/main.ts`):
 - **Static serving**: Backend also serves frontend static files (for OAuth redirect landing).
 - **Data directory**: All persistent data in `app.getPath('userData')`:
   - `parentsync.db` — SQLite database (WAL mode; incremental auto-vacuum; daily retention sweep + VACUUM at 04:00)
-  - `parentsync.db.bak` — Rolling hot-backup created before each maintenance window
   - `whatsapp-session/` — WhatsApp Web session
   - `logs/` — Application logs
   - `.encryption_key` — OAuth token encryption key

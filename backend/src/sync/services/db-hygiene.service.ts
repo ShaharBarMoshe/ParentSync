@@ -78,7 +78,19 @@ export class DbHygieneService implements OnModuleInit, OnApplicationShutdown {
     }
 
     await this.checkIntegrity('post-vacuum');
+    this.deleteBackup(backupPath);
     this.logger.log('DB maintenance window completed');
+  }
+
+  private deleteBackup(backupPath: string): void {
+    try {
+      if (fs.existsSync(backupPath)) {
+        fs.unlinkSync(backupPath);
+        this.logger.log('Backup removed after successful maintenance');
+      }
+    } catch (err) {
+      this.logger.warn(`Could not remove backup file: ${(err as Error).message}`);
+    }
   }
 
   private resolveDbPath(): string {
