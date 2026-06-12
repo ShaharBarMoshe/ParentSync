@@ -10,6 +10,7 @@ import { ApprovalService } from './services/approval.service';
 import { EventDismissalService } from './services/event-dismissal.service';
 import { EventReminderService } from './services/event-reminder.service';
 import { MessageDeduplicationService } from './services/message-deduplication.service';
+import { DbHygieneService } from './services/db-hygiene.service';
 import { SyncController } from './controllers/sync.controller';
 import { ApprovalController } from './controllers/approval.controller';
 import {
@@ -45,6 +46,7 @@ import { SettingsModule } from '../settings/settings.module';
     EventDismissalService,
     EventReminderService,
     MessageDeduplicationService,
+    DbHygieneService,
   ],
   exports: [
     SyncService,

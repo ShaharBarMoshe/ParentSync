@@ -29,4 +29,6 @@ export interface IMessageRepository {
   delete(id: string): Promise<void>;
   pruneOldest(maxCount: number): Promise<number>;
   resetAllParsed(): Promise<number>;
+  /** NULL out `embedding` + `contentHash` for messages older than `beforeDate`. Returns affected row count. */
+  clearStaleEmbeddings(beforeDate: Date): Promise<number>;
 }

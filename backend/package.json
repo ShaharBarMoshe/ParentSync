@@ -20,6 +20,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "pretest:e2e": "npm rebuild better-sqlite3 --build-from-source 2>/dev/null || true",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "db:stats": "ts-node -r tsconfig-paths/register scripts/db-stats.ts",
     "kill-ports": "lsof -ti :3000 | xargs kill -9 2>/dev/null; true",
     "posttest": "npm run kill-ports",
     "posttest:e2e": "npm run kill-ports"

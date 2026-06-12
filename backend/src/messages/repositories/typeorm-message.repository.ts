@@ -104,6 +104,17 @@ export class TypeOrmMessageRepository implements IMessageRepository {
     return result.affected ?? 0;
   }
 
+  async clearStaleEmbeddings(beforeDate: Date): Promise<number> {
+    const result = await this.repo
+      .createQueryBuilder()
+      .update()
+      .set({ embedding: null, contentHash: null })
+      .where('timestamp < :before', { before: beforeDate })
+      .andWhere('embedding IS NOT NULL')
+      .execute();
+    return result.affected ?? 0;
+  }
+
   async pruneOldest(maxCount: number): Promise<number> {
     const total = await this.repo.count();
     if (total <= maxCount) return 0;

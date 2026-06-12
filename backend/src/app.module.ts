@@ -35,6 +35,7 @@ import { HealthController } from './health/health.controller';
         PORT: Joi.number().default(41932),
         DATABASE_URL: Joi.string().default(defaultDbPath),
         FRONTEND_URL: Joi.string().default('*'),
+        MESSAGE_EMBEDDING_RETENTION_DAYS: Joi.number().integer().min(1).default(30),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -47,11 +48,18 @@ import { HealthController } from './health/health.controller';
           fs.mkdirSync(dir, { recursive: true });
         }
         return {
-        type: 'better-sqlite3' as const,
-        database: dbPath,
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: true,
-        logging: config.get<string>('NODE_ENV') !== 'test',
+          type: 'better-sqlite3' as const,
+          database: dbPath,
+          entities: [__dirname + '/**/*.entity{.ts,.js}'],
+          synchronize: true,
+          logging: config.get<string>('NODE_ENV') !== 'test',
+          prepareDatabase: (db) => {
+            db.pragma('journal_mode = WAL');
+            db.pragma('synchronous = NORMAL');
+            db.pragma('foreign_keys = ON');
+            db.pragma('temp_store = FILE');
+            db.pragma('auto_vacuum = INCREMENTAL');
+          },
         };
       },
     }),

@@ -42,4 +42,11 @@ export class MonitorController {
   async getChannelsActivity(@Query() query: QueryMonitorDto) {
     return this.monitorService.getChannelsActivity(query);
   }
+
+  @Get('db-stats')
+  @ApiOperation({ summary: 'Database file size and per-table row/byte breakdown' })
+  @ApiResponse({ status: 200, description: 'DB stats returned' })
+  async getDatabaseStats() {
+    return this.monitorService.getDatabaseStats();
+  }
 }

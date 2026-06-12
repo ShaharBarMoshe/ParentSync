@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getRepositoryToken, getDataSourceToken } from '@nestjs/typeorm';
 import { MonitorService } from './monitor.service';
 import { MessageEntity } from '../../messages/entities/message.entity';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
@@ -57,12 +57,19 @@ describe('MonitorService', () => {
       createQueryBuilder: jest.fn().mockReturnValue(makeFullSyncQb()),
     };
 
+    const mockDataSource = {
+      query: jest.fn().mockResolvedValue([[]]),
+      options: { database: ':memory:' },
+      driver: {},
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MonitorService,
         { provide: getRepositoryToken(MessageEntity), useValue: mockMessageRepo },
         { provide: getRepositoryToken(CalendarEventEntity), useValue: mockEventRepo },
         { provide: getRepositoryToken(SyncLogEntity), useValue: mockSyncLogRepo },
+        { provide: getDataSourceToken(), useValue: mockDataSource },
       ],
     }).compile();
 

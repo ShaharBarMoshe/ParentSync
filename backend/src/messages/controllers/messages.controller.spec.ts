@@ -46,6 +46,8 @@ describe('MessagesController', () => {
       pruneOldest: jest.fn(),
       existsByChannelTimestampContent: jest.fn(),
       resetAllParsed: jest.fn(),
+      findParsedWithEmbeddings: jest.fn(),
+      clearStaleEmbeddings: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

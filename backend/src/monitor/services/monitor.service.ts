@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { MessageEntity } from '../../messages/entities/message.entity';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
 import { SyncLogEntity } from '../../sync/entities/sync-log.entity';
@@ -27,6 +31,21 @@ export interface SyncHistoryEntry {
   channelDetails: unknown;
 }
 
+export interface TableStat {
+  table: string;
+  rows: number;
+  bytes: number;
+}
+
+export interface DatabaseStatsResponse {
+  fileSizeBytes: number;
+  walSizeBytes: number;
+  pageCount: number;
+  freePages: number;
+  pageSize: number;
+  tables: TableStat[];
+}
+
 export interface SummaryResponse {
   totalMessages: number;
   totalEvents: number;
@@ -51,7 +70,56 @@ export class MonitorService {
     private readonly eventRepo: Repository<CalendarEventEntity>,
     @InjectRepository(SyncLogEntity)
     private readonly syncLogRepo: Repository<SyncLogEntity>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
+
+  async getDatabaseStats(): Promise<DatabaseStatsResponse> {
+    const dbPath = (this.dataSource.options as { database: string }).database;
+    const resolvedPath = path.resolve(dbPath);
+
+    let fileSizeBytes = 0;
+    let walSizeBytes = 0;
+    try { fileSizeBytes = fs.statSync(resolvedPath).size; } catch { /* not found */ }
+    try { walSizeBytes = fs.statSync(resolvedPath + '-wal').size; } catch { /* no WAL */ }
+
+    const [[pcResult]] = await this.dataSource.query('PRAGMA page_count') as [[Record<string, number>]];
+    const [[flResult]] = await this.dataSource.query('PRAGMA freelist_count') as [[Record<string, number>]];
+    const [[psResult]] = await this.dataSource.query('PRAGMA page_size') as [[Record<string, number>]];
+
+    const pageCount = pcResult ? Number(Object.values(pcResult)[0]) : 0;
+    const freePages = flResult ? Number(Object.values(flResult)[0]) : 0;
+    const pageSize = psResult ? Number(Object.values(psResult)[0]) : 4096;
+
+    const tableNames: { name: string }[] = await this.dataSource.query(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    );
+
+    const tables: TableStat[] = await Promise.all(
+      tableNames.map(async ({ name }) => {
+        const [[countResult]] = await this.dataSource.query(
+          `SELECT COUNT(*) as cnt FROM "${name}"`,
+        ) as [[{ cnt: number }]];
+        const rows = countResult ? Number(countResult.cnt) : 0;
+
+        // Approximate byte size: sum of length of all columns per row
+        const colsResult: { name: string }[] = await this.dataSource.query(
+          `PRAGMA table_info("${name}")`,
+        );
+        const colExprs = colsResult.map((c) => `COALESCE(LENGTH("${c.name}"), 0)`).join(' + ');
+        let bytes = 0;
+        if (colExprs) {
+          const [[sizeResult]] = await this.dataSource.query(
+            `SELECT SUM(${colExprs}) as total FROM "${name}"`,
+          ) as [[{ total: number | null }]];
+          bytes = sizeResult?.total ? Number(sizeResult.total) : 0;
+        }
+        return { table: name, rows, bytes };
+      }),
+    );
+
+    return { fileSizeBytes, walSizeBytes, pageCount, freePages, pageSize, tables };
+  }
 
   private getDateRange(query: QueryMonitorDto): { from: Date; to: Date } {
     const to = query.to ? new Date(query.to) : new Date();
