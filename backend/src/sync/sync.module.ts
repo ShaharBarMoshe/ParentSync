@@ -55,6 +55,7 @@ import { SettingsModule } from '../settings/settings.module';
     EventDismissalService,
     EventReminderService,
     MessageDeduplicationService,
+    DbHygieneService,
   ],
 })
 export class SyncModule {}

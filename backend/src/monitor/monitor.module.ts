@@ -5,6 +5,7 @@ import { CalendarEventEntity } from '../calendar/entities/calendar-event.entity'
 import { SyncLogEntity } from '../sync/entities/sync-log.entity';
 import { MonitorController } from './controllers/monitor.controller';
 import { MonitorService } from './services/monitor.service';
+import { SyncModule } from '../sync/sync.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { MonitorService } from './services/monitor.service';
       CalendarEventEntity,
       SyncLogEntity,
     ]),
+    SyncModule,
   ],
   controllers: [MonitorController],
   providers: [MonitorService],

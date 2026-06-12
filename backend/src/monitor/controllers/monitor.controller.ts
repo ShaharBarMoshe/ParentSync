@@ -1,12 +1,16 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { MonitorService } from '../services/monitor.service';
+import { DbHygieneService } from '../../sync/services/db-hygiene.service';
 import { QueryMonitorDto } from '../dto/query-monitor.dto';
 
 @ApiTags('monitor')
 @Controller('monitor')
 export class MonitorController {
-  constructor(private readonly monitorService: MonitorService) {}
+  constructor(
+    private readonly monitorService: MonitorService,
+    private readonly dbHygieneService: DbHygieneService,
+  ) {}
 
   @Get('messages-over-time')
   @ApiOperation({ summary: 'Message counts grouped by time period' })
@@ -47,6 +51,14 @@ export class MonitorController {
   @ApiOperation({ summary: 'Database file size and per-table row/byte breakdown' })
   @ApiResponse({ status: 200, description: 'DB stats returned' })
   async getDatabaseStats() {
+    return this.monitorService.getDatabaseStats();
+  }
+
+  @Post('db-maintenance')
+  @ApiOperation({ summary: 'Trigger DB maintenance now (backup, retention sweep, vacuum)' })
+  @ApiResponse({ status: 200, description: 'Maintenance completed' })
+  async runDbMaintenance() {
+    await this.dbHygieneService.runDailyMaintenance();
     return this.monitorService.getDatabaseStats();
   }
 }
