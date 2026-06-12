@@ -46,6 +46,7 @@
 | [Phase 19](phase19-uninstall.md) | One-Click Uninstall From Settings (Linux/macOS/Windows) | Done |
 | [Phase 20](phase20-semantic-dedup.md) | Semantic Deduplication via Gemini Embeddings (skip forwarded flyers before the LLM) | Done |
 | [Phase 21](phase21-openrouter-removal.md) | Remove dormant OpenRouter adapter + align docs | Done |
+| [Phase 22](phase22-db-storage-hygiene.md) | DB Storage Hygiene — retention sweep, VACUUM, WAL checkpoint | Done |
 
 ## Architecture
 

@@ -164,7 +164,8 @@ The Electron main process (`electron/main.ts`):
 - **Frontend**: Loaded via `file://` in production, `http://localhost:5173` in dev.
 - **Static serving**: Backend also serves frontend static files (for OAuth redirect landing).
 - **Data directory**: All persistent data in `app.getPath('userData')`:
-  - `parentsync.db` — SQLite database
+  - `parentsync.db` — SQLite database (WAL mode; incremental auto-vacuum; daily retention sweep + VACUUM at 04:00)
+  - `parentsync.db.bak` — Rolling hot-backup created before each maintenance window
   - `whatsapp-session/` — WhatsApp Web session
   - `logs/` — Application logs
   - `.encryption_key` — OAuth token encryption key
@@ -175,7 +176,7 @@ The Electron main process (`electron/main.ts`):
 | Decision | Why |
 |----------|-----|
 | Fork backend as child process (not in-process) | Isolation — backend crash doesn't kill the UI |
-| SQLite (not PostgreSQL) | Single-user desktop app, no external DB needed |
+| SQLite (not PostgreSQL) | Single-user desktop app, no external DB needed. WAL mode + `synchronous=NORMAL` for safe concurrent reads. `auto_vacuum=INCREMENTAL` + daily `DbHygieneService` cron keeps the file bounded (steady-state ~15 MB). |
 | `synchronize: true` always | No dev/prod split, private-use app |
 | OAuth tokens encrypted at rest | Protect Google API tokens if device is compromised |
 | whatsapp-web.js (not direct API) | No official WhatsApp API for personal accounts |

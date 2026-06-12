@@ -235,6 +235,40 @@ The app shows an icon in the system tray. Right-click for options:
 - **Sync Now** — trigger a sync
 - **Quit** — exit the app completely
 
+## Disk usage
+
+ParentSync stores all its data in:
+
+| Platform | Path |
+|---|---|
+| Linux | `~/.config/parentsync/` |
+| macOS | `~/Library/Application Support/parentsync/` |
+| Windows | `%APPDATA%\parentsync\` |
+
+The main database (`parentsync.db`) self-prunes automatically — every night at 04:00 the app:
+
+1. Creates a rolling backup (`parentsync.db.bak`) before touching anything.
+2. Clears the `embedding` vector from messages older than 30 days (embeddings are ~10 KB each and are only needed for the 30-day duplicate-detection window).
+3. Runs `PRAGMA incremental_vacuum` to reclaim the freed pages.
+4. Checkpoints the WAL file on shutdown so the `-wal` sidecar stays small.
+
+**Expected steady-state size:** ~15–20 MB. If the DB grew large before upgrading to v1.2.0, the first maintenance cycle will run a one-time full `VACUUM` that brings it back down (measured: 59 MB → 17 MB).
+
+You can check the current DB size at any time from the Monitor tab → **Database Stats** card, or by running:
+
+```bash
+cd /path/to/ParentSync/backend
+npm run db:stats
+```
+
+If you need to trigger the cleanup immediately without waiting for 04:00, use the API:
+
+```bash
+curl -X POST http://localhost:41932/monitor/db-maintenance
+```
+
+**Backup:** `parentsync.db.bak` is a hot-copy created before each maintenance run. If the DB ever won't open, stop the app, rename the corrupt file, and rename the `.bak` to restore it.
+
 ## Uninstalling
 
 The easy way: **Settings → Danger Zone → Uninstall ParentSync**. Tick "Also remove my data" if you want a full wipe; type `UNINSTALL` to confirm. The app generates a per-platform cleanup script, runs it detached, and exits. The script logs every step to `~/parentsync-uninstall.log` (or `%TEMP%\parentsync-uninstall.log` on Windows) so you can verify what was removed.
