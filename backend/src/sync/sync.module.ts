@@ -11,6 +11,7 @@ import { EventDismissalService } from './services/event-dismissal.service';
 import { EventReminderService } from './services/event-reminder.service';
 import { MessageDeduplicationService } from './services/message-deduplication.service';
 import { DbHygieneService } from './services/db-hygiene.service';
+import { SyncLockService } from './services/sync-lock.service';
 import { SyncController } from './controllers/sync.controller';
 import { ApprovalController } from './controllers/approval.controller';
 import {
@@ -40,6 +41,7 @@ import { SettingsModule } from '../settings/settings.module';
       provide: DISMISSAL_REPOSITORY,
       useClass: TypeOrmDismissalRepository,
     },
+    SyncLockService,
     SyncService,
     EventSyncService,
     ApprovalService,

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SyncService } from './sync.service';
+import { SyncLockService } from './sync-lock.service';
 import {
   MESSAGE_REPOSITORY,
   WHATSAPP_SERVICE,
@@ -107,6 +108,7 @@ describe('SyncService', () => {
           },
         },
         { provide: EventEmitter2, useValue: mockEventEmitter },
+        { provide: SyncLockService, useValue: { acquire: jest.fn(), release: jest.fn(), isLocked: jest.fn().mockReturnValue(false) } },
       ],
     }).compile();
 

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import * as fs from 'fs';
 import { DbHygieneService } from './db-hygiene.service';
+import { SyncLockService } from './sync-lock.service';
 import { MESSAGE_REPOSITORY } from '../../shared/constants/injection-tokens';
 import type { IMessageRepository } from '../../messages/interfaces/message-repository.interface';
 import { SettingsService } from '../../settings/settings.service';
@@ -85,6 +86,7 @@ describe('DbHygieneService', () => {
         { provide: MESSAGE_REPOSITORY, useValue: messageRepository },
         { provide: SettingsService, useValue: settingsService },
         { provide: ConfigService, useValue: configService },
+        { provide: SyncLockService, useValue: { isLocked: jest.fn().mockReturnValue(false) } },
       ],
     }).compile();
 
@@ -189,6 +191,19 @@ describe('DbHygieneService', () => {
       await service.runDailyMaintenance();
       expect(dataSource.query).toHaveBeenCalledWith('VACUUM');
       expect(settingsService.seedDefaultIfMissing).toHaveBeenCalledWith('db_vacuum_v1_2_0_done', 'true');
+    });
+
+    it('should defer VACUUM if sync lock is held', async () => {
+      // Simulate a sync running while maintenance fires
+      const syncLock = service['syncLock'] as { isLocked: jest.Mock };
+      syncLock.isLocked.mockReturnValue(true);
+
+      settingsService.findByKey.mockResolvedValue({ key: 'db_vacuum_v1_2_0_done', value: 'true' } as never);
+      await service.onModuleInit();
+      await service.runDailyMaintenance();
+
+      expect(dataSource.query).not.toHaveBeenCalledWith('PRAGMA incremental_vacuum');
+      expect(dataSource.query).not.toHaveBeenCalledWith('VACUUM');
     });
 
     it('should run incremental_vacuum on subsequent runs (no one-time needed)', async () => {

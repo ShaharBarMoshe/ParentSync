@@ -14,6 +14,7 @@ import * as os from 'os';
 import { MESSAGE_REPOSITORY } from '../../shared/constants/injection-tokens';
 import type { IMessageRepository } from '../../messages/interfaces/message-repository.interface';
 import { SettingsService } from '../../settings/settings.service';
+import { SyncLockService } from './sync-lock.service';
 
 const ONE_TIME_VACUUM_FLAG = 'db_vacuum_v1_2_0_done';
 
@@ -28,6 +29,7 @@ export class DbHygieneService implements OnModuleInit, OnApplicationShutdown {
     private readonly messageRepository: IMessageRepository,
     private readonly settingsService: SettingsService,
     private readonly configService: ConfigService,
+    private readonly syncLock: SyncLockService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -126,6 +128,10 @@ export class DbHygieneService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async runIncrementalVacuum(): Promise<void> {
+    if (this.syncLock.isLocked()) {
+      this.logger.warn('Incremental vacuum skipped — sync in progress');
+      return;
+    }
     try {
       await this.dataSource.query('PRAGMA incremental_vacuum');
       this.logger.log('Incremental vacuum completed');
@@ -135,6 +141,10 @@ export class DbHygieneService implements OnModuleInit, OnApplicationShutdown {
   }
 
   private async runOneTimeVacuum(dbPath: string): Promise<void> {
+    if (this.syncLock.isLocked()) {
+      this.logger.warn('Full VACUUM deferred — sync in progress; will retry at next 04:00 window');
+      return;
+    }
     try {
       const stat = fs.statSync(dbPath);
       const dbBytes = stat.size;

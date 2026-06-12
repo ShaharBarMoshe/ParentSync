@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
+import { SyncLockService } from './sync-lock.service';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import {
@@ -40,6 +41,7 @@ export class SyncService {
     private readonly childService: ChildService,
     private readonly schedulerRegistry: SchedulerRegistry,
     private readonly eventEmitter: EventEmitter2,
+    private readonly syncLock: SyncLockService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -112,7 +114,8 @@ export class SyncService {
   }> {
     const startedAt = new Date();
     this.logger.log('Starting sync...');
-
+    this.syncLock.acquire();
+    try {
     // Allow one WhatsApp reconnect attempt per sync cycle
     this.whatsappService.resetReconnectFlag();
 
@@ -198,6 +201,9 @@ export class SyncService {
     );
 
     return { status, messageCount: totalMessages };
+    } finally {
+      this.syncLock.release();
+    }
   }
 
   async syncChild(child: ChildEntity): Promise<{
