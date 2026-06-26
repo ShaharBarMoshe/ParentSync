@@ -2,19 +2,13 @@ import { Injectable, Logger, Inject, OnModuleInit } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import * as crypto from 'crypto';
-import {
-  LLM_SERVICE,
-  NEGATIVE_EXAMPLE_REPOSITORY,
-} from '../../shared/constants/injection-tokens';
+import { LLM_SERVICE } from '../../shared/constants/injection-tokens';
 import type { ILLMService, LlmInlineImage } from '../interfaces/llm-service.interface';
 import type { ParsedEvent, EventAction } from '../dto/parsed-event.dto';
-import type { INegativeExampleRepository } from '../interfaces/negative-example-repository.interface';
-import type { NegativeExampleEntity } from '../entities/negative-example.entity';
 import { SettingsService } from '../../settings/settings.service';
 import { DEFAULT_SYSTEM_PROMPT } from './default-system-prompt';
-import { LLM_SYSTEM_PROMPT_KEY } from '../../settings/constants/setting-keys';
-
-const MAX_NEGATIVE_EXAMPLES = 50;
+import { MessageClassifierService } from './message-classifier.service';
+import { LLM_SYSTEM_PROMPT_KEY, LLM_SYSTEM_PROMPT_IS_CUSTOM_KEY } from '../../settings/constants/setting-keys';
 
 interface BuiltPrompt {
   prompt: string;
@@ -32,15 +26,19 @@ export class MessageParserService implements OnModuleInit {
     @Inject(LLM_SERVICE) private readonly llmService: ILLMService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly settingsService: SettingsService,
-    @Inject(NEGATIVE_EXAMPLE_REPOSITORY)
-    private readonly negativeExampleRepository: INegativeExampleRepository,
+    private readonly classifierService: MessageClassifierService,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.settingsService.seedDefaultIfMissing(
-      LLM_SYSTEM_PROMPT_KEY,
-      DEFAULT_SYSTEM_PROMPT,
-    );
+    // If the user has not explicitly saved a custom prompt, always write the
+    // current DEFAULT_SYSTEM_PROMPT so that shipped rule updates take effect
+    // on every boot rather than being frozen at the value seeded on first install.
+    const isCustomSetting = await this.settingsService.findByKey(LLM_SYSTEM_PROMPT_IS_CUSTOM_KEY).catch(() => null);
+    const isCustom = isCustomSetting?.value === 'true';
+    if (!isCustom) {
+      await this.settingsService.create({ key: LLM_SYSTEM_PROMPT_KEY, value: DEFAULT_SYSTEM_PROMPT });
+      this.logger.log('System prompt synced to latest shipped default');
+    }
   }
 
   /**
@@ -62,44 +60,17 @@ export class MessageParserService implements OnModuleInit {
       // setting not found — fall through to default
     }
 
-    let negatives: NegativeExampleEntity[] = [];
-    try {
-      negatives = await this.negativeExampleRepository.findRecent(
-        MAX_NEGATIVE_EXAMPLES,
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Failed to load negative examples; continuing without: ${(error as Error).message}`,
-      );
-    }
-
-    const negativesBlock = this.formatNegativesBlock(negatives);
-    const prompt = negativesBlock
-      ? `${userPrompt}\n\n${negativesBlock}`
-      : userPrompt;
+    // Phase 24.5: the negative-examples feedback loop (😢 → prompt) was retired.
+    // The LLM demonstrably ignored the appended block, it killed cache hit rate
+    // by mutating the prompt on every reaction, and it bloated every parse.
+    // The negative_examples table keeps receiving writes for historical/UI
+    // purposes but is no longer read at parse time.
     const version = crypto
       .createHash('sha256')
-      .update(prompt)
+      .update(userPrompt)
       .digest('hex')
       .slice(0, 16);
-    return { prompt, version };
-  }
-
-  private formatNegativesBlock(negatives: NegativeExampleEntity[]): string {
-    if (negatives.length === 0) return '';
-    const lines: string[] = [
-      'The user has previously marked the following messages as NOT being events. Do NOT create events for messages similar in form, topic, or intent — return [] for them:',
-      '',
-      'NEGATIVE EXAMPLES:',
-    ];
-    negatives.forEach((n, i) => {
-      lines.push(`${i + 1}. Channel: "${n.channel ?? 'unknown'}"`);
-      lines.push(`   Message: ${JSON.stringify(n.messageContent)}`);
-      lines.push(
-        `   (You incorrectly extracted: "${n.extractedTitle}"${n.extractedDate ? ` on ${n.extractedDate}` : ''})`,
-      );
-    });
-    return lines.join('\n');
+    return { prompt: userPrompt, version };
   }
 
   async parseMessage(
@@ -118,6 +89,22 @@ export class MessageParserService implements OnModuleInit {
     }
     this.logger.debug('Cache miss for message parsing');
 
+    // Phase 24 — stage 1: classifier. Skip for image-bearing messages (the
+    // classifier only reads text; an image flyer might be a real event the
+    // text doesn't describe). Fail-open by contract.
+    const hasImagesForClassifier = !!(images && images.length > 0);
+    if (!hasImagesForClassifier && content.trim().length > 0) {
+      const verdict = await this.classifierService.classify(content, currentDate);
+      if (!verdict.isEvent) {
+        this.logger.debug(
+          `Classifier rejected: ${verdict.reason} contentChars=${content.length}`,
+        );
+        await this.incrementMetric('metric.classifier_reject_total');
+        await this.cacheManager.set(cacheKey, [], CACHE_TTL_SECONDS);
+        return [];
+      }
+    }
+
     try {
       const dateContext = currentDate ?? new Date().toISOString().split('T')[0];
       const hasImages = !!(images && images.length > 0);
@@ -135,7 +122,7 @@ export class MessageParserService implements OnModuleInit {
       );
 
       const events = this.extractJsonFromResponse(response);
-      const validatedEvents = this.validateEvents(events);
+      const validatedEvents = this.collapseSingleGathering(this.validateEvents(events));
 
       this.logger.log(
         `Parsed ${events.length} raw events → ${validatedEvents.length} valid events`,
@@ -184,11 +171,46 @@ export class MessageParserService implements OnModuleInit {
       return result;
     }
 
+    // Phase 24 — stage 1: classifier filter. Run on every uncached *text-only*
+    // group. Image groups bypass the classifier (it can't see images).
+    // A NO verdict short-circuits to [] and caches it.
+    const survivedClassifier: { id: string; content: string; images?: LlmInlineImage[] }[] = [];
+    let classifierRejects = 0;
+    for (const g of uncached) {
+      const hasImages = !!(g.images && g.images.length > 0);
+      if (hasImages || g.content.trim().length === 0) {
+        survivedClassifier.push(g);
+        continue;
+      }
+      const groupIndex = groups.findIndex((orig) => orig.id === g.id);
+      const groupDate = perGroupDates?.[groupIndex] || currentDate;
+      const verdict = await this.classifierService.classify(g.content, groupDate);
+      if (!verdict.isEvent) {
+        classifierRejects++;
+        result.set(g.id, []);
+        const cacheKey = this.getCacheKey(g.content, built.version, g.images);
+        await this.cacheManager.set(cacheKey, [], CACHE_TTL_SECONDS);
+      } else {
+        survivedClassifier.push(g);
+      }
+    }
+    if (classifierRejects > 0) {
+      this.logger.log(
+        `Classifier rejected ${classifierRejects}/${uncached.length} uncached groups`,
+      );
+      for (let i = 0; i < classifierRejects; i++) {
+        await this.incrementMetric('metric.classifier_reject_total');
+      }
+    }
+    if (survivedClassifier.length === 0) {
+      return result;
+    }
+
     // Image-bearing groups can't ride the text-only batch (the LLM gets one
     // image bundle per request and can't tell which message owns which
     // image). Parse them individually; let text-only groups still batch.
-    const imageGroups = uncached.filter((g) => g.images && g.images.length > 0);
-    const textOnly = uncached.filter((g) => !g.images || g.images.length === 0);
+    const imageGroups = survivedClassifier.filter((g) => g.images && g.images.length > 0);
+    const textOnly = survivedClassifier.filter((g) => !g.images || g.images.length === 0);
 
     for (const g of imageGroups) {
       const groupIndex = groups.findIndex((orig) => orig.id === g.id);
@@ -282,7 +304,7 @@ export class MessageParserService implements OnModuleInit {
         for (let i = 0; i < uncachedForBatch.length; i++) {
           const key = String(i + 1);
           const events = parsed[key] || [];
-          const validated = this.validateEvents(events);
+          const validated = this.collapseSingleGathering(this.validateEvents(events));
           this.logger.log(
             `Batch group ${key}: ${events.length} raw → ${validated.length} valid events`,
           );
@@ -445,6 +467,8 @@ export class MessageParserService implements OnModuleInit {
         // Validate time format if present
         if (e.time && (typeof e.time !== 'string' || !e.time.match(/^\d{2}:\d{2}$/)))
           return false;
+        // endTime is dropped (not rejected) if malformed or not strictly after time —
+        // validation happens in the map step below so a bad endTime doesn't kill the event.
         // Validate newDate/newTime for delay actions
         if (e.newDate && (typeof e.newDate !== 'string' || !e.newDate.match(/^\d{4}-\d{2}-\d{2}$/)))
           return false;
@@ -455,19 +479,113 @@ export class MessageParserService implements OnModuleInit {
           return false;
         return true;
       })
-      .map((event) => ({
-        title: String(event.title).trim(),
-        description: event.description ? String(event.description).trim() : undefined,
-        date: String(event.date),
-        time: event.time ? String(event.time) : undefined,
-        location: event.location ? String(event.location).trim() : undefined,
-        action: (['cancel', 'delay'].includes(String(event.action))
-          ? String(event.action) as EventAction
-          : undefined),
-        originalTitle: event.originalTitle ? String(event.originalTitle).trim() : undefined,
-        newDate: event.newDate ? String(event.newDate) : undefined,
-        newTime: event.newTime ? String(event.newTime) : undefined,
-      }));
+      .map((event) => {
+        const time = event.time ? String(event.time) : undefined;
+        const endTime = this.normalizeEndTime(event.endTime, time);
+        return {
+          title: String(event.title).trim(),
+          description: event.description ? String(event.description).trim() : undefined,
+          date: String(event.date),
+          time,
+          endTime,
+          location: event.location ? String(event.location).trim() : undefined,
+          action: (['cancel', 'delay'].includes(String(event.action))
+            ? String(event.action) as EventAction
+            : undefined),
+          originalTitle: event.originalTitle ? String(event.originalTitle).trim() : undefined,
+          newDate: event.newDate ? String(event.newDate) : undefined,
+          newTime: event.newTime ? String(event.newTime) : undefined,
+        };
+      });
+  }
+
+  /**
+   * Accepts an endTime only when it's a well-formed HH:MM string strictly
+   * later than the corresponding start time. Returns undefined otherwise.
+   * Drops silently (with a debug log) rather than rejecting the whole event —
+   * the rest of the parse is still usable.
+   */
+  private normalizeEndTime(raw: unknown, time: string | undefined): string | undefined {
+    if (raw == null) return undefined;
+    if (typeof raw !== 'string') return undefined;
+    if (!raw.match(/^\d{2}:\d{2}$/)) {
+      this.logger.debug(`Dropping malformed endTime "${String(raw)}"`);
+      return undefined;
+    }
+    if (!time) {
+      this.logger.debug(`Dropping endTime "${raw}" — start time missing`);
+      return undefined;
+    }
+    if (raw <= time) {
+      this.logger.debug(`Dropping endTime "${raw}" — not after start time "${time}"`);
+      return undefined;
+    }
+    return raw;
+  }
+
+  /**
+   * Enforces the single-gathering rule deterministically: when the LLM returns
+   * multiple create-events with the same (title, date, location, description)
+   * but different times, collapse them into one. Without this guard, a single
+   * source message describing a gathering from two angles (e.g. "arrive at 17:00,
+   * party 17:30-18:00") becomes two approval messages. Layer 3 (LLM dedup) catches
+   * the same case after-the-fact but fails open on quota errors — this is the
+   * cheap, deterministic safety net that runs before any DB write.
+   *
+   * Cancel/delay events are kept as-is — their semantics differ and they shouldn't
+   * be merged.
+   *
+   * Tie-breaker for the kept event: prefer (time + endTime) > (time) > (all-day).
+   */
+  private collapseSingleGathering(events: ParsedEvent[]): ParsedEvent[] {
+    if (events.length <= 1) return events;
+    const norm = (s: string | undefined) => (s ?? '').trim().toLowerCase();
+    const groups = new Map<string, ParsedEvent[]>();
+    for (const event of events) {
+      if (event.action === 'cancel' || event.action === 'delay') {
+        // Action events are passed through; key them uniquely so they never merge.
+        groups.set(`__action_${groups.size}`, [event]);
+        continue;
+      }
+      const key = [norm(event.title), event.date, norm(event.location), norm(event.description)].join('|');
+      const bucket = groups.get(key) ?? [];
+      bucket.push(event);
+      groups.set(key, bucket);
+    }
+    const score = (e: ParsedEvent): number => (e.time ? 1 : 0) + (e.endTime ? 1 : 0);
+    const collapsed: ParsedEvent[] = [];
+    for (const group of groups.values()) {
+      if (group.length === 1) { collapsed.push(group[0]); continue; }
+      const best = group.reduce((w, c) => (score(c) > score(w) ? c : w));
+      this.logger.log(
+        `Single-gathering collapse: ${group.length} events → 1 for "${best.title}" on ${best.date}`,
+      );
+      collapsed.push(best);
+    }
+    return collapsed;
+  }
+
+  /**
+   * Best-effort increment of an integer counter stored under a settings key.
+   * Failures are swallowed — metrics must never break a parse. Mirrors
+   * EventSyncService.incrementMetric for the same reason.
+   */
+  private async incrementMetric(key: string): Promise<void> {
+    try {
+      let current = 0;
+      try {
+        const existing = await this.settingsService.findByKey(key);
+        const parsed = Number.parseInt(existing.value, 10);
+        if (!Number.isNaN(parsed)) current = parsed;
+      } catch {
+        // Seeder usually creates this; if missing, start at 0.
+      }
+      await this.settingsService.create({ key, value: String(current + 1) });
+    } catch (err) {
+      this.logger.debug(
+        `Failed to increment metric ${key}: ${(err as Error).message}`,
+      );
+    }
   }
 
   private getCacheKey(

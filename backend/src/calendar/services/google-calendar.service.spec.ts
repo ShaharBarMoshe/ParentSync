@@ -43,6 +43,7 @@ describe('GoogleCalendarService', () => {
     description: 'Parent-teacher meeting',
     date: '2026-03-20',
     time: '10:00',
+    endTime: null as unknown as string,
     location: 'School Hall',
     source: MessageSource.WHATSAPP,
     sourceId: 'msg-1',
@@ -105,6 +106,37 @@ describe('GoogleCalendarService', () => {
           summary: 'School Meeting',
           description: 'Parent-teacher meeting',
           location: 'School Hall',
+        }),
+      }),
+    );
+  });
+
+  it('uses event.endTime for end.dateTime when present', async () => {
+    __mockInsert.mockResolvedValue({ data: { id: 'g-end' } });
+
+    const ranged = { ...mockEvent, time: '14:00', endTime: '15:45' };
+    await service.createEvent(ranged as any, 'primary');
+
+    expect(__mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: expect.objectContaining({
+          start: { dateTime: '2026-03-20T14:00:00', timeZone: 'Asia/Jerusalem' },
+          end: { dateTime: '2026-03-20T15:45:00', timeZone: 'Asia/Jerusalem' },
+        }),
+      }),
+    );
+  });
+
+  it('defaults end.dateTime to start + 1 hour when endTime is absent (regression)', async () => {
+    __mockInsert.mockResolvedValue({ data: { id: 'g-default' } });
+
+    const defaultDuration = { ...mockEvent, time: '14:00', endTime: null };
+    await service.createEvent(defaultDuration as any, 'primary');
+
+    expect(__mockInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestBody: expect.objectContaining({
+          end: { dateTime: '2026-03-20T15:00:00', timeZone: 'Asia/Jerusalem' },
         }),
       }),
     );

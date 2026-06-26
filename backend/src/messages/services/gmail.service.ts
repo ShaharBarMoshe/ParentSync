@@ -88,6 +88,47 @@ export class GmailService implements IGmailService {
     return this.getEmails(undefined, `after:${timestamp}`);
   }
 
+  async getConnectedEmail(): Promise<string | null> {
+    try {
+      const gmail = await this.getGmailClient();
+      const res = await gmail.users.getProfile({ userId: 'me' });
+      return res.data.emailAddress ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `getConnectedEmail failed: ${(error as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  async sendEmail(args: { subject: string; body: string; to?: string }): Promise<void> {
+    const gmail = await this.getGmailClient();
+    const from = (await this.getConnectedEmail()) ?? 'me';
+    const to = args.to ?? from;
+    // RFC 5322. Subject + body are encoded as UTF-8 with base64 transfer.
+    const subjectB64 = Buffer.from(args.subject, 'utf8').toString('base64');
+    const headers = [
+      `From: ${from}`,
+      `To: ${to}`,
+      `Subject: =?UTF-8?B?${subjectB64}?=`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=UTF-8',
+      'Content-Transfer-Encoding: base64',
+      '',
+      Buffer.from(args.body, 'utf8').toString('base64'),
+    ];
+    const raw = Buffer.from(headers.join('\r\n'), 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    await gmail.users.messages.send({
+      userId: 'me',
+      requestBody: { raw },
+    });
+    this.logger.log(`Sent alert email to ${to}: "${args.subject}"`);
+  }
+
   /**
    * Iterates pages of `users.messages.list` until either `limit` IDs are
    * collected or Gmail stops returning a nextPageToken.

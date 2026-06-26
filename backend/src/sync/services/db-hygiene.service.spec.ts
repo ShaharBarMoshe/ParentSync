@@ -36,18 +36,18 @@ describe('DbHygieneService', () => {
 
     // Default PRAGMA responses
     (dataSource.query as jest.Mock).mockImplementation((sql: string) => {
-      if (sql.includes('integrity_check')) return [[{ integrity_check: 'ok' }]];
-      if (sql.includes('page_count')) return [[{ page_count: 100 }]];
-      if (sql.includes('freelist_count')) return [[{ freelist_count: 10 }]];
-      if (sql.includes('page_size')) return [[{ page_size: 4096 }]];
-      if (sql.includes('journal_mode')) return [[{ journal_mode: 'wal' }]];
-      if (sql.includes('synchronous')) return [[{ synchronous: 1 }]];
-      if (sql.includes('foreign_keys')) return [[{ foreign_keys: 1 }]];
-      if (sql.includes('auto_vacuum')) return [[{ auto_vacuum: 2 }]];
-      if (sql.includes('wal_checkpoint')) return [[{ busy: 0, log: 0, checkpointed: 0 }]];
-      if (sql.includes('incremental_vacuum')) return [[]];
-      if (sql.includes('VACUUM')) return [[]];
-      return [[]];
+      if (sql.includes('integrity_check')) return [{ integrity_check: 'ok' }];
+      if (sql.includes('page_count')) return [{ page_count: 100 }];
+      if (sql.includes('freelist_count')) return [{ freelist_count: 10 }];
+      if (sql.includes('page_size')) return [{ page_size: 4096 }];
+      if (sql.includes('journal_mode')) return [{ journal_mode: 'wal' }];
+      if (sql.includes('synchronous')) return [{ synchronous: 1 }];
+      if (sql.includes('foreign_keys')) return [{ foreign_keys: 1 }];
+      if (sql.includes('auto_vacuum')) return [{ auto_vacuum: 2 }];
+      if (sql.includes('wal_checkpoint')) return [{ busy: 0, log: 0, checkpointed: 0 }];
+      if (sql.includes('incremental_vacuum')) return [];
+      if (sql.includes('VACUUM')) return [];
+      return [];
     });
 
     settingsService = {
@@ -165,12 +165,12 @@ describe('DbHygieneService', () => {
 
     it('should abort maintenance if integrity check fails pre-sweep', async () => {
       (dataSource.query as jest.Mock).mockImplementation((sql: string) => {
-        if (sql.includes('integrity_check')) return [[{ integrity_check: 'corruption found' }]];
-        if (sql.includes('page_count')) return [[{ page_count: 100 }]];
-        if (sql.includes('freelist_count')) return [[{ freelist_count: 10 }]];
-        if (sql.includes('page_size')) return [[{ page_size: 4096 }]];
-        if (sql.includes('wal_checkpoint')) return [[{}]];
-        return [[{ journal_mode: 'wal' }, { synchronous: 1 }, { foreign_keys: 1 }, { auto_vacuum: 2 }]];
+        if (sql.includes('integrity_check')) return [{ integrity_check: 'corruption found' }];
+        if (sql.includes('page_count')) return [{ page_count: 100 }];
+        if (sql.includes('freelist_count')) return [{ freelist_count: 10 }];
+        if (sql.includes('page_size')) return [{ page_size: 4096 }];
+        if (sql.includes('wal_checkpoint')) return [{}];
+        return [{ journal_mode: 'wal' }, { synchronous: 1 }, { foreign_keys: 1 }, { auto_vacuum: 2 }];
       });
       await service.runDailyMaintenance();
       expect(messageRepository.clearStaleEmbeddings).not.toHaveBeenCalled();

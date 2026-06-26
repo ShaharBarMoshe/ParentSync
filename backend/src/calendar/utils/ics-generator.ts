@@ -17,14 +17,24 @@ export function generateICS(event: CalendarEventEntity): string {
     start[4] = minute;
   }
 
-  const attrs: EventAttributes = {
+  const baseAttrs = {
     title: event.title,
     description: event.description || undefined,
     location: event.location || undefined,
     start,
-    duration: { hours: 1 },
     uid: event.id,
   };
+
+  let attrs: EventAttributes;
+  if (event.time && event.endTime) {
+    const [endHour, endMinute] = event.endTime.split(':').map(Number);
+    attrs = {
+      ...baseAttrs,
+      end: [year, month, day, endHour, endMinute],
+    };
+  } else {
+    attrs = { ...baseAttrs, duration: { hours: 1 } };
+  }
 
   const { error, value } = createEvent(attrs);
   if (error) {

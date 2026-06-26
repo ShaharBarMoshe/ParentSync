@@ -32,6 +32,7 @@ interface SettingsForm {
   approvalChannel: string;
   dedupEnabled: string;
   dedupThreshold: string;
+  classifierEnabled: string;
 }
 
 const SETTING_KEYS = {
@@ -44,6 +45,7 @@ const SETTING_KEYS = {
   approvalChannel: 'approval_channel',
   dedupEnabled: 'dedup_enabled',
   dedupThreshold: 'dedup_threshold',
+  classifierEnabled: 'classifier_enabled',
 } as const;
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -139,6 +141,7 @@ const DEFAULT_FORM: SettingsForm = {
   approvalChannel: '',
   dedupEnabled: 'true',
   dedupThreshold: '0.92',
+  classifierEnabled: 'true',
 };
 
 type Status = { type: 'idle' } | { type: 'loading' } | { type: 'saving' } | { type: 'success'; message: string } | { type: 'error'; message: string };
@@ -585,6 +588,7 @@ export default function SettingsPage() {
       approvalChannel: map.get(SETTING_KEYS.approvalChannel) ?? DEFAULT_FORM.approvalChannel,
       dedupEnabled: map.get(SETTING_KEYS.dedupEnabled) ?? DEFAULT_FORM.dedupEnabled,
       dedupThreshold: map.get(SETTING_KEYS.dedupThreshold) ?? DEFAULT_FORM.dedupThreshold,
+      classifierEnabled: map.get(SETTING_KEYS.classifierEnabled) ?? DEFAULT_FORM.classifierEnabled,
     };
   }
 
@@ -899,12 +903,30 @@ export default function SettingsPage() {
                   most forwards without dropping real new events.
                 </span>
               </div>
+              <div className="form-field">
+                <label className="form-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={form.classifierEnabled !== 'false'}
+                    onChange={(e) => handleChange('classifierEnabled', e.target.checked ? 'true' : 'false')}
+                  />
+                  <span>Run the classifier before the extractor (recommended)</span>
+                </label>
+                <span className="form-hint">
+                  Stage 1 of the two-stage parsing pipeline. A short YES/NO prompt filters out chit-chat,
+                  absence notices, and other non-events before they reach the (more expensive) extractor.
+                  Cuts most parses to a fraction of their cost. Disable to revert to the old single-stage flow.
+                </span>
+              </div>
             </div>
 
-            {/* AI Extraction Prompt */}
+            {/* AI Classifier Prompt (stage 1) */}
+            <PromptEditor variant="classifier" />
+
+            {/* AI Extraction Prompt (stage 2) */}
             <PromptEditor />
 
-            {/* Learned Exclusions (negative-reaction feedback) */}
+            {/* Past Rejections (formerly Learned Exclusions) */}
             <NegativeExamplesPanel />
 
             <div className="settings-actions">

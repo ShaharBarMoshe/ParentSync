@@ -601,4 +601,53 @@ describe('SyncService', () => {
     expect(result.messageCount).toBe(1);
     expect(mockMessageRepo.create).not.toHaveBeenCalled();
   });
+
+  it('should store all Gmail emails in a batch, not just the newest', async () => {
+    const child = makeChild({ id: 'child-1', channelNames: '', teacherEmails: 'teacher@school.com' });
+    mockChildService.findAll.mockResolvedValue([child]);
+    mockMessageRepo.getLastTimestamp.mockResolvedValue(null);
+
+    // Gmail returns newest first — all three should be stored
+    mockGmailService.getEmails.mockResolvedValue([
+      { subject: 'Trip', body: 'Field trip Friday', sender: 'teacher@school.com', timestamp: new Date('2026-06-23T15:00:00Z'), threadId: 't3', label: 'INBOX' },
+      { subject: 'Homework', body: 'Due Wednesday', sender: 'teacher@school.com', timestamp: new Date('2026-06-23T14:00:00Z'), threadId: 't2', label: 'INBOX' },
+      { subject: 'Meeting', body: 'PTA meeting Thursday', sender: 'teacher@school.com', timestamp: new Date('2026-06-23T13:00:00Z'), threadId: 't1', label: 'INBOX' },
+    ]);
+
+    await service.syncAll();
+
+    expect(mockMessageRepo.create).toHaveBeenCalledTimes(3);
+  });
+
+  it('should deduplicate Gmail emails already stored in previous sync', async () => {
+    const child = makeChild({ id: 'child-1', channelNames: '', teacherEmails: 'teacher@school.com' });
+    mockChildService.findAll.mockResolvedValue([child]);
+    mockMessageRepo.getLastTimestamp.mockResolvedValue(null);
+
+    mockGmailService.getEmails.mockResolvedValue([
+      { subject: 'Trip', body: 'Field trip', sender: 'teacher@school.com', timestamp: new Date('2026-06-23T15:00:00Z'), threadId: 't1', label: 'INBOX' },
+    ]);
+
+    mockMessageRepo.existsByChannelTimestampContent.mockResolvedValue(true);
+
+    await service.syncAll();
+
+    expect(mockMessageRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('should deduplicate WhatsApp messages already stored in previous sync', async () => {
+    const child = makeChild({ id: 'child-1', channelNames: 'Group A', teacherEmails: '' });
+    mockChildService.findAll.mockResolvedValue([child]);
+    mockMessageRepo.getLastTimestamp.mockResolvedValue(null);
+
+    mockWhatsappService.getChannelMessages.mockResolvedValue([
+      { content: 'Trip on Friday', timestamp: new Date('2026-06-23T15:00:00Z'), sender: 'Teacher', channel: 'Group A' },
+    ]);
+
+    mockMessageRepo.existsByChannelTimestampContent.mockResolvedValue(true);
+
+    await service.syncAll();
+
+    expect(mockMessageRepo.create).not.toHaveBeenCalled();
+  });
 });

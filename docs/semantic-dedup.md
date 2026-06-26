@@ -9,14 +9,14 @@ alert, and (potentially) duplicate calendar event. Phase 20 introduced a
 LLM, by comparing each incoming merged-group to recently-parsed messages via
 SHA-256 hash and Gemini embeddings.
 
-## Three layers, one pipeline
+## Four layers + one in-process safety net
 
 ```
 incoming messages
        │
        ▼
 ┌──────────────────────────────────┐
-│ Layer 1 — Message dedup (NEW)    │  ← Phase 20
+│ Layer 1 — Message dedup          │  ← Phase 20
 │ SHA-256 fast path, then          │
 │ embeddings ≥ 0.92 cosine         │
 │ Cost: 1 API call or 0 (hash hit) │
@@ -25,6 +25,14 @@ incoming messages
        ▼
 ┌──────────────────────────────────┐
 │ LLM batch parse                  │
+└──────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────┐
+│ Single-gathering collapse        │  ← Phase 23 patch
+│ (in-memory, no LLM, no DB)       │
+│ Same (title, date, location,     │
+│ description) → keep one          │
 └──────────────────────────────────┘
        │
        ▼
@@ -43,14 +51,24 @@ incoming messages
 └──────────────────────────────────┘
        │
        ▼
+┌──────────────────────────────────┐
+│ Layer 4 — Calendar overlap dedup │  ← Phase 23
+│ ±60min Google Calendar window,   │
+│ embeddings ≥ 0.88 cosine         │
+│ Cost: 1 calendar API + N embed   │
+└──────────────────────────────────┘
+       │
+       ▼
    create + approve
 ```
 
-| Layer | Stage | Cost | Verdict |
+| Stage | Where | Cost | Verdict |
 |-------|-------|------|---------|
 | 1 — Message dedup | Before LLM parse | 1 embedding call (or 0) | **Keep** — primary defense |
+| Single-gathering collapse | After LLM parse, in-memory | 0 | **Keep** — deterministic safety net for when the LLM violates its own single-gathering rule. Cannot fail-open like Layer 3. See *Single-gathering collapse* below. |
 | 2 — Exact event dedup | After parse | 1 DB lookup | **Keep** — catches LLM non-determinism / retries |
-| 3 — LLM event dedup | Pre-approval | Extra LLM call | **Provisional** — retire if hit rate < 5 % after 4 weeks |
+| 3 — LLM event dedup | Pre-approval | Extra LLM call | **Provisional** — retire if hit rate < 5 % after 4 weeks. Degrades silently to "treat as different" when Gemini quota is exhausted. |
+| 4 — Calendar overlap dedup | Pre-approval | 1 Google API + (1 + N) embed calls | **Provisional** — retire if hit rate < 2 % after 4 weeks. Catches events the user pre-added manually or synced from another source. |
 
 ## Threshold guidance
 
@@ -68,6 +86,37 @@ To re-tune on your own data, run `backend/scripts/dedup-eval.ts` against a
 labeled fixture (see `backend/test/fixtures/dedup-pairs.jsonl`). The script
 sweeps thresholds 0.80 – 0.99 and recommends the highest threshold meeting
 the precision floor.
+
+## Single-gathering collapse
+
+A single source message describing one gathering from multiple angles
+("arrive at 17:00, party 17:30–18:00") will sometimes cause the LLM to
+emit two `ParsedEvent` objects with the same `(title, date, location,
+description)` but different `time` values. The single-gathering rule in
+the prompt says this should never happen, but the LLM violates it under
+attention pressure. Layer 3 catches the same case after-the-fact via an
+LLM tiebreaker call — but Layer 3 fails open when Gemini quota is
+exhausted, in which case both events go to the approval channel.
+
+The in-memory collapse runs immediately after `validateEvents` inside
+`MessageParserService` and is **deterministic** — no LLM, no DB, cannot
+fail open. Grouping key:
+
+```
+norm(title) + date + norm(location) + norm(description)
+```
+
+where `norm()` is `trim().toLowerCase()`. Cancel/delay events bypass the
+collapse — their semantics differ from create events and they should
+never merge.
+
+When a group has more than one entry the kept event is the one with the
+richest time field, scored as `(has time ? 1 : 0) + (has endTime ? 1 : 0)`:
+prefer `time + endTime` over `time` over all-day. Ties resolve to the
+first-seen entry.
+
+This catches the specific failure mode where Layer 3 cannot. Layers 2 / 3
+stay as deeper safety nets for cross-batch and cross-sync collisions.
 
 ## Failure-mode → action
 
@@ -108,6 +157,7 @@ debug lines for cross-correlation.
 | Key | Meaning |
 |-----|---------|
 | `metric.event_dedup_llm_fires` | Cumulative count of Layer 3 hits |
+| `metric.calendar_dedup_fires` | Cumulative count of Layer 4 hits |
 | `metric.events_created_total` | Cumulative count of events created |
 
 Rate = `event_dedup_llm_fires / events_created_total`. Read both via

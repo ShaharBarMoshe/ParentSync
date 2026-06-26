@@ -32,6 +32,14 @@ export class SettingsService implements OnModuleInit {
     await this.seedDefaultIfMissing('dedup_debug_verbose', 'false');
     await this.seedDefaultIfMissing('metric.event_dedup_llm_fires', '0');
     await this.seedDefaultIfMissing('metric.events_created_total', '0');
+    await this.seedDefaultIfMissing('calendar_dedup_enabled', 'true');
+    await this.seedDefaultIfMissing('calendar_dedup_threshold', '0.88');
+    await this.seedDefaultIfMissing('metric.calendar_dedup_fires', '0');
+    // Phase 24: two-stage pipeline.
+    await this.seedDefaultIfMissing('classifier_enabled', 'true');
+    await this.seedDefaultIfMissing('metric.classifier_reject_total', '0');
+    // Phase 25: cross-channel out-of-band alerts.
+    await this.seedDefaultIfMissing('out_of_band_alerts_enabled', 'true');
 
     // Phase 21: purge stale OpenRouter keys — keep for 3 releases, then remove (Phase 21.6).
     await this.purgeStaleOpenRouterKeys();

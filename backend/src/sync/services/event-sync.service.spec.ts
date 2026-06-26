@@ -18,6 +18,7 @@ import { MessageSource } from '../../shared/enums/message-source.enum';
 import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 import { MessageDeduplicationService } from './message-deduplication.service';
+import { CalendarConflictDedupService } from './calendar-conflict-dedup.service';
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
   return {
@@ -47,6 +48,7 @@ describe('EventSyncService', () => {
   let eventDismissalService: any;
   let appErrorEmitter: any;
   let dedupService: any;
+  let calendarConflictDedup: any;
   let queryRunner: any;
 
   beforeEach(async () => {
@@ -101,6 +103,10 @@ describe('EventSyncService', () => {
         contentHash: 'h',
         embedding: null,
       }),
+    };
+
+    calendarConflictDedup = {
+      findConflict: jest.fn().mockResolvedValue(null),
     };
 
     childService = {
@@ -164,6 +170,7 @@ describe('EventSyncService', () => {
         { provide: EventDismissalService, useValue: eventDismissalService },
         { provide: AppErrorEmitterService, useValue: appErrorEmitter },
         { provide: MessageDeduplicationService, useValue: dedupService },
+        { provide: CalendarConflictDedupService, useValue: calendarConflictDedup },
       ],
     }).compile();
 
@@ -866,7 +873,7 @@ describe('EventSyncService', () => {
       expect(approvalService.sendForApproval).toHaveBeenCalledTimes(1);
     });
 
-    it('should send today date-only task for approval (not yet past end of day)', async () => {
+    it('should silently drop today events — not create them, not send for approval', async () => {
       jest.useFakeTimers({ now: new Date('2026-04-04T08:00:00') });
 
       const todayMessage = makeMessage({
@@ -882,8 +889,183 @@ describe('EventSyncService', () => {
 
       await service.syncEvents();
 
-      // Date-only tasks use 23:59:59 as the cutoff, so same-day is still future
+      // Today's events are dropped before creation — nothing saved, nothing sent
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('calendar conflict dedup (Layer 4)', () => {
+    const setupOneFutureEvent = () => {
+      jest.useFakeTimers({ now: new Date('2026-06-14T08:00:00') });
+      messageRepository.findUnparsed.mockResolvedValue([
+        makeMessage({
+          id: 'msg-future',
+          content: 'אסיפת הורים מחר ב-19:00',
+          timestamp: new Date('2026-06-14T07:00:00'),
+        }),
+      ]);
+      childService.findById.mockResolvedValue(null);
+      messageParserService.parseMessageBatch.mockResolvedValue(
+        new Map([
+          ['0', [{ title: 'אסיפת הורים', date: '2026-06-15', time: '19:00', description: '', location: '' }]],
+        ]),
+      );
+      eventRepository.findSameSlotForChild.mockResolvedValue([]);
+      eventRepository.findSameDayForChild.mockResolvedValue([]);
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+    };
+
+    it('suppresses approval when calendar dedup finds a semantic match', async () => {
+      setupOneFutureEvent();
+      calendarConflictDedup.findConflict.mockResolvedValue({
+        googleEventId: 'g-existing-123',
+        summary: 'אסיפת הורים בכיתה',
+        similarity: 0.94,
+      });
+
+      await service.syncEvents();
+
+      expect(calendarConflictDedup.findConflict).toHaveBeenCalledTimes(1);
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+      expect(eventRepository.update).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          approvalStatus: 'rejected',
+          googleEventId: 'g-existing-123',
+          syncedToGoogle: true,
+        }),
+      );
+
+      jest.useRealTimers();
+    });
+
+    it('sends event for approval when calendar dedup returns no match', async () => {
+      setupOneFutureEvent();
+      calendarConflictDedup.findConflict.mockResolvedValue(null);
+
+      await service.syncEvents();
+
+      expect(calendarConflictDedup.findConflict).toHaveBeenCalledTimes(1);
       expect(approvalService.sendForApproval).toHaveBeenCalledTimes(1);
+
+      jest.useRealTimers();
+    });
+
+    it('increments metric.calendar_dedup_fires on a hit', async () => {
+      setupOneFutureEvent();
+      calendarConflictDedup.findConflict.mockResolvedValue({
+        googleEventId: 'g-1',
+        summary: 'matched',
+        similarity: 0.92,
+      });
+      settingsService.findByKey.mockImplementation((key: string) => {
+        if (key === 'metric.calendar_dedup_fires') {
+          return Promise.resolve({ value: '7' });
+        }
+        return Promise.reject(new Error('Not found'));
+      });
+
+      await service.syncEvents();
+
+      expect(settingsService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'metric.calendar_dedup_fires',
+          value: '8',
+        }),
+      );
+
+      jest.useRealTimers();
+    });
+
+    it('falls through to approval when findConflict throws (fail-open at the boundary)', async () => {
+      setupOneFutureEvent();
+      calendarConflictDedup.findConflict.mockRejectedValue(
+        new Error('unexpected service failure'),
+      );
+
+      await service.syncEvents();
+
+      expect(approvalService.sendForApproval).toHaveBeenCalledTimes(1);
+
+      jest.useRealTimers();
+    });
+
+    it('runs AFTER Layer 3 (LLM event dedup) — skipped when Layer 3 already suppressed', async () => {
+      setupOneFutureEvent();
+      // Layer 3 fires: same-day sibling, LLM says identical
+      const sibling = {
+        id: 'sibling-1',
+        title: 'אסיפת הורים בכיתה',
+        date: '2026-06-15',
+        time: '19:00',
+        childId: undefined,
+      };
+      eventRepository.findSameSlotForChild.mockResolvedValue([sibling]);
+      messageParserService.eventsAreIdentical.mockResolvedValue(true);
+
+      await service.syncEvents();
+
+      expect(calendarConflictDedup.findConflict).not.toHaveBeenCalled();
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+
+      jest.useRealTimers();
+    });
+
+    it('regression: today events are still dropped BEFORE the calendar dedup check', async () => {
+      jest.useFakeTimers({ now: new Date('2026-06-14T08:00:00') });
+      messageRepository.findUnparsed.mockResolvedValue([
+        makeMessage({
+          id: 'msg-today',
+          content: 'אירוע היום ב-15:00',
+          timestamp: new Date('2026-06-14T07:00:00'),
+        }),
+      ]);
+      childService.findById.mockResolvedValue(null);
+      messageParserService.parseMessageBatch.mockResolvedValue(
+        new Map([
+          ['0', [{ title: 'אירוע', date: '2026-06-14', time: '15:00', description: '', location: '' }]],
+        ]),
+      );
+      approvalService.isApprovalEnabled.mockResolvedValue(true);
+
+      await service.syncEvents();
+
+      expect(calendarConflictDedup.findConflict).not.toHaveBeenCalled();
+      expect(approvalService.sendForApproval).not.toHaveBeenCalled();
+
+      jest.useRealTimers();
+    });
+
+    it('propagates endTime from ParsedEvent onto the saved CalendarEventEntity', async () => {
+      jest.useFakeTimers({ now: new Date('2026-06-14T08:00:00') });
+      messageRepository.findUnparsed.mockResolvedValue([
+        makeMessage({
+          id: 'msg-range',
+          content: 'אסיפה מ-19:00 עד 20:30',
+          timestamp: new Date('2026-06-14T07:00:00'),
+        }),
+      ]);
+      childService.findById.mockResolvedValue(null);
+      messageParserService.parseMessageBatch.mockResolvedValue(
+        new Map([
+          ['0', [{ title: 'אסיפה', date: '2026-06-15', time: '19:00', endTime: '20:30', description: '', location: '' }]],
+        ]),
+      );
+      approvalService.isApprovalEnabled.mockResolvedValue(false);
+
+      await service.syncEvents();
+
+      const savedCall = queryRunner.manager.save.mock.calls.find(
+        ([entity]: [any]) => entity?.title === 'אסיפה',
+      );
+      expect(savedCall).toBeDefined();
+      expect(savedCall[0]).toMatchObject({
+        title: 'אסיפה',
+        time: '19:00',
+        endTime: '20:30',
+      });
+
+      jest.useRealTimers();
     });
   });
 

@@ -35,17 +35,21 @@ export class GoogleCalendarService implements IGoogleCalendarService {
 
     if (event.time) {
       // Timed event
-      const startDateTime = `${event.date}T${event.time}:00`;
       resource.start = {
-        dateTime: startDateTime,
+        dateTime: `${event.date}T${event.time}:00`,
         timeZone: 'Asia/Jerusalem',
       };
-      // Default 1 hour duration
-      const [hours, minutes] = event.time.split(':').map(Number);
-      const endHours = hours + 1;
-      const endTime = `${String(endHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+      let endTimeStr: string;
+      if (event.endTime) {
+        endTimeStr = event.endTime;
+      } else {
+        // Default 1 hour duration
+        const [hours, minutes] = event.time.split(':').map(Number);
+        const endHours = hours + 1;
+        endTimeStr = `${String(endHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+      }
       resource.end = {
-        dateTime: `${event.date}T${endTime}:00`,
+        dateTime: `${event.date}T${endTimeStr}:00`,
         timeZone: 'Asia/Jerusalem',
       };
     } else {

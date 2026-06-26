@@ -126,10 +126,29 @@ export class ApprovalService {
       return;
     }
 
-    // Check regular event approval first
-    const event = await this.eventRepository.findByApprovalMessageId(
-      payload.msgId,
+    this.logger.log(
+      `Reaction received: "${payload.reaction}" on msgId=${payload.msgId} from ${payload.senderId}`,
     );
+
+    // Check regular event approval first.
+    // WhatsApp-web.js may serialize sender IDs with @lid (linked-device) or
+    // @c.us depending on the client version; try both to avoid silent mismatches.
+    const candidateIds = [payload.msgId];
+    if (payload.msgId.endsWith('@lid')) {
+      candidateIds.push(payload.msgId.replace(/@lid$/, '@c.us'));
+    } else if (payload.msgId.endsWith('@c.us')) {
+      candidateIds.push(payload.msgId.replace(/@c\.us$/, '@lid'));
+    }
+
+    let event: CalendarEventEntity | null = null;
+    for (const id of candidateIds) {
+      event = await this.eventRepository.findByApprovalMessageId(id);
+      if (event) break;
+    }
+
+    if (!event) {
+      this.logger.warn(`No event found for approvalMessageId=${payload.msgId} (tried: ${candidateIds.join(', ')})`);
+    }
     if (event) {
       // Empty reaction string means the user removed their reaction in
       // WhatsApp — undo whatever state it produced.
@@ -356,12 +375,15 @@ export class ApprovalService {
     event: CalendarEventEntity,
     sourceChannel: string,
   ): string {
+    const timeLine = event.time
+      ? (event.endTime ? `${event.time} – ${event.endTime}` : event.time)
+      : 'All day';
     const lines = [
       `📅 New Event for Approval`,
       ``,
       `Title: ${event.title}`,
       `Date: ${event.date}`,
-      `Time: ${event.time || 'All day'}`,
+      `Time: ${timeLine}`,
     ];
 
     if (event.location) {

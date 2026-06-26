@@ -30,6 +30,9 @@ export class CalendarEventEntity {
   time: string;
 
   @Column({ type: 'varchar', nullable: true })
+  endTime: string;
+
+  @Column({ type: 'varchar', nullable: true })
   location: string;
 
   @Column({ type: 'varchar', nullable: true, enum: MessageSource })

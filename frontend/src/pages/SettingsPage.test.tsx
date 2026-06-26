@@ -32,6 +32,11 @@ vi.mock('../services/api', () => ({
     save: vi.fn(),
     reset: vi.fn(),
   },
+  llmClassifierPromptApi: {
+    get: vi.fn().mockResolvedValue({ key: '', value: '', description: '' }),
+    save: vi.fn(),
+    reset: vi.fn(),
+  },
   negativeExamplesApi: {
     list: vi.fn().mockResolvedValue({ items: [] }),
     remove: vi.fn(),

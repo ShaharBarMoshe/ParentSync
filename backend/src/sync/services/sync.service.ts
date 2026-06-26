@@ -433,15 +433,33 @@ export class SyncService {
     let totalMessages = 0;
     const gmailMessages: { sender: string; content: string; timestamp: string }[] = [];
 
+    // Pre-compute cutoffs per label so storing an email doesn't shift
+    // the cutoff for subsequent emails in the same batch (the old code
+    // called getLastTimestamp inside the loop, which meant only the
+    // newest email per label was ever stored).
+    const cutoffByLabel = new Map<string, Date>();
     for (const email of fetchedEmails) {
-      // Get the timestamp of the last scanned email for this label
-      const lastTimestamp =
-        await this.messageRepository.getLastTimestamp(email.label, child.id);
-      const cutoff = lastTimestamp ?? since;
+      if (!cutoffByLabel.has(email.label)) {
+        const lastTimestamp =
+          await this.messageRepository.getLastTimestamp(email.label, child.id);
+        cutoffByLabel.set(email.label, lastTimestamp ?? since);
+      }
+    }
 
-      // Only store emails newer than the last scanned email
+    for (const email of fetchedEmails) {
+      const cutoff = cutoffByLabel.get(email.label)!;
+
       if (email.timestamp > cutoff) {
         const content = `${email.subject}\n\n${email.body}`;
+
+        const isDuplicate = await this.messageRepository.existsByChannelTimestampContent(
+          email.label,
+          child.id,
+          email.timestamp,
+          content,
+        );
+        if (isDuplicate) continue;
+
         await this.messageRepository.create({
           source: MessageSource.EMAIL,
           content,

@@ -22,10 +22,10 @@ ParentSync monitors your WhatsApp parent groups and Gmail for school-related mes
 
 The AI never gets the last word — **you do**, in two complementary ways:
 
-1. **React to its suggestions.** Every extracted event is sent to your approval channel (or shown on the Dashboard with **Approve** / **Reject** buttons). React 👍 to publish, 😢 to reject. A 😢 also captures the source message as a *learned exclusion* — the AI sees those on every parse and learns to skip similar messages. Take back a reaction at any time to undo it. See [Event Approval](#event-approval) and [Learned Exclusions](#learned-exclusions).
-2. **Edit the prompt directly.** The system prompt that tells the LLM what counts as an event lives in **Settings → AI Extraction Prompt**. It's a regular textarea — change wording, add examples, or hit **Reset to default** if an edit hurts accuracy. See [AI Extraction Prompt](#ai-extraction-prompt) and the design doc at [Prompt Customization](PROMPT-CUSTOMIZATION.md).
+1. **React to its suggestions.** Every extracted event is sent to your approval channel (or shown on the Dashboard with **Approve** / **Reject** buttons). React 👍 to publish, 😢 to reject. A 😢 drops the event from your calendar (with one-tap undo); the rejection is logged in **Past Rejections** for your reference but does not directly retrain the AI. See [Event Approval](#event-approval) and [Past Rejections](#past-rejections).
+2. **Edit the prompts directly.** Two prompts shape the AI: the **Classifier** (a short YES/NO filter that decides whether each message is worth parsing) and the **Extractor** (the rules for pulling out the structured fields when the classifier says YES). Both live in **Settings → AI Classifier Prompt** and **Settings → AI Extraction Prompt**. Edit either — typically the classifier is where you tune *which* messages get through, and the extractor is where you tune *how* events get parsed. See [AI Prompts](#ai-prompts) and the design doc at [Prompt Customization](PROMPT-CUSTOMIZATION.md).
 
-Together: the prompt sets the rules, your reactions tune the edge cases. No retraining, no waiting — changes take effect on the next sync.
+Together: the prompts set the rules, your reactions tell you what to fix in them. No retraining, no waiting — changes take effect on the next sync.
 
 ## Navigation
 
@@ -72,7 +72,7 @@ Events whose date falls between today and seven days ahead. Each row shows:
 For **Pending** events, two inline buttons let you decide without leaving the app:
 
 - **Approve** — same as 👍 in WhatsApp: marks approved and syncs to Google Calendar.
-- **Reject** — same as 😢: marks rejected and captures the source message as a "learned exclusion" so the AI stops repeating the mistake (see [Learned Exclusions](#learned-exclusions) below).
+- **Reject** — same as 😢: marks rejected and logs the source as a [Past Rejection](#past-rejections) for your reference (no longer fed back to the AI directly — edit the prompts instead).
 
 Either action takes effect immediately — the row updates without waiting for the next sync.
 
@@ -156,45 +156,58 @@ Optional. Enter a WhatsApp group name. New events will be sent to that group wit
 | Reaction | Effect |
 |---|---|
 | 👍 | Approve — event syncs to Google Calendar |
-| 😢 | Reject — event is dropped, source message is captured as a [learned exclusion](#learned-exclusions) |
+| 😢 | Reject — event is dropped, source message is logged in [Past Rejections](#past-rejections) for your reference |
 | *removed* (👍 → no reaction) | Undo approve — pulls the event from Google Calendar and flips it back to Pending |
-| *removed* (😢 → no reaction) | Undo reject — flips back to Pending and clears the matching learned exclusion |
+| *removed* (😢 → no reaction) | Undo reject — flips back to Pending and removes the matching Past Rejection log row |
 
 You can also approve/reject directly from the [Dashboard](#upcoming-events-7-days) without opening WhatsApp.
 
-**Duplicate suppression.** Three layers, smallest to largest:
+**Duplicate suppression.** Four layers + one in-memory safety net, smallest to largest:
 
 1. **Message-level semantic dedup.** Before the LLM ever sees an incoming forward, ParentSync embeds it and compares against recently-parsed messages. Byte-identical forwards short-circuit on a SHA-256 hash; near-identical paraphrases (similarity ≥ 0.92 by default) are caught by Gemini embeddings. This is the layer you feel — fewer approval alerts when the same flyer ricochets across multiple parent groups.
-2. **Exact event dedup.** After parsing, the backend skips creating a row that already exists with the same (title, date, time, child).
-3. **LLM event dedup.** When two events land in the same date+time slot for the same child but with different titles, the backend asks the LLM "are these the same gathering?" — if yes, the new event is silently rejected.
+2. **Single-gathering collapse.** Right after the LLM parses a message, if it returned two events that share the same title, date, location, and description but with different times ("arrive at 17:00, party 17:30–18:00"), the backend keeps only one — preferring the entry with both a start and end time. Deterministic, runs before any approval message is sent, never asks the LLM a follow-up.
+3. **Exact event dedup.** After parsing, the backend skips creating a row that already exists with the same (title, date, time, child).
+4. **LLM event dedup.** When two events land in the same date+time slot for the same child but with different titles, the backend asks the LLM "are these the same gathering?" — if yes, the new event is silently rejected.
+5. **Calendar overlap dedup.** Before sending an event for approval, ParentSync looks at your Google Calendar for entries within ±60 minutes of the proposed time. If the titles match semantically (similarity ≥ 0.88 by default), the local event is silently linked to the existing calendar entry instead of pinging the approval channel. This catches events you added to the calendar manually, or events synced from another source — none of the first four layers can see those.
 
-You can tune the message-level layer in **Settings → Deduplication** (see below). See `docs/semantic-dedup.md` for the design and threshold guidance.
+You can tune the message-level layer and the calendar overlap layer independently in **Settings → Deduplication** (see below). See `docs/semantic-dedup.md` for the design and threshold guidance.
 
 Leave the channel empty to sync events directly to Google Calendar without approval.
 
-### AI Extraction Prompt
-The system prompt the LLM uses to find events in your messages is fully editable. The textarea shows the active prompt — your customization, or the built-in default if you haven't changed it.
+### AI Prompts
+
+ParentSync uses a **two-stage parsing pipeline** (as of v1.4.0). Both stages are short editable system prompts you can tune from Settings.
+
+**Stage 1 — Classifier.** A tiny YES/NO prompt. For each incoming message, the classifier decides whether it describes a calendar event at all. Most messages (chit-chat, absence notices, ride requests, lost-and-found) get a NO and never reach the extractor — that saves ~70% of LLM cost over the old single-stage flow. Edit this prompt when the AI is letting through messages it shouldn't (tighten the NO section) or filtering out things you wanted (loosen the YES section).
+
+**Stage 2 — Extractor.** Only runs when the classifier said YES. Pulls out the structured fields (title, date, time, end time, location). Edit this prompt when extracted events have the wrong shape — wrong date format, missing end times, redundant titles.
+
+Both editors share the same UI:
 
 - **Save** writes a new prompt; effective on the next sync.
-- **Reset to default** restores the original (only enabled when you have a custom prompt).
+- **Reset to default** restores the shipped version (only enabled when you have a custom prompt).
 - **View default** expands a read-only view of the original — useful for cribbing examples.
 
-The default is tuned for Hebrew + English with dozens of worked examples. **Edits can hurt accuracy** — when in doubt, add a new section or example rather than rewriting rules. See [Prompt Customization](PROMPT-CUSTOMIZATION.md) for the full design.
+Defaults are tuned for Hebrew + English. **Edits can hurt accuracy** — when in doubt, add a new bullet or example rather than rewriting rules. See [Prompt Customization](PROMPT-CUSTOMIZATION.md) for the full design.
 
-### Learned Exclusions
-Every 😢 reaction captures the source message + the wrongly-extracted title as a "learned exclusion." On every parse, the most recent 50 are appended to the prompt as a "do NOT create events for messages similar to these" block.
+If you want to revert to the old single-stage behaviour entirely, untick **"Run the classifier before the extractor"** in **Settings → Deduplication**.
 
-The Settings panel shows the current pool: channel, original message (truncated to 200 chars with expand), the wrong title, when it was captured, and a per-row remove button. **Clear all** wipes the pool.
+### Past Rejections
 
-If you regret a 😢 reaction, you have two ways to undo:
-1. In WhatsApp, take back your 😢 — the exclusion is removed automatically and the event flips back to Pending.
-2. In Settings, click the X on the exclusion row.
+Historical record of events you rejected with 😢. As of v1.4.0 these no longer affect future parses — they're kept here only for your reference and analytics. If the AI keeps making the same mistake, edit the **Classifier Prompt** (to filter the message out) or the **Extraction Prompt** (to extract it differently) directly.
 
-Read [Prompt Customization](PROMPT-CUSTOMIZATION.md) for cap, token cost, and cache behavior.
+The Settings panel shows: channel, original message (truncated to 200 chars with expand), the wrong title, when it was captured, and a per-row remove button. **Clear all** wipes the log — it's informational only.
+
+If you regret a 😢 reaction:
+1. In WhatsApp, take back your 😢 — the event flips back to Pending.
+2. In Settings, click the X on the row to remove it from the log.
 
 ### Deduplication
 - **Skip duplicate messages** — toggles the message-level dedup (`dedup_enabled`). Default on. When off, every forwarded message goes to the LLM (the post-parse layers still apply).
 - **Similarity threshold** — slider from 0.80 → 0.99 (`dedup_threshold`). Lower = more aggressive, higher = fewer skipped. Default **0.92** catches most forwards without dropping real new events.
+- **Skip events already on calendar** — toggles the calendar overlap dedup (`calendar_dedup_enabled`). Default on. When off, every newly-parsed event goes to the approval channel even if a matching entry already exists on your Google Calendar.
+- **Calendar match threshold** — slider from 0.80 → 0.99 (`calendar_dedup_threshold`). Default **0.88**, lower than the message threshold because calendar titles are shorter and noisier. Lower = more aggressive linking, higher = fewer matches.
+- **Run the classifier before the extractor** — toggles the stage-1 filter (`classifier_enabled`). Default on. Disable to revert to the old single-stage parsing flow (the extractor will see every message, costing more LLM tokens).
 - Pointer: see [Semantic Deduplication](semantic-dedup.md) for the design, threshold guidance, and failure-mode → action table.
 
 ### Save & Reset

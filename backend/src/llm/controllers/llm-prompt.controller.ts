@@ -10,8 +10,14 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { IsString, MaxLength, MinLength } from 'class-validator';
 import { SettingsService } from '../../settings/settings.service';
-import { LLM_SYSTEM_PROMPT_KEY } from '../../settings/constants/setting-keys';
+import {
+  LLM_SYSTEM_PROMPT_KEY,
+  LLM_SYSTEM_PROMPT_IS_CUSTOM_KEY,
+  LLM_CLASSIFIER_PROMPT_KEY,
+  LLM_CLASSIFIER_PROMPT_IS_CUSTOM_KEY,
+} from '../../settings/constants/setting-keys';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/default-system-prompt';
+import { DEFAULT_CLASSIFIER_PROMPT } from '../services/default-classifier-prompt';
 
 class UpdatePromptDto {
   @IsString()
@@ -33,48 +39,67 @@ export class LlmPromptController {
   constructor(private readonly settingsService: SettingsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get the active LLM extraction prompt' })
+  @ApiOperation({ summary: 'Get the active LLM extractor prompt' })
   async get(): Promise<PromptResponse> {
-    let value = DEFAULT_SYSTEM_PROMPT;
-    let isCustom = false;
-    try {
-      const setting = await this.settingsService.findByKey(LLM_SYSTEM_PROMPT_KEY);
-      if (setting?.value?.trim()) {
-        value = setting.value;
-        isCustom = true;
-      }
-    } catch {
-      // setting not found — return default
-    }
-    return { value, default: DEFAULT_SYSTEM_PROMPT, isCustom };
+    return this.getPrompt(LLM_SYSTEM_PROMPT_KEY, LLM_SYSTEM_PROMPT_IS_CUSTOM_KEY, DEFAULT_SYSTEM_PROMPT);
   }
 
   @Put()
-  @ApiOperation({ summary: 'Override the LLM extraction prompt' })
+  @ApiOperation({ summary: 'Override the LLM extractor prompt' })
   async update(@Body() dto: UpdatePromptDto): Promise<PromptResponse> {
-    const trimmed = dto.value.trim();
-    if (!trimmed) {
-      throw new BadRequestException('Prompt cannot be empty.');
-    }
-    await this.settingsService.create({
-      key: LLM_SYSTEM_PROMPT_KEY,
-      value: trimmed,
-    });
-    return { value: trimmed, default: DEFAULT_SYSTEM_PROMPT, isCustom: true };
+    return this.savePrompt(LLM_SYSTEM_PROMPT_KEY, LLM_SYSTEM_PROMPT_IS_CUSTOM_KEY, DEFAULT_SYSTEM_PROMPT, dto.value);
   }
 
   @Delete()
-  @ApiOperation({ summary: 'Reset to the default LLM extraction prompt' })
+  @ApiOperation({ summary: 'Reset the LLM extractor prompt to default' })
   async reset(): Promise<PromptResponse> {
+    return this.resetPrompt(LLM_SYSTEM_PROMPT_KEY, LLM_SYSTEM_PROMPT_IS_CUSTOM_KEY, DEFAULT_SYSTEM_PROMPT);
+  }
+
+  @Get('classifier')
+  @ApiOperation({ summary: 'Get the active LLM classifier prompt (stage 1)' })
+  async getClassifier(): Promise<PromptResponse> {
+    return this.getPrompt(LLM_CLASSIFIER_PROMPT_KEY, LLM_CLASSIFIER_PROMPT_IS_CUSTOM_KEY, DEFAULT_CLASSIFIER_PROMPT);
+  }
+
+  @Put('classifier')
+  @ApiOperation({ summary: 'Override the LLM classifier prompt' })
+  async updateClassifier(@Body() dto: UpdatePromptDto): Promise<PromptResponse> {
+    return this.savePrompt(LLM_CLASSIFIER_PROMPT_KEY, LLM_CLASSIFIER_PROMPT_IS_CUSTOM_KEY, DEFAULT_CLASSIFIER_PROMPT, dto.value);
+  }
+
+  @Delete('classifier')
+  @ApiOperation({ summary: 'Reset the LLM classifier prompt to default' })
+  async resetClassifier(): Promise<PromptResponse> {
+    return this.resetPrompt(LLM_CLASSIFIER_PROMPT_KEY, LLM_CLASSIFIER_PROMPT_IS_CUSTOM_KEY, DEFAULT_CLASSIFIER_PROMPT);
+  }
+
+  private async getPrompt(valueKey: string, customKey: string, fallback: string): Promise<PromptResponse> {
+    let value = fallback;
+    const isCustomSetting = await this.settingsService.findByKey(customKey).catch(() => null);
+    const isCustom = isCustomSetting?.value === 'true';
     try {
-      await this.settingsService.delete(LLM_SYSTEM_PROMPT_KEY);
+      const setting = await this.settingsService.findByKey(valueKey);
+      if (setting?.value?.trim()) value = setting.value;
     } catch {
-      // already absent — fine
+      /* not found — return default */
     }
-    return {
-      value: DEFAULT_SYSTEM_PROMPT,
-      default: DEFAULT_SYSTEM_PROMPT,
-      isCustom: false,
-    };
+    return { value, default: fallback, isCustom };
+  }
+
+  private async savePrompt(valueKey: string, customKey: string, fallback: string, raw: string): Promise<PromptResponse> {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Prompt cannot be empty.');
+    }
+    await this.settingsService.create({ key: valueKey, value: trimmed });
+    await this.settingsService.create({ key: customKey, value: 'true' });
+    return { value: trimmed, default: fallback, isCustom: true };
+  }
+
+  private async resetPrompt(valueKey: string, customKey: string, fallback: string): Promise<PromptResponse> {
+    await this.settingsService.create({ key: valueKey, value: fallback });
+    await this.settingsService.create({ key: customKey, value: 'false' });
+    return { value: fallback, default: fallback, isCustom: false };
   }
 }

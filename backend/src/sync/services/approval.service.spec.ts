@@ -197,6 +197,32 @@ describe('ApprovalService', () => {
         }),
       );
     });
+
+    it('renders Time as start – end with en-dash when endTime is present', async () => {
+      const withEndTime = { ...mockEvent, time: '16:00', endTime: '17:30' };
+      await service.sendForApproval(withEndTime as any);
+
+      const sentText = whatsappService.sendMessage.mock.calls[0][1];
+      expect(sentText).toContain('Time: 16:00 – 17:30');
+    });
+
+    it('renders Time as start only when endTime is absent', async () => {
+      const startOnly = { ...mockEvent, time: '16:00', endTime: null };
+      await service.sendForApproval(startOnly as any);
+
+      const sentText = whatsappService.sendMessage.mock.calls[0][1];
+      expect(sentText).toContain('Time: 16:00');
+      expect(sentText).not.toContain('–');
+    });
+
+    it('renders Time as "All day" when there is no time at all (endTime ignored)', async () => {
+      const allDay = { ...mockEvent, time: null, endTime: '14:00' };
+      await service.sendForApproval(allDay as any);
+
+      const sentText = whatsappService.sendMessage.mock.calls[0][1];
+      expect(sentText).toContain('Time: All day');
+      expect(sentText).not.toContain('–');
+    });
   });
 
   describe('rejectEvent — negative-example capture', () => {

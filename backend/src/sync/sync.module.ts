@@ -10,6 +10,8 @@ import { ApprovalService } from './services/approval.service';
 import { EventDismissalService } from './services/event-dismissal.service';
 import { EventReminderService } from './services/event-reminder.service';
 import { MessageDeduplicationService } from './services/message-deduplication.service';
+import { CalendarConflictDedupService } from './services/calendar-conflict-dedup.service';
+import { OutOfBandAlertService } from './services/out-of-band-alert.service';
 import { DbHygieneService } from './services/db-hygiene.service';
 import { SyncLockService } from './services/sync-lock.service';
 import { SyncController } from './controllers/sync.controller';
@@ -48,7 +50,9 @@ import { SettingsModule } from '../settings/settings.module';
     EventDismissalService,
     EventReminderService,
     MessageDeduplicationService,
+    CalendarConflictDedupService,
     DbHygieneService,
+    OutOfBandAlertService,
   ],
   exports: [
     SyncService,
@@ -57,6 +61,7 @@ import { SettingsModule } from '../settings/settings.module';
     EventDismissalService,
     EventReminderService,
     MessageDeduplicationService,
+    CalendarConflictDedupService,
     DbHygieneService,
   ],
 })

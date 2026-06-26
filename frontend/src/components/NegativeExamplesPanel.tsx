@@ -54,7 +54,7 @@ export default function NegativeExamplesPanel() {
   async function handleClear() {
     if (
       !confirm(
-        `Clear all ${items.length} learned exclusions? The AI will lose this feedback and may re-create events you've already rejected.`,
+        `Clear all ${items.length} past rejections from the historical log? This is informational only — clearing it does not affect the AI's future behaviour.`,
       )
     ) {
       return;
@@ -73,10 +73,12 @@ export default function NegativeExamplesPanel() {
   return (
     <div className="settings-section">
       <h3 className="settings-section-title">
-        <Icon name="brain" size={16} /> Learned Exclusions
+        <Icon name="brain" size={16} /> Past Rejections
       </h3>
       <p className="settings-section-hint">
-        Messages you've rejected with 😢. The AI sees these on every parse and learns to skip similar messages.
+        Historical record of events you rejected with 😢. As of v1.4.0 these no longer affect future parses —
+        they're kept here only for your reference. If the AI keeps making the same mistake, edit the
+        Classifier Prompt's NO section above (or the Extraction Prompt below) directly.
       </p>
 
       {error && (
@@ -100,7 +102,7 @@ export default function NegativeExamplesPanel() {
         </p>
       ) : items.length === 0 ? (
         <p className="form-hint">
-          No exclusions yet — react with 😢 on an event in the WhatsApp approval channel to teach ParentSync to skip similar messages.
+          No rejections logged yet — 😢 reactions in the approval channel show up here for your reference.
         </p>
       ) : (
         <>

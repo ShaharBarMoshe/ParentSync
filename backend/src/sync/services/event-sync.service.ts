@@ -24,6 +24,10 @@ import {
   MessageDeduplicationService,
   DedupResult,
 } from './message-deduplication.service';
+import {
+  CalendarConflictDedupService,
+  CalendarConflictMatch,
+} from './calendar-conflict-dedup.service';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
@@ -51,6 +55,7 @@ export class EventSyncService {
     private readonly eventDismissalService: EventDismissalService,
     private readonly appErrorEmitter: AppErrorEmitterService,
     private readonly dedupService: MessageDeduplicationService,
+    private readonly calendarConflictDedup: CalendarConflictDedupService,
   ) {}
 
   async syncSingleEventToGoogle(event: CalendarEventEntity): Promise<void> {
@@ -232,6 +237,9 @@ export class EventSyncService {
     }
 
     const approvalEnabled = await this.approvalService.isApprovalEnabled();
+    // Fetched once up-front so the per-event calendar-conflict check (Layer 4)
+    // can reuse it. Step 2 below redeclares this in its own scope.
+    const calendarIdForDedup = await this.getCalendarId();
 
     // Process each fresh group's parsed events
     for (let i = 0; i < freshGroups.length; i++) {
@@ -266,14 +274,10 @@ export class EventSyncService {
         // Send newly created events for approval if enabled (skip past + today)
         if (approvalEnabled) {
           const now = new Date();
-          const today = now.toISOString().split('T')[0];
           for (const savedEvent of result.savedEvents) {
-            if (
-            this.isEventInPast(savedEvent, now) ||
-            (savedEvent.date === today && !!savedEvent.time)
-          ) {
+            if (this.isEventInPast(savedEvent, now)) {
               this.logger.log(
-                `Skipping approval for same-day/past event "${savedEvent.title}" (${savedEvent.date}${savedEvent.time ? ' ' + savedEvent.time : ''}) — auto-approving`,
+                `Skipping approval for past event "${savedEvent.title}" (${savedEvent.date}${savedEvent.time ? ' ' + savedEvent.time : ''}) — auto-approving`,
               );
               await this.eventRepository.update(savedEvent.id, {
                 approvalStatus: ApprovalStatus.NONE,
@@ -294,6 +298,34 @@ export class EventSyncService {
               await this.eventRepository.update(savedEvent.id, {
                 approvalStatus: ApprovalStatus.REJECTED,
               });
+              continue;
+            }
+
+            // Layer 4 dedup: check the user's Google Calendar for a
+            // semantically matching event within ±60min. Catches entries
+            // the user added manually or that came from another source.
+            // Fail-open: the service returns null on any error.
+            let calendarConflict: CalendarConflictMatch | null = null;
+            try {
+              calendarConflict = await this.calendarConflictDedup.findConflict(
+                savedEvent,
+                calendarIdForDedup,
+              );
+            } catch (error) {
+              this.logger.warn(
+                `Calendar conflict check threw (proceeding with approval): ${error.message}`,
+              );
+            }
+            if (calendarConflict) {
+              this.logger.log(
+                `Calendar dedup fired: "${savedEvent.title}" matches existing "${calendarConflict.summary}" (similarity=${calendarConflict.similarity.toFixed(3)})`,
+              );
+              await this.eventRepository.update(savedEvent.id, {
+                approvalStatus: ApprovalStatus.REJECTED,
+                googleEventId: calendarConflict.googleEventId,
+                syncedToGoogle: true,
+              });
+              await this.incrementMetric('metric.calendar_dedup_fires');
               continue;
             }
 
@@ -513,12 +545,13 @@ export class EventSyncService {
       const firstMessage = group[0];
 
       const now = new Date();
+      const today = now.toISOString().split('T')[0];
 
       for (const parsed of parsedEvents) {
-        // Skip events with dates in the past
-        if (parsed.date && this.isDateInPast(parsed.date, parsed.time, now)) {
+        // Skip events for today or in the past — too late to act on them
+        if (parsed.date && (parsed.date === today || this.isDateInPast(parsed.date, parsed.time, now))) {
           this.logger.log(
-            `Skipping past event "${parsed.title}" (${parsed.date}${parsed.time ? ' ' + parsed.time : ''})`,
+            `Skipping ${parsed.date === today ? 'today' : 'past'} event "${parsed.title}" (${parsed.date}${parsed.time ? ' ' + parsed.time : ''})`,
           );
           continue;
         }
@@ -546,6 +579,7 @@ export class EventSyncService {
           description: parsed.description,
           date: parsed.date,
           time: parsed.time,
+          endTime: parsed.endTime,
           location: parsed.location,
           source: firstMessage.source,
           sourceId: firstMessage.id,

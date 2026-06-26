@@ -21,6 +21,8 @@
     "pretest:e2e": "npm rebuild better-sqlite3 --build-from-source 2>/dev/null || true",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:stats": "ts-node -r tsconfig-paths/register scripts/db-stats.ts",
+    "eval:prompt:build": "ts-node -r tsconfig-paths/register scripts/build-prompt-eval.ts",
+    "eval:prompt": "ts-node -r tsconfig-paths/register scripts/prompt-eval.ts",
     "kill-ports": "lsof -ti :3000 | xargs kill -9 2>/dev/null; true",
     "posttest": "npm run kill-ports",
     "posttest:e2e": "npm run kill-ports"
@@ -52,7 +54,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "typeorm": "^0.3.28",
-    "whatsapp-web.js": "^1.34.6"
+    "whatsapp-web.js": "^1.34.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

@@ -1,10 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { MessageParserService } from './message-parser.service';
-import {
-  LLM_SERVICE,
-  NEGATIVE_EXAMPLE_REPOSITORY,
-} from '../../shared/constants/injection-tokens';
+import { MessageClassifierService } from './message-classifier.service';
+import { LLM_SERVICE } from '../../shared/constants/injection-tokens';
 import { SettingsService } from '../../settings/settings.service';
 
 describe('MessageParserService', () => {
@@ -12,7 +10,7 @@ describe('MessageParserService', () => {
   let mockLlmService: any;
   let mockCacheManager: any;
   let mockSettingsService: any;
-  let mockNegativeExampleRepo: any;
+  let mockClassifierService: any;
 
   beforeEach(async () => {
     mockLlmService = {
@@ -27,15 +25,12 @@ describe('MessageParserService', () => {
     mockSettingsService = {
       findByKey: jest.fn().mockRejectedValue(new Error('Not found')),
       seedDefaultIfMissing: jest.fn().mockResolvedValue(undefined),
+      create: jest.fn().mockResolvedValue(undefined),
     };
 
-    mockNegativeExampleRepo = {
-      findRecent: jest.fn().mockResolvedValue([]),
-      findAll: jest.fn().mockResolvedValue([]),
-      create: jest.fn(),
-      delete: jest.fn(),
-      deleteAll: jest.fn(),
-      count: jest.fn().mockResolvedValue(0),
+    // Default: classifier always says YES so existing tests are unaffected.
+    mockClassifierService = {
+      classify: jest.fn().mockResolvedValue({ isEvent: true, reason: 'test' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -44,10 +39,7 @@ describe('MessageParserService', () => {
         { provide: LLM_SERVICE, useValue: mockLlmService },
         { provide: CACHE_MANAGER, useValue: mockCacheManager },
         { provide: SettingsService, useValue: mockSettingsService },
-        {
-          provide: NEGATIVE_EXAMPLE_REPOSITORY,
-          useValue: mockNegativeExampleRepo,
-        },
+        { provide: MessageClassifierService, useValue: mockClassifierService },
       ],
     }).compile();
 
@@ -197,6 +189,173 @@ describe('MessageParserService', () => {
 
     const calls = mockCacheManager.get.mock.calls;
     expect(calls[0][0]).toBe(calls[1][0]);
+  });
+
+  describe('endTime extraction', () => {
+    it('propagates a valid endTime from LLM JSON', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'Parent meeting', date: '2026-06-15', time: '19:00', endTime: '20:30' },
+        ]),
+      );
+
+      const events = await service.parseMessage('parent meeting from 19 to 20:30');
+
+      expect(events).toHaveLength(1);
+      expect(events[0].time).toBe('19:00');
+      expect(events[0].endTime).toBe('20:30');
+    });
+
+    it('omits endTime when absent in LLM response', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([{ title: 'Trip', date: '2026-06-15', time: '08:00' }]),
+      );
+
+      const events = await service.parseMessage('trip at 8');
+
+      expect(events).toHaveLength(1);
+      expect(events[0].time).toBe('08:00');
+      expect(events[0].endTime).toBeUndefined();
+    });
+
+    it('drops endTime when it is earlier than time', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'Meeting', date: '2026-06-15', time: '16:00', endTime: '15:00' },
+        ]),
+      );
+
+      const events = await service.parseMessage('garbage');
+
+      expect(events).toHaveLength(1);
+      expect(events[0].time).toBe('16:00');
+      expect(events[0].endTime).toBeUndefined();
+    });
+
+    it('drops endTime when it equals time (must be strictly later)', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'Meeting', date: '2026-06-15', time: '16:00', endTime: '16:00' },
+        ]),
+      );
+
+      const events = await service.parseMessage('garbage');
+
+      expect(events[0].endTime).toBeUndefined();
+    });
+
+    it('drops endTime with malformed format and keeps the event', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'Workshop', date: '2026-06-15', time: '10:00', endTime: 'tomorrow' },
+        ]),
+      );
+
+      const events = await service.parseMessage('garbage');
+
+      expect(events).toHaveLength(1);
+      expect(events[0].endTime).toBeUndefined();
+    });
+
+    it('drops endTime when time is missing entirely (all-day event)', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'Costume day', date: '2026-06-15', endTime: '14:00' },
+        ]),
+      );
+
+      const events = await service.parseMessage('garbage');
+
+      expect(events).toHaveLength(1);
+      expect(events[0].time).toBeUndefined();
+      expect(events[0].endTime).toBeUndefined();
+    });
+  });
+
+  describe('single-gathering collapse', () => {
+    it('collapses two events with same (title, date, location, description) but different times', async () => {
+      // This is the exact LLM output from the 2026-06-16 graduation-party bug.
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'מסיבת סיום', date: '2026-06-22', time: '17:00', location: 'Laser Game X', description: 'KITA DALET SHTAIM' },
+          { title: 'מסיבת סיום', date: '2026-06-22', time: '17:30', endTime: '18:00', location: 'Laser Game X', description: 'KITA DALET SHTAIM' },
+        ]),
+      );
+
+      const events = await service.parseMessage('graduation party message');
+
+      expect(events).toHaveLength(1);
+      // Prefer the entry with both time + endTime.
+      expect(events[0].time).toBe('17:30');
+      expect(events[0].endTime).toBe('18:00');
+    });
+
+    it('keeps events with different titles even if other fields match', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'הגעה', date: '2026-06-22', time: '17:00', location: 'Hall', description: 'desc' },
+          { title: 'מסיבה', date: '2026-06-22', time: '17:30', location: 'Hall', description: 'desc' },
+        ]),
+      );
+
+      const events = await service.parseMessage('garbage');
+
+      expect(events).toHaveLength(2);
+    });
+
+    it('keeps events with different dates even if other fields match', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'מסיבה', date: '2026-06-22', time: '17:00' },
+          { title: 'מסיבה', date: '2026-06-23', time: '17:00' },
+        ]),
+      );
+
+      const events = await service.parseMessage('garbage');
+
+      expect(events).toHaveLength(2);
+    });
+
+    it('keeps action events (cancel/delay) without merging them', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'מסיבה', date: '2026-06-22', action: 'cancel', originalTitle: 'מסיבה' },
+          { title: 'מסיבה', date: '2026-06-22', action: 'cancel', originalTitle: 'מסיבה' },
+        ]),
+      );
+
+      const events = await service.parseMessage('garbage');
+
+      expect(events).toHaveLength(2);
+    });
+
+    it('chooses the time-only entry over an all-day entry when collapsing', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'אירוע', date: '2026-06-22', location: 'X', description: 'd' },
+          { title: 'אירוע', date: '2026-06-22', time: '10:00', location: 'X', description: 'd' },
+        ]),
+      );
+
+      const events = await service.parseMessage('garbage');
+
+      expect(events).toHaveLength(1);
+      expect(events[0].time).toBe('10:00');
+    });
+
+    it('normalises title/location/description for the match key (trim + case)', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([
+          { title: 'Event ', date: '2026-06-22', time: '10:00', location: 'PLACE', description: 'd' },
+          { title: 'event', date: '2026-06-22', time: '11:00', endTime: '12:00', location: 'place ', description: 'd' },
+        ]),
+      );
+
+      const events = await service.parseMessage('garbage');
+
+      expect(events).toHaveLength(1);
+      expect(events[0].endTime).toBe('12:00');
+    });
   });
 
   describe('batch-shaped response on a single-message call', () => {
@@ -710,6 +869,111 @@ describe('MessageParserService', () => {
     });
   });
 
+  describe('classifier integration (two-stage pipeline)', () => {
+    it('parseMessage short-circuits to [] when classifier says NO — no LLM call', async () => {
+      mockClassifierService.classify.mockResolvedValue({
+        isEvent: false,
+        reason: 'absence-notice',
+      });
+
+      const events = await service.parseMessage('לא נגיע היום, יש בית חם');
+
+      expect(events).toEqual([]);
+      expect(mockLlmService.callLLM).not.toHaveBeenCalled();
+      expect(mockSettingsService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'metric.classifier_reject_total' }),
+      );
+    });
+
+    it('parseMessage caches the empty result so the next sync skips the classifier too', async () => {
+      mockClassifierService.classify.mockResolvedValue({ isEvent: false, reason: 'chit-chat' });
+
+      await service.parseMessage('שלום!');
+
+      // The empty [] is written to cache for the next sync.
+      const setCalls = mockCacheManager.set.mock.calls.filter((c: any[]) => Array.isArray(c[1]) && c[1].length === 0);
+      expect(setCalls.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('parseMessage bypasses the classifier when an image is attached', async () => {
+      mockLlmService.callLLM.mockResolvedValue('[]');
+
+      await service.parseMessage('caption', '2026-06-20', [
+        { mimeType: 'image/jpeg', data: 'base64=' },
+      ]);
+
+      expect(mockClassifierService.classify).not.toHaveBeenCalled();
+      expect(mockLlmService.callLLM).toHaveBeenCalledTimes(1);
+    });
+
+    it('parseMessage runs the extractor when classifier says YES', async () => {
+      mockClassifierService.classify.mockResolvedValue({ isEvent: true, reason: 'date+activity' });
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([{ title: 'מבחן', date: '2026-06-20' }]),
+      );
+
+      const events = await service.parseMessage('מבחן בעברית מחר');
+
+      expect(events).toHaveLength(1);
+      expect(mockClassifierService.classify).toHaveBeenCalledTimes(1);
+      expect(mockLlmService.callLLM).toHaveBeenCalledTimes(1);
+    });
+
+    it('parseMessageBatch filters NO groups and only sends YES groups to the LLM', async () => {
+      // Two groups: first is a chit-chat (NO), second is a real event (YES).
+      mockClassifierService.classify.mockImplementation((content: string) =>
+        Promise.resolve(
+          content.includes('שלום') ? { isEvent: false, reason: 'greeting' } : { isEvent: true, reason: 'real' },
+        ),
+      );
+      mockLlmService.callLLM.mockResolvedValue(JSON.stringify({ '1': [{ title: 'מבחן', date: '2026-06-20' }] }));
+
+      const result = await service.parseMessageBatch([
+        { id: 'a', content: 'שלום!' },
+        { id: 'b', content: 'מבחן מחר ב-10:00' },
+      ]);
+
+      expect(result.get('a')).toEqual([]);
+      expect(result.get('b')?.length).toBeGreaterThan(0);
+    });
+
+    it('parseMessageBatch routes a single survivor through the single-message path', async () => {
+      mockClassifierService.classify.mockResolvedValueOnce({ isEvent: false, reason: 'noise' });
+      mockClassifierService.classify.mockResolvedValueOnce({ isEvent: true, reason: 'real' });
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([{ title: 'מבחן', date: '2026-06-20' }]),
+      );
+
+      const result = await service.parseMessageBatch([
+        { id: 'a', content: 'שלום' },
+        { id: 'b', content: 'מבחן' },
+      ]);
+
+      expect(result.get('a')).toEqual([]);
+      expect(result.get('b')).toHaveLength(1);
+    });
+
+    it('parseMessageBatch skips classification on cache-hit groups', async () => {
+      mockCacheManager.get.mockResolvedValueOnce([{ title: 'cached', date: '2026-06-20' }]);
+
+      await service.parseMessageBatch([{ id: 'a', content: 'previously-seen' }]);
+
+      expect(mockClassifierService.classify).not.toHaveBeenCalled();
+    });
+
+    it('parseMessage runs the extractor when classifier fails open (reason=classifier-fail-open)', async () => {
+      mockClassifierService.classify.mockResolvedValue({
+        isEvent: true,
+        reason: 'classifier-fail-open',
+      });
+      mockLlmService.callLLM.mockResolvedValue('[]');
+
+      await service.parseMessage('any');
+
+      expect(mockLlmService.callLLM).toHaveBeenCalled();
+    });
+  });
+
   describe('buildSystemPrompt', () => {
     it('returns the default prompt when no setting is stored and no negatives exist', async () => {
       const built = await service.buildSystemPrompt();
@@ -727,46 +991,42 @@ describe('MessageParserService', () => {
       expect(built.prompt).toContain('CUSTOM PROMPT FROM USER');
     });
 
-    it('appends a negative-examples block when there are negatives', async () => {
-      mockNegativeExampleRepo.findRecent.mockResolvedValue([
-        {
-          messageContent: 'תודה למורה!',
-          extractedTitle: 'תודה למורה',
-          extractedDate: '2026-04-12',
-          channel: 'Grade 3A Parents',
-        },
-      ]);
-
+    it('Phase 24.5: does NOT append the negative-examples block (feedback loop retired)', async () => {
       const built = await service.buildSystemPrompt();
-      expect(built.prompt).toContain('NEGATIVE EXAMPLES:');
-      expect(built.prompt).toContain('תודה למורה!');
-      expect(built.prompt).toContain('Grade 3A Parents');
+      expect(built.prompt).not.toContain('NEGATIVE EXAMPLES:');
+      expect(built.prompt).not.toContain('do NOT create events for messages similar');
     });
 
-    it('produces a different version hash when negatives change — invalidating the parse cache', async () => {
-      const noNegatives = await service.buildSystemPrompt();
+    it('Phase 24.5: prompt-version hash depends only on prompt text, not on 😢 history', async () => {
+      // Establish a stable baseline hash.
+      const first = await service.buildSystemPrompt();
+      // Simulate a 😢 reaction landing in the table mid-session. Cache key
+      // must be unchanged so cached parses stay valid.
+      const second = await service.buildSystemPrompt();
 
-      mockNegativeExampleRepo.findRecent.mockResolvedValue([
-        {
-          messageContent: 'תודה',
-          extractedTitle: 'תודה',
-          extractedDate: null,
-          channel: null,
-        },
-      ]);
-      const withNegatives = await service.buildSystemPrompt();
-
-      expect(withNegatives.version).not.toEqual(noNegatives.version);
+      expect(second.version).toEqual(first.version);
     });
   });
 
   describe('onModuleInit', () => {
-    it('seeds the default system prompt in the DB if not already set', async () => {
+    it('writes the current default prompt when user has not customized', async () => {
+      // findByKey rejects for both keys (no custom flag, no stored prompt)
+      mockSettingsService.findByKey.mockRejectedValue(new Error('Not found'));
+
       await service.onModuleInit();
-      expect(mockSettingsService.seedDefaultIfMissing).toHaveBeenCalledWith(
-        'llm_system_prompt',
-        expect.stringContaining('You are a calendar event extractor'),
-      );
+
+      expect(mockSettingsService.create).toHaveBeenCalledWith({
+        key: 'llm_system_prompt',
+        value: expect.stringContaining('You are a calendar event extractor'),
+      });
+    });
+
+    it('leaves the prompt untouched when user has a custom prompt', async () => {
+      mockSettingsService.findByKey.mockResolvedValue({ value: 'true' });
+
+      await service.onModuleInit();
+
+      expect(mockSettingsService.create).not.toHaveBeenCalled();
     });
   });
 });

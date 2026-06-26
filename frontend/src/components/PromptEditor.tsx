@@ -1,14 +1,44 @@
 import { useEffect, useState } from 'react';
-import { llmPromptApi } from '../services/api';
+import { llmPromptApi, llmClassifierPromptApi } from '../services/api';
 import type { LlmPrompt } from '../services/api';
-import Icon from './icons/Icon';
+import Icon, { type IconName } from './icons/Icon';
 
 type Status =
   | { type: 'idle' }
   | { type: 'success'; message: string }
   | { type: 'error'; message: string };
 
-export default function PromptEditor() {
+export interface PromptEditorProps {
+  /** Which prompt to edit. Defaults to 'extractor' to preserve existing call sites. */
+  variant?: 'extractor' | 'classifier';
+}
+
+interface VariantConfig {
+  api: typeof llmPromptApi;
+  title: string;
+  iconName: IconName;
+  hint: string;
+}
+
+const VARIANTS: Record<NonNullable<PromptEditorProps['variant']>, VariantConfig> = {
+  extractor: {
+    api: llmPromptApi,
+    title: 'AI Extraction Prompt',
+    iconName: 'sparkles',
+    hint:
+      'Stage 2 of the parsing pipeline. Given a message the classifier flagged as an event, this prompt tells the LLM how to extract the structured fields (title, date, time, location). Edits take effect on the next sync.',
+  },
+  classifier: {
+    api: llmClassifierPromptApi,
+    title: 'AI Classifier Prompt',
+    iconName: 'list-filter',
+    hint:
+      'Stage 1 of the parsing pipeline. A short YES/NO prompt that decides whether a message describes an event at all. Most messages are filtered here before reaching the extractor. To loosen what reaches the extractor, edit the YES section; to tighten it, edit the NO section.',
+  },
+};
+
+export default function PromptEditor({ variant = 'extractor' }: PromptEditorProps) {
+  const config = VARIANTS[variant];
   const [prompt, setPrompt] = useState<LlmPrompt | null>(null);
   const [draft, setDraft] = useState<string>('');
   const [showDefault, setShowDefault] = useState(false);
@@ -16,7 +46,7 @@ export default function PromptEditor() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    llmPromptApi
+    config.api
       .get()
       .then((p) => {
         setPrompt(p);
@@ -25,7 +55,7 @@ export default function PromptEditor() {
       .catch((e) =>
         setStatus({ type: 'error', message: `Failed to load prompt: ${e.message}` }),
       );
-  }, []);
+  }, [config.api]);
 
   const dirty = prompt !== null && draft !== prompt.value;
 
@@ -36,7 +66,7 @@ export default function PromptEditor() {
     }
     setBusy(true);
     try {
-      const updated = await llmPromptApi.save(draft);
+      const updated = await config.api.save(draft);
       setPrompt(updated);
       setStatus({ type: 'success', message: 'Prompt saved.' });
     } catch (e: any) {
@@ -55,7 +85,7 @@ export default function PromptEditor() {
     }
     setBusy(true);
     try {
-      const reset = await llmPromptApi.reset();
+      const reset = await config.api.reset();
       setPrompt(reset);
       setDraft(reset.value);
       setStatus({ type: 'success', message: 'Prompt reset to default.' });
@@ -72,18 +102,14 @@ export default function PromptEditor() {
   return (
     <div className="settings-section">
       <h3 className="settings-section-title">
-        <Icon name="sparkles" size={16} /> AI Extraction Prompt
+        <Icon name={config.iconName} size={16} /> {config.title}
       </h3>
-      <p className="settings-section-hint">
-        The system prompt the LLM uses to extract events from your messages.
-        Edits take effect on the next sync. The default is tuned for Hebrew + English —
-        edits may affect accuracy.
-      </p>
+      <p className="settings-section-hint">{config.hint}</p>
 
       <div className="form-field">
         <textarea
           className="form-input prompt-editor"
-          rows={20}
+          rows={variant === 'classifier' ? 12 : 20}
           spellCheck={false}
           value={draft}
           onChange={(e) => {

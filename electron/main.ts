@@ -149,6 +149,7 @@ async function startBackend(): Promise<number> {
         LOG_DIR: path.join(userData, 'logs'),
         WHATSAPP_DATA_DIR: path.join(userData, 'whatsapp-session'),
         CHROME_PROFILE_DIR: path.join(userData, 'chrome-profile'),
+        APP_VERSION: app.getVersion(),
       },
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     });
@@ -382,7 +383,7 @@ function createAppMenu(): void {
             dialog.showMessageBox(mainWindow!, {
               type: 'info',
               title: 'About ParentSync',
-              message: 'ParentSync v1.0.0',
+              message: `ParentSync v${app.getVersion()}`,
               detail: 'Family task manager with WhatsApp & Gmail integration.',
             });
           },

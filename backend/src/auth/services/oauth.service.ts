@@ -22,6 +22,9 @@ const DEFAULT_REDIRECT_URI = `http://localhost:${process.env.PORT || 41932}/api/
 const SCOPES_BY_PURPOSE: Record<OAuthPurpose, string[]> = {
   gmail: [
     'https://www.googleapis.com/auth/gmail.readonly',
+    // Phase 24+ — used by OutOfBandAlertService to email the user when
+    // WhatsApp is unreachable. Narrow scope: send-only, no inbox modify.
+    'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/userinfo.email',
   ],
   calendar: [

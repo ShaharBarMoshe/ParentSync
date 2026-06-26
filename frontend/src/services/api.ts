@@ -285,6 +285,22 @@ export const llmPromptApi = {
   reset: () => api.delete<LlmPrompt>('/llm/prompt').then((r) => r.data),
 };
 
+export const llmClassifierPromptApi = {
+  get: () => api.get<LlmPrompt>('/llm/prompt/classifier').then((r) => r.data),
+  save: (value: string) =>
+    api.put<LlmPrompt>('/llm/prompt/classifier', { value }).then((r) => r.data),
+  reset: () => api.delete<LlmPrompt>('/llm/prompt/classifier').then((r) => r.data),
+};
+
+export interface AppVersion {
+  version: string;
+  source: 'env' | 'package' | 'unknown';
+}
+
+export const versionApi = {
+  get: () => api.get<AppVersion>('/version').then((r) => r.data),
+};
+
 export interface NegativeExample {
   id: string;
   messageContent: string;

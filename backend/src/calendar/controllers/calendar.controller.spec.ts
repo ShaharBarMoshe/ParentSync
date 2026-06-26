@@ -22,6 +22,7 @@ describe('CalendarController', () => {
     description: 'Annual school trip',
     date: '2026-04-10',
     time: '09:00',
+    endTime: null as unknown as string,
     location: 'Tel Aviv',
     source: MessageSource.WHATSAPP,
     sourceId: 'msg-1',

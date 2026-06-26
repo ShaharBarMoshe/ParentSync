@@ -5,6 +5,7 @@ export interface ParsedEvent {
   description?: string;
   date: string; // YYYY-MM-DD (empty string for cancel/delay when original date unknown)
   time?: string; // HH:MM
+  endTime?: string; // HH:MM — explicit end time when the source mentions a range or duration
   location?: string;
   action?: EventAction; // defaults to 'create' when absent
   originalTitle?: string; // for cancel/delay: search hint for the original event name

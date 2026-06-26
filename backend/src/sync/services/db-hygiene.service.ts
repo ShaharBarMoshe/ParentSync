@@ -41,13 +41,11 @@ export class DbHygieneService implements OnModuleInit, OnApplicationShutdown {
 
     const pragmas = ['journal_mode', 'synchronous', 'foreign_keys', 'auto_vacuum'];
     for (const pragma of pragmas) {
-      const [[result]] = await this.dataSource.query(`PRAGMA ${pragma}`) as [[Record<string, unknown>]];
-      const value = result ? Object.values(result)[0] : 'unknown';
-      this.logger.log(`PRAGMA ${pragma} = ${value}`);
+      const value = await this.queryPragmaValue(pragma);
+      this.logger.log(`PRAGMA ${pragma} = ${value ?? 'unknown'}`);
     }
-    const [[pageResult]] = await this.dataSource.query('PRAGMA page_size') as [[Record<string, unknown>]];
-    const pageSize = pageResult ? Object.values(pageResult)[0] : 'unknown';
-    this.logger.log(`PRAGMA page_size = ${pageSize}`);
+    const pageSize = await this.queryPragmaValue('page_size');
+    this.logger.log(`PRAGMA page_size = ${pageSize ?? 'unknown'}`);
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -110,10 +108,22 @@ export class DbHygieneService implements OnModuleInit, OnApplicationShutdown {
     }
   }
 
+  /**
+   * TypeORM + better-sqlite3 returns query rows as a flat array `[{col: val}]`,
+   * NOT a nested `[[{col: val}]]`. PRAGMAs and other single-row queries should
+   * read the first row directly via this helper. Returns null if no rows came back.
+   */
+  private async queryPragmaValue(name: string): Promise<unknown> {
+    const rows = (await this.dataSource.query(`PRAGMA ${name}`)) as unknown;
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const row = rows[0];
+    if (!row || typeof row !== 'object') return null;
+    return Object.values(row as Record<string, unknown>)[0];
+  }
+
   private async checkIntegrity(phase: string): Promise<boolean> {
     try {
-      const [[result]] = await this.dataSource.query('PRAGMA integrity_check') as [[Record<string, unknown>]];
-      const status = result ? Object.values(result)[0] : 'unknown';
+      const status = await this.queryPragmaValue('integrity_check');
       if (status !== 'ok') {
         this.logger.error(`integrity_check [${phase}] FAILED: ${status} — halting maintenance`);
         return false;

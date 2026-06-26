@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { GeminiService } from './services/gemini.service';
 import { GeminiEmbeddingService } from './services/gemini-embedding.service';
 import { MessageParserService } from './services/message-parser.service';
+import { MessageClassifierService } from './services/message-classifier.service';
 import { LlmRateLimiter } from './guards/llm-throttle.guard';
 import { LlmQueueProcessor } from './queue/llm-queue.processor';
 import { LlmPromptController } from './controllers/llm-prompt.controller';
@@ -41,6 +42,7 @@ import { SettingsModule } from '../settings/settings.module';
       useClass: TypeOrmNegativeExampleRepository,
     },
     MessageParserService,
+    MessageClassifierService,
     LlmRateLimiter,
     LlmQueueProcessor,
   ],
@@ -48,6 +50,7 @@ import { SettingsModule } from '../settings/settings.module';
     LLM_SERVICE,
     EMBEDDING_SERVICE,
     MessageParserService,
+    MessageClassifierService,
     LlmRateLimiter,
     LlmQueueProcessor,
     NEGATIVE_EXAMPLE_REPOSITORY,
