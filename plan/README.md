@@ -47,6 +47,9 @@
 | [Phase 20](phase20-semantic-dedup.md) | Semantic Deduplication via Gemini Embeddings (skip forwarded flyers before the LLM) | Done |
 | [Phase 21](phase21-openrouter-removal.md) | Remove dormant OpenRouter adapter + align docs | Done |
 | [Phase 22](phase22-db-storage-hygiene.md) | DB Storage Hygiene — retention sweep, VACUUM, WAL checkpoint | Done |
+| [Phase 23](phase23-calendar-conflict-dedup-and-end-times.md) | Calendar conflict dedup + event end times | Done |
+| [Phase 24](phase24-prompt-architecture.md) | Two-stage prompt (classifier + extractor) + eval-first methodology | Done |
+| [Phase 25](phase25-production-smoke-test.md) | Production Smoke Test — end-to-end self-test on deploy + daily | Done |
 
 ## Architecture
 

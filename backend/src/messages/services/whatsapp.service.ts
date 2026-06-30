@@ -14,6 +14,7 @@ import {
 } from '../interfaces/whatsapp-service.interface';
 import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
+import { SMOKE_TEST_MARKER } from '../../shared/constants/smoke-test';
 
 @Injectable()
 export class WhatsAppService
@@ -271,7 +272,7 @@ export class WhatsAppService
     }
 
     return page.evaluate(
-      async (serializedChatId: string, msgLimit: number) => {
+      async (serializedChatId: string, msgLimit: number, smokeMarker: string) => {
         const win = window as any;
         const chatWid = win.Store.WidFactory.createWid(serializedChatId);
         const chat =
@@ -282,7 +283,15 @@ export class WhatsAppService
 
         const msgs = chat.msgs
           .getModelsArray()
-          .filter((m: any) => !m.isNotification && !m.isSentByMe)
+          // Drop the app's own outgoing messages — except smoke-test messages,
+          // which the production smoke test must read back through this scrape.
+          .filter(
+            (m: any) =>
+              !m.isNotification &&
+              (!m.isSentByMe ||
+                (typeof m.body === 'string' &&
+                  m.body.includes(smokeMarker))),
+          )
           .sort((a: any, b: any) => b.t - a.t)
           .slice(0, msgLimit);
 
@@ -312,6 +321,7 @@ export class WhatsAppService
       },
       chatId,
       limit,
+      SMOKE_TEST_MARKER,
     );
   }
 
@@ -476,6 +486,37 @@ export class WhatsAppService
         message: `WhatsApp message could not be sent. ${error.message}`,
       });
       throw error;
+    }
+  }
+
+  async reactToMessage(messageId: string, emoji: string): Promise<void> {
+    if (!this.connected || !this.client) {
+      throw new Error('WhatsApp client is not connected.');
+    }
+    const msg = await this.client.getMessageById(messageId);
+    if (!msg) {
+      throw new Error(`Message ${messageId} not found for reaction`);
+    }
+    await msg.react(emoji);
+    this.logger.log(`Reacted "${emoji}" to message ${messageId}`);
+  }
+
+  async deleteMessage(messageId: string): Promise<void> {
+    if (!this.connected || !this.client) {
+      throw new Error('WhatsApp client is not connected.');
+    }
+    try {
+      const msg = await this.client.getMessageById(messageId);
+      if (!msg) {
+        this.logger.warn(`Message ${messageId} not found for deletion`);
+        return;
+      }
+      await msg.delete(true);
+      this.logger.log(`Deleted message ${messageId}`);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to delete message ${messageId}: ${(error as Error).message}`,
+      );
     }
   }
 

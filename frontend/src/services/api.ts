@@ -192,6 +192,36 @@ export const syncApi = {
     `${api.defaults.baseURL}/sync/errors`,
 };
 
+// Production smoke test
+export interface SmokeTestStep {
+  name: string;
+  ok: boolean;
+  durationMs: number;
+  detail?: string;
+  error?: string;
+}
+
+export interface SmokeTestResult {
+  runId: string;
+  trigger: 'deploy' | 'cron' | 'manual';
+  status: 'passed' | 'failed' | 'skipped';
+  startedAt: string;
+  endedAt: string;
+  failedStep?: string;
+  skipReason?: string;
+  steps: SmokeTestStep[];
+  sourceMessageId?: string;
+  approvalMessageId?: string;
+  eventId?: string;
+  googleEventId?: string;
+}
+
+export const smokeTestApi = {
+  run: () => api.post<SmokeTestResult>('/smoke-test/run').then((r) => r.data),
+  getStatus: () =>
+    api.get<SmokeTestResult | null>('/smoke-test/status').then((r) => r.data),
+};
+
 // Monitor API
 
 export interface ChartDataset {

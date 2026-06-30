@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react';
-import { settingsApi, authApi, childrenApi, whatsappApi, syncApi } from '../services/api';
-import type { Setting, AuthStatus, AuthPurpose, AccountStatus, Child } from '../services/api';
+import { settingsApi, authApi, childrenApi, whatsappApi, syncApi, smokeTestApi } from '../services/api';
+import type { Setting, AuthStatus, AuthPurpose, AccountStatus, Child, SmokeTestResult } from '../services/api';
 import WhatsAppQRModal from '../components/WhatsAppQRModal';
 import PromptEditor from '../components/PromptEditor';
 import NegativeExamplesPanel from '../components/NegativeExamplesPanel';
@@ -33,6 +33,7 @@ interface SettingsForm {
   dedupEnabled: string;
   dedupThreshold: string;
   classifierEnabled: string;
+  smokeTestEnabled: string;
 }
 
 const SETTING_KEYS = {
@@ -46,6 +47,7 @@ const SETTING_KEYS = {
   dedupEnabled: 'dedup_enabled',
   dedupThreshold: 'dedup_threshold',
   classifierEnabled: 'classifier_enabled',
+  smokeTestEnabled: 'smoke_test_enabled',
 } as const;
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -142,6 +144,7 @@ const DEFAULT_FORM: SettingsForm = {
   dedupEnabled: 'true',
   dedupThreshold: '0.92',
   classifierEnabled: 'true',
+  smokeTestEnabled: 'true',
 };
 
 type Status = { type: 'idle' } | { type: 'loading' } | { type: 'saving' } | { type: 'success'; message: string } | { type: 'error'; message: string };
@@ -510,14 +513,44 @@ export default function SettingsPage() {
   const pendingChildEdits = useRef<Map<string, Partial<Child>>>(new Map());
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [whatsappQROpen, setWhatsappQROpen] = useState(false);
+  const [smokeResult, setSmokeResult] = useState<SmokeTestResult | null>(null);
+  const [smokeRunning, setSmokeRunning] = useState(false);
 
   useEffect(() => {
     loadSettings();
     loadAuthStatus();
     loadChildren();
     loadWhatsAppStatus();
+    loadSmokeStatus();
     handleAuthRedirect();
   }, []);
+
+  async function loadSmokeStatus() {
+    try {
+      setSmokeResult(await smokeTestApi.getStatus());
+    } catch {
+      /* status is best-effort */
+    }
+  }
+
+  async function runSmokeTest() {
+    setSmokeRunning(true);
+    try {
+      const result = await smokeTestApi.run();
+      setSmokeResult(result);
+      setStatus(
+        result.status === 'passed'
+          ? { type: 'success', message: 'Smoke test passed' }
+          : result.status === 'skipped'
+            ? { type: 'success', message: `Smoke test skipped: ${result.skipReason ?? ''}` }
+            : { type: 'error', message: `Smoke test failed at "${result.failedStep ?? 'unknown'}"` },
+      );
+    } catch {
+      setStatus({ type: 'error', message: 'Failed to run smoke test' });
+    } finally {
+      setSmokeRunning(false);
+    }
+  }
 
   function handleAuthRedirect() {
     const params = new URLSearchParams(window.location.search);
@@ -589,6 +622,7 @@ export default function SettingsPage() {
       dedupEnabled: map.get(SETTING_KEYS.dedupEnabled) ?? DEFAULT_FORM.dedupEnabled,
       dedupThreshold: map.get(SETTING_KEYS.dedupThreshold) ?? DEFAULT_FORM.dedupThreshold,
       classifierEnabled: map.get(SETTING_KEYS.classifierEnabled) ?? DEFAULT_FORM.classifierEnabled,
+      smokeTestEnabled: map.get(SETTING_KEYS.smokeTestEnabled) ?? DEFAULT_FORM.smokeTestEnabled,
     };
   }
 
@@ -918,6 +952,51 @@ export default function SettingsPage() {
                   Cuts most parses to a fraction of their cost. Disable to revert to the old single-stage flow.
                 </span>
               </div>
+            </div>
+
+            {/* Production Smoke Test */}
+            <div className="settings-section">
+              <h3 className="settings-section-title"><Icon name="circle-check" size={16} /> Production Smoke Test</h3>
+              <p className="settings-section-hint">
+                Drives one synthetic event through the entire pipeline (WhatsApp →
+                parse → approval card → 👍 → Google Calendar) on every new
+                deployment and daily at 07:00, then cleans up after itself.
+                Failures are written to a log file under the app's logs folder.
+              </p>
+              <div className="form-field">
+                <label className="form-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={form.smokeTestEnabled !== 'false'}
+                    onChange={(e) => handleChange('smokeTestEnabled', e.target.checked ? 'true' : 'false')}
+                  />
+                  <span>Enable automatic smoke tests</span>
+                </label>
+              </div>
+              <div className="form-field">
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={runSmokeTest}
+                  disabled={smokeRunning}
+                >
+                  {smokeRunning
+                    ? <><Icon name="loader" size={16} className="icon-spin" /> Running…</>
+                    : <><Icon name="refresh-cw" size={16} /> Run now</>}
+                </button>
+              </div>
+              {smokeResult && (
+                <p className="form-hint">
+                  Last run: <strong>{smokeResult.status.toUpperCase()}</strong>
+                  {' '}({smokeResult.trigger}) — {new Date(smokeResult.endedAt).toLocaleString()}
+                  {smokeResult.status === 'failed' && smokeResult.failedStep
+                    ? ` · failed at "${smokeResult.failedStep}"`
+                    : ''}
+                  {smokeResult.status === 'skipped' && smokeResult.skipReason
+                    ? ` · ${smokeResult.skipReason}`
+                    : ''}
+                </p>
+              )}
             </div>
 
             {/* AI Classifier Prompt (stage 1) */}

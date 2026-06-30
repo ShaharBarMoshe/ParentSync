@@ -50,5 +50,9 @@ export interface IWhatsAppService {
     text: string,
     media?: WhatsAppMedia,
   ): Promise<string>; // returns serialized message ID
+  /** React to a previously-sent message with an emoji (e.g. '👍'). */
+  reactToMessage(messageId: string, emoji: string): Promise<void>;
+  /** Delete a message for everyone. Best-effort — used by the smoke test cleanup. */
+  deleteMessage(messageId: string): Promise<void>;
   disconnect(): Promise<void>;
 }

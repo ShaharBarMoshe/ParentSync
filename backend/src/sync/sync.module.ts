@@ -13,9 +13,11 @@ import { MessageDeduplicationService } from './services/message-deduplication.se
 import { CalendarConflictDedupService } from './services/calendar-conflict-dedup.service';
 import { OutOfBandAlertService } from './services/out-of-band-alert.service';
 import { DbHygieneService } from './services/db-hygiene.service';
+import { SmokeTestService } from './services/smoke-test.service';
 import { SyncLockService } from './services/sync-lock.service';
 import { SyncController } from './controllers/sync.controller';
 import { ApprovalController } from './controllers/approval.controller';
+import { SmokeTestController } from './controllers/smoke-test.controller';
 import {
   SYNC_LOG_REPOSITORY,
   DISMISSAL_REPOSITORY,
@@ -33,7 +35,7 @@ import { SettingsModule } from '../settings/settings.module';
     LlmModule,
     SettingsModule,
   ],
-  controllers: [SyncController, ApprovalController],
+  controllers: [SyncController, ApprovalController, SmokeTestController],
   providers: [
     {
       provide: SYNC_LOG_REPOSITORY,
@@ -53,6 +55,7 @@ import { SettingsModule } from '../settings/settings.module';
     CalendarConflictDedupService,
     DbHygieneService,
     OutOfBandAlertService,
+    SmokeTestService,
   ],
   exports: [
     SyncService,
