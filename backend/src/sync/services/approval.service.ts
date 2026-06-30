@@ -168,10 +168,14 @@ export class ApprovalService {
         return;
       }
 
-      if (payload.reaction === '👍') {
+      if (this.isApproveReaction(payload.reaction)) {
         await this.approveEvent(event);
-      } else if (payload.reaction === '😢') {
+      } else if (this.isRejectReaction(payload.reaction)) {
         await this.rejectEvent(event);
+      } else {
+        this.logger.debug(
+          `Ignoring unrecognized reaction "${payload.reaction}" on event ${event.id}`,
+        );
       }
       return;
     }
@@ -197,11 +201,29 @@ export class ApprovalService {
 
     if (dismissal.status !== 'pending_approval') return;
 
-    if (payload.reaction === '👍') {
+    if (this.isApproveReaction(payload.reaction)) {
       await this.eventDismissalService.approveDismissal(dismissal);
-    } else if (payload.reaction === '😢') {
+    } else if (this.isRejectReaction(payload.reaction)) {
       await this.eventDismissalService.rejectDismissal(dismissal);
     }
+  }
+
+  /**
+   * Strip skin-tone modifiers (U+1F3FB–U+1F3FF) and variation selectors
+   * (U+FE0F) so a thumbs-up reaction matches regardless of how WhatsApp
+   * serializes it. Without this, "👍🏻" (thumbs-up + skin tone) fails an
+   * exact `=== '👍'` check and the approval is silently dropped.
+   */
+  private normalizeReaction(reaction: string): string {
+    return reaction.replace(/[\u{1F3FB}-\u{1F3FF}\u{FE0F}]/gu, '');
+  }
+
+  private isApproveReaction(reaction: string): boolean {
+    return this.normalizeReaction(reaction) === '👍';
+  }
+
+  private isRejectReaction(reaction: string): boolean {
+    return this.normalizeReaction(reaction) === '😢';
   }
 
   /**

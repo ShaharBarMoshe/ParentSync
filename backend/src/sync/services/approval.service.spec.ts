@@ -340,6 +340,37 @@ describe('ApprovalService', () => {
       );
     });
 
+    it('should approve event on a skin-toned 👍🏻 reaction', async () => {
+      eventRepository.findByApprovalMessageId.mockResolvedValue(mockEvent);
+
+      await service.handleReaction({
+        msgId: 'wa-msg-123',
+        reaction: '👍🏻',
+        senderId: 'user-1',
+        timestamp: Date.now(),
+      });
+
+      expect(eventRepository.update).toHaveBeenCalledWith('event-1', {
+        approvalStatus: ApprovalStatus.APPROVED,
+      });
+      expect(eventSyncService.syncSingleEventToGoogle).toHaveBeenCalled();
+    });
+
+    it('should approve event on a 👍️ reaction carrying a variation selector', async () => {
+      eventRepository.findByApprovalMessageId.mockResolvedValue(mockEvent);
+
+      await service.handleReaction({
+        msgId: 'wa-msg-123',
+        reaction: '👍️',
+        senderId: 'user-1',
+        timestamp: Date.now(),
+      });
+
+      expect(eventRepository.update).toHaveBeenCalledWith('event-1', {
+        approvalStatus: ApprovalStatus.APPROVED,
+      });
+    });
+
     it('should reject event on ❌ reaction', async () => {
       eventRepository.findByApprovalMessageId.mockResolvedValue(mockEvent);
 
