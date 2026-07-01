@@ -153,8 +153,60 @@ describe('SmokeTestService', () => {
     expect(whatsappService.deleteMessage).toHaveBeenCalledWith('appr-1');
     expect(whatsappService.deleteMessage).toHaveBeenCalledWith('src-msg-1');
 
+    // Cleanup outcomes are recorded and all succeeded.
+    expect(result.cleanupFailed).toBe(false);
+    expect(result.cleanup?.map((s) => s.name)).toEqual([
+      'delete-google-event',
+      'delete-local-event',
+      'delete-local-message',
+      'delete-approval-message',
+      'delete-source-message',
+    ]);
+    expect(result.cleanup?.every((s) => s.ok)).toBe(true);
+
     // latest.json written, no FAIL log.
     expect(fs.existsSync(path.join(logDir, 'smoke-test', 'latest.json'))).toBe(true);
+    const failLogs = fs
+      .readdirSync(path.join(logDir, 'smoke-test'))
+      .filter((f) => f.endsWith('-FAIL.log'));
+    expect(failLogs.length).toBe(0);
+  });
+
+  it('surfaces a cleanup failure instead of silently swallowing it', async () => {
+    // The pipeline passes, but tearing down the WhatsApp source message fails.
+    whatsappService.deleteMessage.mockImplementation((id: string) =>
+      id === 'src-msg-1'
+        ? Promise.reject(new Error('delete for everyone timed out'))
+        : Promise.resolve(undefined),
+    );
+
+    const result = await service.run('manual');
+
+    // The pipeline itself still passed...
+    expect(result.status).toBe('passed');
+    // ...but the run is flagged dirty with the failing step captured.
+    expect(result.cleanupFailed).toBe(true);
+    const failedStep = result.cleanup?.find((s) => !s.ok);
+    expect(failedStep?.name).toBe('delete-source-message');
+    expect(failedStep?.error).toMatch(/timed out/i);
+
+    // A FAIL log is written even though the pipeline passed, and it names the
+    // leftover artifact so the leak is diagnosable.
+    const failLogs = fs
+      .readdirSync(path.join(logDir, 'smoke-test'))
+      .filter((f) => f.endsWith('-FAIL.log'));
+    expect(failLogs.length).toBe(1);
+    const log = fs.readFileSync(
+      path.join(logDir, 'smoke-test', failLogs[0]),
+      'utf-8',
+    );
+    expect(log).toMatch(/delete-source-message/);
+
+    // The persisted latest.json also reflects the dirty run.
+    const latest = JSON.parse(
+      fs.readFileSync(path.join(logDir, 'smoke-test', 'latest.json'), 'utf-8'),
+    );
+    expect(latest.cleanupFailed).toBe(true);
   });
 
   it('skips when disabled', async () => {

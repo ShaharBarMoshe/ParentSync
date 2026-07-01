@@ -29,14 +29,21 @@ On each run the test:
 6. **Verifies the event** actually exists in Google Calendar.
 7. **Cleans up** (always, best-effort): deletes the Google Calendar event, the
    local event row, the stored message row, and both WhatsApp messages (the test
-   message and the approval card).
+   message and the approval card). Each deletion is recorded as a cleanup step
+   (`result.cleanup[]`); an individual failure is non-fatal to the run but is
+   captured, not swallowed (see `cleanupFailed` below).
 
 A run ends in one of three states:
 
-- **passed** — every step succeeded.
+- **passed** — every pipeline step succeeded.
 - **failed** — a step failed; a detailed log file is written (see below).
 - **skipped** — preconditions not met (disabled, no `approval_channel`, or
   WhatsApp not connected). Skips are not failures.
+
+Independently of that status, **`cleanupFailed: true`** flags a "passed but
+dirty" run — the pipeline worked but teardown left an artifact behind (e.g. a
+WhatsApp message that could not be deleted). This also triggers a FAIL log so a
+leak is never silent, even on an otherwise-passing run.
 
 ## When it runs
 
@@ -66,12 +73,18 @@ to be configured and WhatsApp to be connected — otherwise it skips.
 Written under the app's log directory (`<userData>/logs/smoke-test/`):
 
 - `latest.json` — always overwritten with the most recent run's summary (status,
-  trigger, timestamp, failed step). Backs the Settings status display and the
+  trigger, timestamp, failed step, plus the `cleanup[]` steps and
+  `cleanupFailed` flag). Backs the Settings status display and the
   `GET /api/smoke-test/status` endpoint.
-- `smoke-test-<timestamp>-FAIL.log` — written **only on failure**. Contains the
-  trigger, run id, per-step status/timings, all error messages, and every
-  relevant id (source message, approval message, event, Google event) so a
-  broken run can be diagnosed without reproducing it.
+- `smoke-test-<timestamp>-FAIL.log` — written **on failure or on a cleanup
+  failure**. Contains the trigger, run id, per-step status/timings (pipeline and
+  cleanup), all error messages, and every relevant id (source message, approval
+  message, event, Google event) so a broken or leaky run can be diagnosed
+  without reproducing it. A cleanup failure names the exact step that leaked
+  (e.g. `delete-source-message`).
+
+To find a real cleanup failure on a deployed instance, grep the app log for the
+`Cleanup "…" failed` warnings, or read the `cleanup[]` array in `latest.json`.
 
 ## API
 

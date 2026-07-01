@@ -279,6 +279,9 @@ export class SmokeTestService implements OnModuleInit {
       return this.finish(result, 'failed');
     } finally {
       await this.cleanup(result);
+      // cleanup() runs after finish() already persisted the result, so
+      // re-persist to capture the teardown outcomes (and any FAIL log).
+      this.persistResult(result);
       this.running = false;
     }
   }
@@ -381,41 +384,63 @@ export class SmokeTestService implements OnModuleInit {
   // ---------------------------------------------------------------------------
 
   private async cleanup(result: SmokeTestResult): Promise<void> {
+    const steps: SmokeTestStep[] = [];
+    result.cleanup = steps;
     const calendarId = await this.getCalendarId().catch(() => 'primary');
 
     if (result.googleEventId) {
-      await this.tryCleanup('delete-google-event', () =>
+      await this.tryCleanup(steps, 'delete-google-event', () =>
         this.googleCalendarService.deleteEvent(result.googleEventId!, calendarId),
       );
     }
     if (result.eventId) {
-      await this.tryCleanup('delete-local-event', () =>
+      await this.tryCleanup(steps, 'delete-local-event', () =>
         this.eventRepository.delete(result.eventId!),
       );
     }
     // Re-find the stored message by runId in case its id wasn't captured.
     const stored = await this.findStoredMessage(result.runId).catch(() => null);
     if (stored) {
-      await this.tryCleanup('delete-local-message', () =>
+      await this.tryCleanup(steps, 'delete-local-message', () =>
         this.messageRepository.delete(stored.id),
       );
     }
     if (result.approvalMessageId) {
-      await this.tryCleanup('delete-approval-message', () =>
+      await this.tryCleanup(steps, 'delete-approval-message', () =>
         this.whatsappService.deleteMessage(result.approvalMessageId!),
       );
     }
     if (result.sourceMessageId) {
-      await this.tryCleanup('delete-source-message', () =>
+      await this.tryCleanup(steps, 'delete-source-message', () =>
         this.whatsappService.deleteMessage(result.sourceMessageId!),
+      );
+    }
+
+    result.cleanupFailed = steps.some((s) => !s.ok);
+    if (result.cleanupFailed) {
+      const failed = steps.filter((s) => !s.ok).map((s) => s.name).join(', ');
+      this.logger.warn(
+        `Smoke test cleanup left artifacts behind (failed: ${failed})`,
       );
     }
   }
 
-  private async tryCleanup(name: string, fn: () => Promise<unknown>): Promise<void> {
+  private async tryCleanup(
+    steps: SmokeTestStep[],
+    name: string,
+    fn: () => Promise<unknown>,
+  ): Promise<void> {
+    const start = Date.now();
     try {
       await fn();
+      steps.push({ name, ok: true, durationMs: Date.now() - start });
     } catch (error) {
+      steps.push({
+        name,
+        ok: false,
+        durationMs: Date.now() - start,
+        error: (error as Error).message,
+      });
       this.logger.warn(`Cleanup "${name}" failed: ${(error as Error).message}`);
     }
   }
@@ -465,7 +490,7 @@ export class SmokeTestService implements OnModuleInit {
         path.join(dir, 'latest.json'),
         JSON.stringify(result, null, 2),
       );
-      if (result.status === 'failed') {
+      if (result.status === 'failed' || result.cleanupFailed) {
         const stamp = result.startedAt.replace(/[:.]/g, '-');
         fs.writeFileSync(
           path.join(dir, `smoke-test-${stamp}-FAIL.log`),
@@ -480,29 +505,45 @@ export class SmokeTestService implements OnModuleInit {
   }
 
   private formatFailLog(result: SmokeTestResult): string {
+    const headline =
+      result.status === 'failed'
+        ? 'FAILED'
+        : 'PASSED but cleanup left artifacts behind';
     const lines = [
-      `ParentSync smoke test — FAILED`,
-      `runId:       ${result.runId}`,
-      `trigger:     ${result.trigger}`,
-      `startedAt:   ${result.startedAt}`,
-      `endedAt:     ${result.endedAt}`,
-      `failedStep:  ${result.failedStep ?? '(unknown)'}`,
-      `sourceMsgId: ${result.sourceMessageId ?? '-'}`,
-      `approvalMsg: ${result.approvalMessageId ?? '-'}`,
-      `eventId:     ${result.eventId ?? '-'}`,
-      `googleEvent: ${result.googleEventId ?? '-'}`,
+      `ParentSync smoke test — ${headline}`,
+      `runId:        ${result.runId}`,
+      `trigger:      ${result.trigger}`,
+      `startedAt:    ${result.startedAt}`,
+      `endedAt:      ${result.endedAt}`,
+      `status:       ${result.status}`,
+      `failedStep:   ${result.failedStep ?? '(none)'}`,
+      `cleanupOk:    ${result.cleanupFailed ? 'NO' : 'yes'}`,
+      `sourceMsgId:  ${result.sourceMessageId ?? '-'}`,
+      `approvalMsg:  ${result.approvalMessageId ?? '-'}`,
+      `eventId:      ${result.eventId ?? '-'}`,
+      `googleEvent:  ${result.googleEventId ?? '-'}`,
       ``,
       `Steps:`,
     ];
     for (const s of result.steps) {
-      lines.push(
-        `  [${s.ok ? 'OK ' : 'ERR'}] ${s.name} (${s.durationMs}ms)` +
-          (s.detail ? ` — ${s.detail}` : '') +
-          (s.error ? ` — ERROR: ${s.error}` : ''),
-      );
+      lines.push(this.formatStepLine(s));
+    }
+    if (result.cleanup?.length) {
+      lines.push('', 'Cleanup:');
+      for (const s of result.cleanup) {
+        lines.push(this.formatStepLine(s));
+      }
     }
     lines.push('', 'Raw result:', JSON.stringify(result, null, 2));
     return lines.join('\n');
+  }
+
+  private formatStepLine(s: SmokeTestStep): string {
+    return (
+      `  [${s.ok ? 'OK ' : 'ERR'}] ${s.name} (${s.durationMs}ms)` +
+      (s.detail ? ` — ${s.detail}` : '') +
+      (s.error ? ` — ERROR: ${s.error}` : '')
+    );
   }
 
   // ---------------------------------------------------------------------------

@@ -47,6 +47,12 @@ export interface SmokeTestResult {
   failedStep?: string;
   skipReason?: string;
   steps: SmokeTestStep[];
+  // Post-run teardown. Populated in the `finally` of a run; each artifact
+  // deletion is recorded so a silent cleanup failure is no longer invisible.
+  cleanup?: SmokeTestStep[];
+  // True when at least one cleanup step failed — a "passed but dirty" run that
+  // left artifacts behind. Surfaced in latest.json and the FAIL log.
+  cleanupFailed?: boolean;
   // Useful identifiers for debugging a failed run.
   sourceMessageId?: string;
   approvalMessageId?: string;
