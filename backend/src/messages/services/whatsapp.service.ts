@@ -501,23 +501,24 @@ export class WhatsAppService
     this.logger.log(`Reacted "${emoji}" to message ${messageId}`);
   }
 
-  async deleteMessage(messageId: string): Promise<void> {
+  /**
+   * Delete a message for everyone. Returns true when the message was found and
+   * the delete call completed, false when the message was not in the store
+   * (already gone). Real delete failures are thrown so callers can react —
+   * this method must not silently swallow them.
+   */
+  async deleteMessage(messageId: string): Promise<boolean> {
     if (!this.connected || !this.client) {
       throw new Error('WhatsApp client is not connected.');
     }
-    try {
-      const msg = await this.client.getMessageById(messageId);
-      if (!msg) {
-        this.logger.warn(`Message ${messageId} not found for deletion`);
-        return;
-      }
-      await msg.delete(true);
-      this.logger.log(`Deleted message ${messageId}`);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to delete message ${messageId}: ${(error as Error).message}`,
-      );
+    const msg = await this.client.getMessageById(messageId);
+    if (!msg) {
+      this.logger.warn(`Message ${messageId} not found for deletion`);
+      return false;
     }
+    await msg.delete(true);
+    this.logger.log(`Deleted message ${messageId}`);
+    return true;
   }
 
   async disconnect(): Promise<void> {

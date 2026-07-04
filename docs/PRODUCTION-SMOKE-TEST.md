@@ -31,7 +31,11 @@ On each run the test:
    local event row, the stored message row, and both WhatsApp messages (the test
    message and the approval card). Each deletion is recorded as a cleanup step
    (`result.cleanup[]`); an individual failure is non-fatal to the run but is
-   captured, not swallowed (see `cleanupFailed` below).
+   captured, not swallowed (see `cleanupFailed` below). It then **sweeps** any
+   remaining event/message still carrying the smoke marker (`[ps-smoke-test]`) —
+   the real event pipeline can create a duplicate event from the one smoke
+   message, and this also self-heals orphans leaked by older builds. The marker
+   is smoke-test-only, so the sweep never touches real user data.
 
 A run ends in one of three states:
 

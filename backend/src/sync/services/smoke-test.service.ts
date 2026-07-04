@@ -218,11 +218,13 @@ export class SmokeTestService implements OnModuleInit {
             'No event created from the test message — LLM parse / classifier / quota failure',
           );
         }
+        // Record the id before the approval-card guard so a failure here still
+        // leaves the event tracked for cleanup.
+        event = ev;
+        result.eventId = ev.id;
         if (!ev.approvalMessageId) {
           throw new Error(`Event ${ev.id} created but no approval card was sent`);
         }
-        event = ev;
-        result.eventId = ev.id;
         result.approvalMessageId = ev.approvalMessageId;
         return `eventId=${ev.id} status=${ev.approvalStatus} title="${ev.title}"`;
       });
@@ -406,15 +408,25 @@ export class SmokeTestService implements OnModuleInit {
       );
     }
     if (result.approvalMessageId) {
-      await this.tryCleanup(steps, 'delete-approval-message', () =>
-        this.whatsappService.deleteMessage(result.approvalMessageId!),
+      await this.tryCleanup(steps, 'delete-approval-message', async () =>
+        (await this.whatsappService.deleteMessage(result.approvalMessageId!))
+          ? 'deleted'
+          : 'not found',
       );
     }
     if (result.sourceMessageId) {
-      await this.tryCleanup(steps, 'delete-source-message', () =>
-        this.whatsappService.deleteMessage(result.sourceMessageId!),
+      await this.tryCleanup(steps, 'delete-source-message', async () =>
+        (await this.whatsappService.deleteMessage(result.sourceMessageId!))
+          ? 'deleted'
+          : 'not found',
       );
     }
+
+    // Belt-and-suspenders: the real event pipeline can create a *duplicate*
+    // event/message from the one smoke message, and past runs may have leaked
+    // artifacts the tracked ids never covered. Sweep everything still carrying
+    // the smoke marker so a run always leaves the DB (and calendar) clean.
+    await this.sweepMarkedArtifacts(steps, calendarId);
 
     result.cleanupFailed = steps.some((s) => !s.ok);
     if (result.cleanupFailed) {
@@ -425,6 +437,66 @@ export class SmokeTestService implements OnModuleInit {
     }
   }
 
+  /**
+   * Delete every event + message still tagged with the smoke marker, plus any
+   * Google Calendar events they point at. Covers pipeline-created duplicates
+   * and orphans leaked by earlier runs — the marker is smoke-test-only, so this
+   * never touches real user data.
+   */
+  private async sweepMarkedArtifacts(
+    steps: SmokeTestStep[],
+    calendarId: string,
+  ): Promise<void> {
+    await this.tryCleanup(steps, 'sweep-orphan-events', async () => {
+      const all = await this.eventRepository.findAll();
+      const orphans = all.filter((e) =>
+        e.sourceContent?.includes(SMOKE_TEST_MARKER),
+      );
+      let googleDeleted = 0;
+      let waDeleted = 0;
+      for (const ev of orphans) {
+        if (ev.googleEventId) {
+          try {
+            await this.googleCalendarService.deleteEvent(
+              ev.googleEventId,
+              calendarId,
+            );
+            googleDeleted++;
+          } catch (err) {
+            this.logger.warn(
+              `Sweep: Google event ${ev.googleEventId} delete failed: ${(err as Error).message}`,
+            );
+          }
+        }
+        // Each orphan carries the approval card that was posted to WhatsApp;
+        // remove it too. Best-effort: an old card may be past WhatsApp's
+        // delete-for-everyone window, which must not block the row deletion.
+        if (ev.approvalMessageId) {
+          try {
+            if (await this.whatsappService.deleteMessage(ev.approvalMessageId)) {
+              waDeleted++;
+            }
+          } catch (err) {
+            this.logger.warn(
+              `Sweep: WhatsApp approval ${ev.approvalMessageId} delete failed: ${(err as Error).message}`,
+            );
+          }
+        }
+        await this.eventRepository.delete(ev.id);
+      }
+      return `removed ${orphans.length} event(s), ${googleDeleted} google, ${waDeleted} whatsapp`;
+    });
+
+    await this.tryCleanup(steps, 'sweep-orphan-messages', async () => {
+      const all = await this.messageRepository.findAll();
+      const orphans = all.filter((m) => m.content?.includes(SMOKE_TEST_MARKER));
+      for (const m of orphans) {
+        await this.messageRepository.delete(m.id);
+      }
+      return `removed ${orphans.length} message(s)`;
+    });
+  }
+
   private async tryCleanup(
     steps: SmokeTestStep[],
     name: string,
@@ -432,8 +504,13 @@ export class SmokeTestService implements OnModuleInit {
   ): Promise<void> {
     const start = Date.now();
     try {
-      await fn();
-      steps.push({ name, ok: true, durationMs: Date.now() - start });
+      const value = await fn();
+      steps.push({
+        name,
+        ok: true,
+        durationMs: Date.now() - start,
+        detail: typeof value === 'string' ? value : undefined,
+      });
     } catch (error) {
       steps.push({
         name,

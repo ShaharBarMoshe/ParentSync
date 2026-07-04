@@ -52,7 +52,11 @@ export interface IWhatsAppService {
   ): Promise<string>; // returns serialized message ID
   /** React to a previously-sent message with an emoji (e.g. '👍'). */
   reactToMessage(messageId: string, emoji: string): Promise<void>;
-  /** Delete a message for everyone. Best-effort — used by the smoke test cleanup. */
-  deleteMessage(messageId: string): Promise<void>;
+  /**
+   * Delete a message for everyone. Resolves true when the message was found and
+   * deleted, false when it was not in the store. Throws on a real delete
+   * failure (does not swallow). Used by the smoke test cleanup.
+   */
+  deleteMessage(messageId: string): Promise<boolean>;
   disconnect(): Promise<void>;
 }

@@ -57,7 +57,7 @@ describe('SmokeTestService', () => {
         ]),
       ),
       reactToMessage: jest.fn().mockResolvedValue(undefined),
-      deleteMessage: jest.fn().mockResolvedValue(undefined),
+      deleteMessage: jest.fn().mockResolvedValue(true),
     };
 
     messageRepository = {
@@ -161,6 +161,8 @@ describe('SmokeTestService', () => {
       'delete-local-message',
       'delete-approval-message',
       'delete-source-message',
+      'sweep-orphan-events',
+      'sweep-orphan-messages',
     ]);
     expect(result.cleanup?.every((s) => s.ok)).toBe(true);
 
@@ -172,12 +174,67 @@ describe('SmokeTestService', () => {
     expect(failLogs.length).toBe(0);
   });
 
+  it('sweeps duplicate/orphan smoke artifacts left by the pipeline or past runs', async () => {
+    // The pipeline created a duplicate event + message from the one smoke
+    // message, and an older orphan (with a Google event) leaked from a past run.
+    // ev-1 / msg-1 reference the current message (so verify-* find them by
+    // runId); the rest only carry the smoke marker.
+    eventRepository.findAll.mockImplementation(() =>
+      Promise.resolve([
+        {
+          id: 'ev-1',
+          sourceContent: lastSent,
+          title: 'אסיפת הורים',
+          approvalStatus: ApprovalStatus.PENDING,
+          approvalMessageId: 'appr-1',
+        },
+        {
+          id: 'ev-dupe',
+          sourceContent: 'x [ps-smoke-test] other',
+          approvalStatus: ApprovalStatus.PENDING,
+          googleEventId: null,
+        },
+        {
+          id: 'ev-orphan',
+          sourceContent: 'y [ps-smoke-test] older-run',
+          approvalStatus: ApprovalStatus.APPROVED,
+          googleEventId: 'g-orphan',
+          approvalMessageId: 'appr-orphan',
+        },
+      ]),
+    );
+    messageRepository.findAll.mockImplementation(() =>
+      Promise.resolve([
+        { id: 'msg-1', content: lastSent },
+        { id: 'msg-dupe', content: 'dupe [ps-smoke-test] run' },
+      ]),
+    );
+
+    const result = await service.run('manual');
+
+    expect(result.status).toBe('passed');
+    // Every marked event was deleted, including the duplicate + the orphan.
+    expect(eventRepository.delete).toHaveBeenCalledWith('ev-dupe');
+    expect(eventRepository.delete).toHaveBeenCalledWith('ev-orphan');
+    // The orphan's leftover Google Calendar event was removed too.
+    expect(googleCalendarService.deleteEvent).toHaveBeenCalledWith('g-orphan', 'primary');
+    // And its stale WhatsApp approval card was deleted from the group.
+    expect(whatsappService.deleteMessage).toHaveBeenCalledWith('appr-orphan');
+    // Every marked message was deleted, including the duplicate.
+    expect(messageRepository.delete).toHaveBeenCalledWith('msg-dupe');
+
+    const sweepEvents = result.cleanup?.find((s) => s.name === 'sweep-orphan-events');
+    expect(sweepEvents?.ok).toBe(true);
+    expect(sweepEvents?.detail).toMatch(/event\(s\)/);
+    expect(result.cleanupFailed).toBe(false);
+  });
+
   it('surfaces a cleanup failure instead of silently swallowing it', async () => {
     // The pipeline passes, but tearing down the WhatsApp source message fails.
     whatsappService.deleteMessage.mockImplementation((id: string) =>
       id === 'src-msg-1'
         ? Promise.reject(new Error('delete for everyone timed out'))
-        : Promise.resolve(undefined),
+        : Promise.resolve(true),
     );
 
     const result = await service.run('manual');
