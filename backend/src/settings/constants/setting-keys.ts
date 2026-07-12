@@ -20,12 +20,15 @@ export const ALLOWED_SETTING_KEYS = [
   'google_redirect_uri',
   'google_calendar_id',
   'approval_channel',
+  'dedup_enabled',
+  'dedup_threshold',
   'calendar_dedup_enabled',
   'calendar_dedup_threshold',
   LLM_SYSTEM_PROMPT_KEY,
   LLM_CLASSIFIER_PROMPT_KEY,
   CLASSIFIER_ENABLED_KEY,
   'out_of_band_alerts_enabled',
+  'smoke_test_enabled',
 ] as const;
 
 /** Keys whose values must never be returned in full via the API. */
