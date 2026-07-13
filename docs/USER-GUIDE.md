@@ -110,6 +110,11 @@ Six cards at the top:
 
 ## Settings
 
+The Settings page is split into two tabs, each with its own **Save Settings** button (saving one tab never touches the other):
+
+- **General** — everyday setup: WhatsApp connection, Google accounts, children, Gemini API key/model, Google OAuth credentials, sync schedule, and event approval channel.
+- **AI & Automation** — pipeline tuning and advanced controls: deduplication, the two-stage classifier, the AI prompts, past rejections, the production smoke test, and the Danger Zone (uninstall).
+
 ### WhatsApp
 Connect to WhatsApp Web by scanning a QR code. The session persists across app restarts. Status shows Connected or Not connected.
 

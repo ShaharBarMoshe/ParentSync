@@ -117,6 +117,22 @@ describe('SettingsPage', () => {
     expect(screen.getByText(/loading settings/i)).toBeInTheDocument();
   });
 
+  it('splits settings across General and AI & Automation tabs', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    // General tab is active by default: shows Gemini/schedule, hides dedup.
+    await waitFor(() => expect(screen.getByText(/check schedule/i)).toBeInTheDocument());
+    expect(screen.getByText(/gemini ai/i)).toBeInTheDocument();
+    expect(screen.queryByText(/similarity threshold/i)).not.toBeInTheDocument();
+
+    // Switch to AI & Automation: dedup appears, Gemini/schedule are gone.
+    await user.click(screen.getByRole('tab', { name: /ai & automation/i }));
+    expect(screen.getByText(/similarity threshold/i)).toBeInTheDocument();
+    expect(screen.getByText(/production smoke test/i)).toBeInTheDocument();
+    expect(screen.queryByText(/check schedule/i)).not.toBeInTheDocument();
+  });
+
   it('shows error when API fails to load', async () => {
     mockSettingsApi.getAll.mockRejectedValue(new Error('fail'));
     renderPage();
@@ -503,6 +519,10 @@ describe('SettingsPage', () => {
         { id: '2', key: 'dedup_threshold', value: '0.92', updatedAt: '2026-06-01T00:00:00Z' },
       ]);
       renderPage();
+
+      // Dedup settings live on the "AI & Automation" tab — switch to it first.
+      await waitFor(() => expect(screen.getByText(/check schedule/i)).toBeInTheDocument());
+      await user.click(screen.getByRole('tab', { name: /ai & automation/i }));
 
       const slider = await screen.findByLabelText(/similarity threshold/i);
       expect(slider).toHaveAttribute('type', 'range');

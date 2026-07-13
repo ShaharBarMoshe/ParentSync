@@ -50,6 +50,23 @@ const SETTING_KEYS = {
   smokeTestEnabled: 'smoke_test_enabled',
 } as const;
 
+type SettingsGroup = 'general' | 'automation';
+
+// Which form owns which setting keys. Each tab saves only its own group so a
+// save on one tab never touches (or has to re-send) the other tab's values.
+const SETTING_GROUPS: Record<SettingsGroup, (keyof SettingsForm)[]> = {
+  general: [
+    'geminiApiKey',
+    'geminiModel',
+    'googleClientId',
+    'googleClientSecret',
+    'googleRedirectUri',
+    'checkSchedule',
+    'approvalChannel',
+  ],
+  automation: ['dedupEnabled', 'dedupThreshold', 'classifierEnabled', 'smokeTestEnabled'],
+};
+
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 function parseSelectedHours(value: string): Set<number> {
@@ -515,6 +532,7 @@ export default function SettingsPage() {
   const [whatsappQROpen, setWhatsappQROpen] = useState(false);
   const [smokeResult, setSmokeResult] = useState<SmokeTestResult | null>(null);
   const [smokeRunning, setSmokeRunning] = useState(false);
+  const [activeTab, setActiveTab] = useState<SettingsGroup>('general');
 
   useEffect(() => {
     loadSettings();
@@ -626,45 +644,62 @@ export default function SettingsPage() {
     };
   }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const validationErrors = validateForm(form);
-    setErrors(validationErrors);
-    if (Object.keys(validationErrors).length > 0) return;
-
-    setStatus({ type: 'saving' });
-    try {
-      // Save any dirty child changes first
-      const pendingEdits = Array.from(pendingChildEdits.current.entries());
-      for (const [childId, data] of pendingEdits) {
-        if (data.name && !data.name.trim()) continue; // skip invalid
-        const updated = await childrenApi.update(childId, data as any);
-        setChildren((prev) => prev.map((c) => (c.id === childId ? updated : c)));
+  function handleSubmitGroup(group: SettingsGroup) {
+    return async (e: FormEvent) => {
+      e.preventDefault();
+      // Only the General tab owns the check-schedule field, so only it validates.
+      if (group === 'general') {
+        const validationErrors = validateForm(form);
+        setErrors(validationErrors);
+        if (Object.keys(validationErrors).length > 0) return;
       }
-      pendingChildEdits.current.clear();
 
-      // Save settings (skip empty optional fields)
-      const entries = Object.entries(SETTING_KEYS) as [keyof SettingsForm, string][];
-      for (const [formKey, settingKey] of entries) {
-        const value = form[formKey];
-        if (value) {
-          await settingsApi.create(settingKey, value);
-        } else {
-          // Delete the setting if it was previously saved but is now empty
-          try { await settingsApi.delete(settingKey); } catch { /* ignore if not found */ }
+      setStatus({ type: 'saving' });
+      try {
+        // The Children editor lives on the General tab — flush its dirty edits.
+        if (group === 'general') {
+          const pendingEdits = Array.from(pendingChildEdits.current.entries());
+          for (const [childId, data] of pendingEdits) {
+            if (data.name && !data.name.trim()) continue; // skip invalid
+            const updated = await childrenApi.update(childId, data as any);
+            setChildren((prev) => prev.map((c) => (c.id === childId ? updated : c)));
+          }
+          pendingChildEdits.current.clear();
         }
+
+        // Save only this tab's setting keys (skip empty optional fields).
+        for (const formKey of SETTING_GROUPS[group]) {
+          const settingKey = SETTING_KEYS[formKey];
+          const value = form[formKey];
+          if (value) {
+            await settingsApi.create(settingKey, value);
+          } else {
+            // Delete the setting if it was previously saved but is now empty
+            try { await settingsApi.delete(settingKey); } catch { /* ignore if not found */ }
+          }
+        }
+        setSavedForm((prev) => {
+          const next = { ...prev };
+          for (const formKey of SETTING_GROUPS[group]) next[formKey] = form[formKey];
+          return next;
+        });
+        setStatus({ type: 'success', message: 'Settings saved successfully' });
+      } catch {
+        setStatus({ type: 'error', message: 'Failed to save settings' });
       }
-      setSavedForm(form);
-      setStatus({ type: 'success', message: 'Settings saved successfully' });
-    } catch {
-      setStatus({ type: 'error', message: 'Failed to save settings' });
-    }
+    };
   }
 
-  function handleReset() {
-    setForm(savedForm);
-    setErrors({});
-    setStatus({ type: 'idle' });
+  function handleResetGroup(group: SettingsGroup) {
+    return () => {
+      setForm((prev) => {
+        const next = { ...prev };
+        for (const formKey of SETTING_GROUPS[group]) next[formKey] = savedForm[formKey];
+        return next;
+      });
+      setErrors({});
+      setStatus({ type: 'idle' });
+    };
   }
 
   function handleConnect(purpose: AuthPurpose) {
@@ -766,6 +801,27 @@ export default function SettingsPage() {
         <p>Configure your children, sync schedule, and integrations.</p>
       </div>
 
+      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'general'}
+          className={`settings-tab ${activeTab === 'general' ? 'settings-tab--active' : ''}`}
+          onClick={() => setActiveTab('general')}
+        >
+          <Icon name="settings" size={16} /> General
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'automation'}
+          className={`settings-tab ${activeTab === 'automation' ? 'settings-tab--active' : ''}`}
+          onClick={() => setActiveTab('automation')}
+        >
+          <Icon name="sparkles" size={16} /> AI &amp; Automation
+        </button>
+      </div>
+
       {status.type === 'success' && (
         <div role="alert" className="settings-alert settings-alert--success">
           <Icon name="circle-check" size={16} />
@@ -788,6 +844,8 @@ export default function SettingsPage() {
         </div>
       ) : (
         <>
+          {activeTab === 'general' && (
+          <>
           {/* WhatsApp Connection */}
           <div className="settings-section">
             <h3 className="settings-section-title"><Icon name="whatsapp" size={16} /> WhatsApp</h3>
@@ -845,8 +903,8 @@ export default function SettingsPage() {
             <ChildList children={children} onSave={handleSaveChild} onDelete={handleDeleteChild} onAdd={handleAddChild} saving={childSaving} onPendingChange={handleChildPendingChange} />
           </div>
 
-          {/* Settings Form */}
-          <form onSubmit={handleSubmit}>
+          {/* General Settings Form */}
+          <form onSubmit={handleSubmitGroup('general')}>
             {/* Gemini */}
             <div className="settings-section">
               <h3 className="settings-section-title"><Icon name="key-round" size={16} /> Gemini AI</h3>
@@ -900,6 +958,22 @@ export default function SettingsPage() {
               </div>
             </div>
 
+            <div className="settings-actions">
+              <button type="submit" disabled={isSaving} className="btn btn--primary">
+                {isSaving ? <><Icon name="loader" size={16} className="icon-spin" /> Saving...</> : <><Icon name="save" size={16} /> Save Settings</>}
+              </button>
+              <button type="button" onClick={handleResetGroup('general')} disabled={isSaving} className="btn btn--secondary">
+                <Icon name="undo-2" size={16} /> Reset
+              </button>
+            </div>
+          </form>
+          </>
+          )}
+
+          {activeTab === 'automation' && (
+          <>
+          {/* AI & Automation Settings Form */}
+          <form onSubmit={handleSubmitGroup('automation')}>
             {/* Deduplication */}
             <div className="settings-section">
               <h3 className="settings-section-title"><Icon name="list-filter" size={16} /> Deduplication</h3>
@@ -1012,7 +1086,7 @@ export default function SettingsPage() {
               <button type="submit" disabled={isSaving} className="btn btn--primary">
                 {isSaving ? <><Icon name="loader" size={16} className="icon-spin" /> Saving...</> : <><Icon name="save" size={16} /> Save Settings</>}
               </button>
-              <button type="button" onClick={handleReset} disabled={isSaving} className="btn btn--secondary">
+              <button type="button" onClick={handleResetGroup('automation')} disabled={isSaving} className="btn btn--secondary">
                 <Icon name="undo-2" size={16} /> Reset
               </button>
             </div>
@@ -1052,6 +1126,8 @@ export default function SettingsPage() {
             removeUserData={uninstallPurge}
             onClose={() => setUninstallOpen(false)}
           />
+          </>
+          )}
         </>
       )}
     </div>

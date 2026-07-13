@@ -24,6 +24,39 @@
   }
 }
 
+.settings-tabs {
+  display: flex;
+  gap: $spacing-xs;
+  margin-bottom: $spacing-2xl;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: $spacing-sm $spacing-lg;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color $transition-fast, border-color $transition-fast;
+
+  &:hover {
+    color: var(--text-h);
+  }
+
+  &--active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+  }
+}
+
 .settings-loading {
   text-align: center;
   padding: $spacing-4xl 0;
