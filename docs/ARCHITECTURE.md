@@ -106,6 +106,9 @@ output mode enforces the shape instead.
 `llm/adapters/`, `llm/observability/` and `sync/graph/` may import
 `@langchain/*`.
 
+See [LANGCHAIN-LANGGRAPH.md](LANGCHAIN-LANGGRAPH.md) for the chains behind
+these ports, the event-sync graph, and the constraints that shaped both.
+
 ## Frontend Architecture
 
 React + TypeScript + Vite. No state management library — just React state + API calls.
