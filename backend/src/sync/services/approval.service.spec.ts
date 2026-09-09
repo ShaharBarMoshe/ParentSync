@@ -169,6 +169,26 @@ describe('ApprovalService', () => {
       expect(sentText).toContain('Grade 3A Parents');
     });
 
+    it('tags a smoke-test card with the marker so cleanup can find it', async () => {
+      await service.sendForApproval({
+        ...mockEvent,
+        sourceContent: 'בדיקת מערכת אוטומטית [ps-smoke-test] run-42',
+      } as any);
+
+      const sentText = whatsappService.sendMessage.mock.calls[0][1];
+      expect(sentText).toContain('[ps-smoke-test]');
+    });
+
+    it('leaves a real event card unmarked', async () => {
+      await service.sendForApproval({
+        ...mockEvent,
+        sourceContent: 'School trip on Friday, bring a hat',
+      } as any);
+
+      const sentText = whatsappService.sendMessage.mock.calls[0][1];
+      expect(sentText).not.toContain('[ps-smoke-test]');
+    });
+
     it('should skip when approval channel is not configured', async () => {
       settingsService.findByKey.mockRejectedValue(new Error('Not found'));
 
@@ -386,6 +406,29 @@ describe('ApprovalService', () => {
       });
       expect(eventSyncService.syncSingleEventToGoogle).not.toHaveBeenCalled();
     });
+
+    /**
+     * Regression: a reaction whose WhatsApp key failed to serialize arrived as
+     * the literal "[object Object]", which matched whichever legacy row stored
+     * the same sentinel — approving an unrelated event and leaving the one the
+     * user actually reacted to stuck in pending_approval forever.
+     */
+    it.each(['[object Object]', '', '   ', undefined as unknown as string])(
+      'should never look up an approval with an unusable msgId (%p)',
+      async (msgId) => {
+        await service.handleReaction({
+          msgId,
+          reaction: '👍',
+          senderId: 'user-1',
+          timestamp: Date.now(),
+        });
+
+        expect(eventRepository.findByApprovalMessageId).not.toHaveBeenCalled();
+        expect(dismissalRepository.findByApprovalMessageId).not.toHaveBeenCalled();
+        expect(eventRepository.update).not.toHaveBeenCalled();
+        expect(eventSyncService.syncSingleEventToGoogle).not.toHaveBeenCalled();
+      },
+    );
 
     it('should ignore reactions on unknown messages', async () => {
       await service.handleReaction({

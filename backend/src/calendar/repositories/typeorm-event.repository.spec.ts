@@ -28,6 +28,44 @@ describe('TypeOrmEventRepository', () => {
     await module.close();
   });
 
+  describe('findByApprovalMessageId', () => {
+    it('finds an event by its WhatsApp approval message key', async () => {
+      const approvalMessageId =
+        'true_120363407443598263@g.us_3EB0A87880D02F4D93C750_255524885028964@lid';
+      const created = await repository.create({
+        title: 'Basketball',
+        date: '2026-09-07',
+        approvalMessageId,
+      });
+
+      const found = await repository.findByApprovalMessageId(approvalMessageId);
+      expect(found?.id).toBe(created.id);
+    });
+
+    /**
+     * Regression: legacy rows stored "[object Object]" when a WhatsApp key
+     * failed to serialize. More than one row can hold it, so a lookup with the
+     * same sentinel returned an arbitrary event and swallowed the reaction.
+     */
+    it.each(['[object Object]', '', '   '])(
+      'never matches a row with an unusable key (%p)',
+      async (badId) => {
+        await repository.create({
+          title: 'Legacy A',
+          date: '2026-09-04',
+          approvalMessageId: badId,
+        });
+        await repository.create({
+          title: 'Legacy B',
+          date: '2026-09-05',
+          approvalMessageId: badId,
+        });
+
+        expect(await repository.findByApprovalMessageId(badId)).toBeNull();
+      },
+    );
+  });
+
   it('should create and find an event', async () => {
     const event = await repository.create({
       title: 'School Meeting',

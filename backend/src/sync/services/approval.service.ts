@@ -16,12 +16,14 @@ import { SettingsService } from '../../settings/settings.service';
 import { CalendarEventEntity } from '../../calendar/entities/calendar-event.entity';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 import { APP_MESSAGE_MARKER } from '../../shared/constants/app-marker';
+import { SMOKE_TEST_MARKER } from '../../shared/constants/smoke-test';
 import type { WhatsAppReaction } from '../../messages/interfaces/whatsapp-service.interface';
 import { generateICS } from '../../calendar/utils/ics-generator';
 import { EventDismissalService } from './event-dismissal.service';
 import { EventSyncService } from './event-sync.service';
 import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
+import { isUsableApprovalMessageId } from '../../shared/utils/approval-message-id';
 
 @Injectable()
 export class ApprovalService {
@@ -122,7 +124,11 @@ export class ApprovalService {
 
   @OnEvent('whatsapp.reaction')
   async handleReaction(payload: WhatsAppReaction): Promise<void> {
-    if (!payload.msgId) {
+    if (!isUsableApprovalMessageId(payload.msgId)) {
+      this.logger.warn(
+        `Ignoring reaction "${payload.reaction}" — unusable msgId ` +
+          `(${JSON.stringify(payload.msgId)}); no approval can be matched to it.`,
+      );
       return;
     }
 
@@ -418,6 +424,14 @@ export class ApprovalService {
     lines.push(`Source: ${event.source} — ${sourceChannel}`);
     lines.push(``);
     lines.push(`React 👍 to approve or 😢 to reject`);
+
+    // Tag cards generated from a smoke-test message so the smoke test can find
+    // and delete them from the channel afterwards. Without this the card is
+    // indistinguishable from a real one and survives every cleanup that has no
+    // DB row left to look its id up from.
+    if (event.sourceContent?.includes(SMOKE_TEST_MARKER)) {
+      lines.push(SMOKE_TEST_MARKER);
+    }
 
     return lines.join('\n') + APP_MESSAGE_MARKER;
   }

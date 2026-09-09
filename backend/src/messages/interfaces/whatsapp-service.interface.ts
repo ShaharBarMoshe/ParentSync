@@ -50,6 +50,16 @@ export interface IWhatsAppService {
     text: string,
     media?: WhatsAppMedia,
   ): Promise<string>; // returns serialized message ID
+  /**
+   * Ids of messages in a channel whose body contains `needle`, including the
+   * app's own outgoing messages (which `getChannelMessages` drops). Used by
+   * the smoke test to find and delete the artifacts it left behind.
+   */
+  findMessageIdsContaining(
+    channelName: string,
+    needle: string,
+    limit?: number,
+  ): Promise<string[]>;
   /** React to a previously-sent message with an emoji (e.g. '👍'). */
   reactToMessage(messageId: string, emoji: string): Promise<void>;
   /**

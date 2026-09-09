@@ -15,8 +15,12 @@ import { MESSAGE_REPOSITORY } from '../../shared/constants/injection-tokens';
 import type { IMessageRepository } from '../../messages/interfaces/message-repository.interface';
 import { SettingsService } from '../../settings/settings.service';
 import { SyncLockService } from './sync-lock.service';
+import {
+  UNUSABLE_APPROVAL_MESSAGE_ID,
+} from '../../shared/utils/approval-message-id';
 
 const ONE_TIME_VACUUM_FLAG = 'db_vacuum_v1_2_0_done';
+const APPROVAL_ID_REPAIR_FLAG = 'approval_message_id_repair_v1_done';
 
 @Injectable()
 export class DbHygieneService implements OnModuleInit, OnApplicationShutdown {
@@ -39,6 +43,8 @@ export class DbHygieneService implements OnModuleInit, OnApplicationShutdown {
       this.logger.log('One-time full VACUUM scheduled for next 04:00 maintenance window');
     }
 
+    await this.repairUnusableApprovalMessageIds();
+
     const pragmas = ['journal_mode', 'synchronous', 'foreign_keys', 'auto_vacuum'];
     for (const pragma of pragmas) {
       const value = await this.queryPragmaValue(pragma);
@@ -46,6 +52,54 @@ export class DbHygieneService implements OnModuleInit, OnApplicationShutdown {
     }
     const pageSize = await this.queryPragmaValue('page_size');
     this.logger.log(`PRAGMA page_size = ${pageSize ?? 'unknown'}`);
+  }
+
+  /**
+   * Reactions used to arrive with a WhatsApp message key that had lost its
+   * `_serialized` string crossing the puppeteer boundary, so the literal
+   * "[object Object]" was stored in `approvalMessageId`. Every row holding it
+   * is an ambiguous lookup target — one reaction resolves to whichever row the
+   * driver returns first — which silently applied a 👍 to the wrong event.
+   *
+   * Clear the column on those rows so they can never be matched. Events left
+   * pending keep their status and have to be re-sent for approval; the
+   * calendar itself is untouched.
+   */
+  private async repairUnusableApprovalMessageIds(): Promise<void> {
+    const done = await this.settingsService
+      .findByKey(APPROVAL_ID_REPAIR_FLAG)
+      .catch(() => null);
+    if (done) return;
+
+    try {
+      for (const table of ['calendar_events', 'pending_dismissals']) {
+        const rows: unknown[] = await this.dataSource.query(
+          `SELECT id FROM ${table} WHERE approvalMessageId = ?`,
+          [UNUSABLE_APPROVAL_MESSAGE_ID],
+        );
+        if (rows.length === 0) continue;
+
+        await this.dataSource.query(
+          `UPDATE ${table} SET approvalMessageId = NULL WHERE approvalMessageId = ?`,
+          [UNUSABLE_APPROVAL_MESSAGE_ID],
+        );
+        this.logger.log(
+          `Cleared unusable approvalMessageId on ${rows.length} ${table} row(s) — ` +
+            'any still pending must be re-sent for approval',
+        );
+      }
+
+      await this.settingsService.seedDefaultIfMissing(
+        APPROVAL_ID_REPAIR_FLAG,
+        'true',
+      );
+    } catch (err) {
+      // Never block startup on the repair; it retries on the next boot because
+      // the completion flag is only written on success.
+      this.logger.error(
+        `Approval message id repair failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {

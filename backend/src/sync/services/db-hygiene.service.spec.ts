@@ -117,6 +117,68 @@ describe('DbHygieneService', () => {
     });
   });
 
+  describe('one-time approvalMessageId repair', () => {
+    /**
+     * Rows sharing the "[object Object]" sentinel are ambiguous lookup targets:
+     * one reaction resolved to whichever came first, approving the wrong event.
+     */
+    it('clears the sentinel from both approval tables and records the flag', async () => {
+      (dataSource.query as jest.Mock).mockImplementation((sql: string) => {
+        if (sql.startsWith('SELECT id FROM calendar_events')) {
+          return [{ id: 'a' }, { id: 'b' }];
+        }
+        if (sql.startsWith('SELECT id FROM pending_dismissals')) return [];
+        if (sql.includes('journal_mode')) return [{ journal_mode: 'wal' }];
+        return [];
+      });
+
+      await service.onModuleInit();
+
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'UPDATE calendar_events SET approvalMessageId = NULL',
+        ),
+        ['[object Object]'],
+      );
+      // Nothing to fix in pending_dismissals — no pointless UPDATE.
+      expect(dataSource.query).not.toHaveBeenCalledWith(
+        expect.stringContaining(
+          'UPDATE pending_dismissals SET approvalMessageId = NULL',
+        ),
+        expect.anything(),
+      );
+      expect(settingsService.seedDefaultIfMissing).toHaveBeenCalledWith(
+        'approval_message_id_repair_v1_done',
+        'true',
+      );
+    });
+
+    it('does not run again once the flag is set', async () => {
+      settingsService.findByKey.mockResolvedValue({ value: 'true' } as never);
+
+      await service.onModuleInit();
+
+      expect(dataSource.query).not.toHaveBeenCalledWith(
+        expect.stringContaining('approvalMessageId'),
+        expect.anything(),
+      );
+    });
+
+    it('leaves the flag unset when the repair fails, so it retries next boot', async () => {
+      (dataSource.query as jest.Mock).mockImplementation((sql: string) => {
+        if (sql.includes('approvalMessageId')) throw new Error('db is locked');
+        return [];
+      });
+
+      await expect(service.onModuleInit()).resolves.not.toThrow();
+
+      expect(settingsService.seedDefaultIfMissing).not.toHaveBeenCalledWith(
+        'approval_message_id_repair_v1_done',
+        'true',
+      );
+    });
+  });
+
   describe('onApplicationShutdown', () => {
     it('should run WAL checkpoint on shutdown', async () => {
       await service.onApplicationShutdown();
@@ -178,8 +240,12 @@ describe('DbHygieneService', () => {
 
     it('should skip VACUUM when free space is insufficient', async () => {
       // DB is 10 MB, free space < 2.5× means < 25 MB — mock getFreeSpace by monkey-patching
-      jest.spyOn<DbHygieneService, 'getFreeSpace'>(service as unknown as DbHygieneService, 'getFreeSpace' as never)
-        .mockResolvedValue(5 * 1024 * 1024 as never); // 5 MB free
+      jest
+        .spyOn(
+          service as unknown as { getFreeSpace: () => Promise<number> },
+          'getFreeSpace',
+        )
+        .mockResolvedValue(5 * 1024 * 1024); // 5 MB free
       await service.runDailyMaintenance();
       expect(dataSource.query).not.toHaveBeenCalledWith('VACUUM');
     });
@@ -195,7 +261,7 @@ describe('DbHygieneService', () => {
 
     it('should defer VACUUM if sync lock is held', async () => {
       // Simulate a sync running while maintenance fires
-      const syncLock = service['syncLock'] as { isLocked: jest.Mock };
+      const syncLock = service['syncLock'] as unknown as { isLocked: jest.Mock };
       syncLock.isLocked.mockReturnValue(true);
 
       settingsService.findByKey.mockResolvedValue({ key: 'db_vacuum_v1_2_0_done', value: 'true' } as never);

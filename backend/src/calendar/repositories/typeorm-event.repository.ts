@@ -4,6 +4,7 @@ import { Between, In, IsNull, Not, Repository } from 'typeorm';
 import { CalendarEventEntity } from '../entities/calendar-event.entity';
 import { IEventRepository } from '../interfaces/event-repository.interface';
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
+import { isUsableApprovalMessageId } from '../../shared/utils/approval-message-id';
 
 @Injectable()
 export class TypeOrmEventRepository implements IEventRepository {
@@ -108,6 +109,12 @@ export class TypeOrmEventRepository implements IEventRepository {
   findByApprovalMessageId(
     messageId: string,
   ): Promise<CalendarEventEntity | null> {
+    // Legacy rows can share the "[object Object]" sentinel, so a malformed
+    // lookup key would resolve to an arbitrary one of them and steal the
+    // reaction from the event it was actually meant for.
+    if (!isUsableApprovalMessageId(messageId)) {
+      return Promise.resolve(null);
+    }
     return this.repo.findOneBy({ approvalMessageId: messageId });
   }
 
