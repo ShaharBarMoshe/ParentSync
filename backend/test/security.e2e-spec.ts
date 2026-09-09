@@ -7,12 +7,11 @@ import {
   WHATSAPP_SERVICE,
   GMAIL_SERVICE,
   GOOGLE_CALENDAR_SERVICE,
-  LLM_SERVICE,
 } from '../src/shared/constants/injection-tokens';
 import type { IWhatsAppService } from '../src/messages/interfaces/whatsapp-service.interface';
 import type { IGmailService } from '../src/messages/interfaces/gmail-service.interface';
 import type { IGoogleCalendarService } from '../src/calendar/interfaces/google-calendar-service.interface';
-import type { ILLMService } from '../src/llm/interfaces/llm-service.interface';
+import { createAiPortMocks, overrideAiPorts } from './helpers/ai-ports';
 import { AllExceptionsFilter } from '../src/shared/filters/all-exceptions.filter';
 
 describe('Security (e2e)', () => {
@@ -49,23 +48,19 @@ describe('Security (e2e)', () => {
     searchEvents: jest.fn().mockResolvedValue([]),
   };
 
-  const mockLlmService: ILLMService = {
-    callLLM: jest.fn().mockResolvedValue('[]'),
-  };
+  const aiPorts = createAiPortMocks();
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    })
-      .overrideProvider(WHATSAPP_SERVICE)
-      .useValue(mockWhatsAppService)
-      .overrideProvider(GMAIL_SERVICE)
-      .useValue(mockGmailService)
-      .overrideProvider(GOOGLE_CALENDAR_SERVICE)
-      .useValue(mockGoogleCalendarService)
-      .overrideProvider(LLM_SERVICE)
-      .useValue(mockLlmService)
-      .compile();
+    const moduleFixture: TestingModule = await overrideAiPorts(
+      Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(WHATSAPP_SERVICE)
+        .useValue(mockWhatsAppService)
+        .overrideProvider(GMAIL_SERVICE)
+        .useValue(mockGmailService)
+        .overrideProvider(GOOGLE_CALENDAR_SERVICE)
+        .useValue(mockGoogleCalendarService),
+      aiPorts,
+    ).compile();
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
@@ -244,18 +239,16 @@ describe('Security (e2e)', () => {
   describe('TC-SEC-008: Error response sanitization', () => {
     it('production mode AllExceptionsFilter should not leak stack traces', async () => {
       // Create a separate app instance with production-mode filter
-      const moduleFixture: TestingModule = await Test.createTestingModule({
-        imports: [AppModule],
-      })
-        .overrideProvider(WHATSAPP_SERVICE)
-        .useValue(mockWhatsAppService)
-        .overrideProvider(GMAIL_SERVICE)
-        .useValue(mockGmailService)
-        .overrideProvider(GOOGLE_CALENDAR_SERVICE)
-        .useValue(mockGoogleCalendarService)
-        .overrideProvider(LLM_SERVICE)
-        .useValue(mockLlmService)
-        .compile();
+      const moduleFixture: TestingModule = await overrideAiPorts(
+        Test.createTestingModule({ imports: [AppModule] })
+          .overrideProvider(WHATSAPP_SERVICE)
+          .useValue(mockWhatsAppService)
+          .overrideProvider(GMAIL_SERVICE)
+          .useValue(mockGmailService)
+          .overrideProvider(GOOGLE_CALENDAR_SERVICE)
+          .useValue(mockGoogleCalendarService),
+        aiPorts,
+      ).compile();
 
       const prodApp = moduleFixture.createNestApplication();
       prodApp.setGlobalPrefix('api');

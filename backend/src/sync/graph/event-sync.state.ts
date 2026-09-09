@@ -17,6 +17,14 @@ export interface GroupMeta {
   dedup?: DedupResult;
 }
 
+/** A cancel/delay instruction, with the context needed to apply it. */
+export interface PendingDismissal {
+  event: ParsedEvent;
+  childId?: string;
+  childName?: string;
+  messageId: string;
+}
+
 export interface SyncCounters {
   messagesParsed: number;
   messagesFailed: number;
@@ -37,6 +45,14 @@ const replace = <T>(defaultValue: () => T) => ({
  * appear here: a `QueryRunner` held across an edge would keep a SQLite write
  * transaction open while the graph runtime awaits, which is how the whole file
  * ends up locked. Transactions open and commit inside a single node.
+ *
+ * Written with `Annotation.Root` rather than LangGraph v1's `StateSchema`. The
+ * two are equivalent for our purposes and `StateSchema` is the newer idiom, but
+ * it wants a zod schema per channel — and half of these channels hold TypeORM
+ * entities and a `Map`, which would come out as `z.custom<T>()`: zod as
+ * paperwork, validating nothing. That trade only pays for its keystrokes when a
+ * checkpointer serializes the state, and this graph deliberately has none (see
+ * `event-sync.graph.ts`).
  */
 export const EventSyncStateAnnotation = Annotation.Root({
   /** Every message group in this pass, in discovery order. */
@@ -53,9 +69,19 @@ export const EventSyncStateAnnotation = Annotation.Root({
     replace<Map<string, ParsedEvent[]>>(() => new Map()),
   ),
 
-  /** Events persisted this pass, awaiting screening and approval. */
+  /** Events persisted this pass. */
   savedEvents: Annotation<CalendarEventEntity[]>(
     replace<CalendarEventEntity[]>(() => []),
+  ),
+
+  /** Those that survived screening and should get an approval card. */
+  approvalCandidates: Annotation<CalendarEventEntity[]>(
+    replace<CalendarEventEntity[]>(() => []),
+  ),
+
+  /** Cancel/delay instructions extracted this pass, applied after approval. */
+  dismissals: Annotation<PendingDismissal[]>(
+    replace<PendingDismissal[]>(() => []),
   ),
 
   /** True when approval is configured; decides whether screening runs at all. */
@@ -97,6 +123,6 @@ export type EventSyncState = typeof EventSyncStateAnnotation.State;
  * What a node returns: a partial state, where `counters` carries *deltas*
  * rather than totals (the annotation's reducer adds them).
  */
-export type EventSyncUpdate = Partial<
-  Omit<EventSyncState, 'counters'>
-> & { counters?: Partial<SyncCounters> };
+export type EventSyncUpdate = Partial<Omit<EventSyncState, 'counters'>> & {
+  counters?: Partial<SyncCounters>;
+};

@@ -24,9 +24,15 @@ import {
   GMAIL_SERVICE,
   GOOGLE_CALENDAR_SERVICE,
   GOOGLE_TASKS_SERVICE,
-  LLM_SERVICE,
   EMBEDDING_SERVICE,
 } from '../src/shared/constants/injection-tokens';
+import {
+  EVENT_EXTRACTOR,
+  RELEVANCE_CLASSIFIER,
+  DUPLICATE_JUDGE,
+  type ExtractionRequest,
+} from '../src/llm/ports/ai-ports';
+import { createAiPortMocks } from './helpers/ai-ports';
 import { MessageSource } from '../src/shared/enums/message-source.enum';
 import { MockEmbeddingService } from '../src/llm/services/mock-embedding.service';
 import {
@@ -110,31 +116,20 @@ describe('Semantic Deduplication (e2e)', () => {
     return [{ title: 'Generic event', date: futureDate, time: '10:00' }];
   }
 
-  const mockLlm = {
-    callLLM: jest.fn().mockImplementation(async (messages: any[]) => {
-      // Count extraction calls only. The relevance classifier goes through the
-      // same callLLM port, and these assertions are about whether dedup
-      // avoided a *parse*, not about how many messages were classified.
-      const systemPrompt =
-        messages.find((m) => m.role === 'system')?.content ?? '';
-      if (systemPrompt.includes('calendar event extractor')) {
-        llmCallCount++;
-      }
-      const userMsg =
-        messages.find((m) => m.role === 'user')?.content ?? '';
-      const isBatch = userMsg.includes('===MESSAGE_');
-      if (isBatch) {
-        const result: Record<string, unknown[]> = {};
-        const parts = userMsg.split(/===MESSAGE_(\d+)===/);
-        for (let i = 1; i < parts.length; i += 2) {
-          const id = parts[i];
-          result[id] = parseBody(parts[i + 1] ?? '');
-        }
-        return JSON.stringify(result);
-      }
-      return JSON.stringify(parseBody(userMsg));
-    }),
-  };
+  /**
+   * Extraction stub. `llmCallCount` counts calls that reach the extractor
+   * port, which is exactly what these assertions are about: whether the dedup
+   * pre-filter avoided a *parse*. Classification is stubbed separately so it
+   * cannot inflate the count.
+   */
+  const aiPorts = createAiPortMocks();
+  aiPorts.extractor.extract = jest.fn(async (requests: ExtractionRequest[]) => {
+    llmCallCount++;
+    return requests.map((request) => ({
+      id: request.id,
+      events: parseBody(request.content) as any,
+    }));
+  });
 
   beforeAll(async () => {
     mockEmbedding = new MockEmbeddingService();
@@ -146,7 +141,9 @@ describe('Semantic Deduplication (e2e)', () => {
       .overrideProvider(GMAIL_SERVICE).useValue(noopAdapters.gmail)
       .overrideProvider(GOOGLE_CALENDAR_SERVICE).useValue(noopAdapters.calendar)
       .overrideProvider(GOOGLE_TASKS_SERVICE).useValue(noopAdapters.tasks)
-      .overrideProvider(LLM_SERVICE).useValue(mockLlm)
+      .overrideProvider(EVENT_EXTRACTOR).useValue(aiPorts.extractor)
+      .overrideProvider(RELEVANCE_CLASSIFIER).useValue(aiPorts.classifier)
+      .overrideProvider(DUPLICATE_JUDGE).useValue(aiPorts.duplicateJudge)
       .overrideProvider(EMBEDDING_SERVICE).useValue(mockEmbedding as IEmbeddingService)
       .compile();
 
@@ -290,7 +287,9 @@ describe('Semantic Deduplication (e2e)', () => {
       .overrideProvider(GMAIL_SERVICE).useValue(noopAdapters.gmail)
       .overrideProvider(GOOGLE_CALENDAR_SERVICE).useValue(noopAdapters.calendar)
       .overrideProvider(GOOGLE_TASKS_SERVICE).useValue(noopAdapters.tasks)
-      .overrideProvider(LLM_SERVICE).useValue(mockLlm)
+      .overrideProvider(EVENT_EXTRACTOR).useValue(aiPorts.extractor)
+      .overrideProvider(RELEVANCE_CLASSIFIER).useValue(aiPorts.classifier)
+      .overrideProvider(DUPLICATE_JUDGE).useValue(aiPorts.duplicateJudge)
       .overrideProvider(EMBEDDING_SERVICE).useValue(failing)
       .compile();
     const failApp = fixture.createNestApplication();
