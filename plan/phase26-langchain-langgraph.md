@@ -258,6 +258,33 @@ Gemini adapters, `llm_runtime`, `LlmQueueProcessor`, `ILLMService`.
 
 ---
 
+## 3a. Where the build differs from this plan
+
+Three decisions changed once the code met the libraries. Each is documented at
+the point of use as well.
+
+1. **State stayed on `Annotation.Root`** (§2.6 said `StateSchema` + zod).
+   `StateSchema` wants a zod schema per channel, and half these channels hold
+   TypeORM entities and a `Map` — they would come out as `z.custom<T>()`: zod
+   as paperwork, validating nothing. That trade only pays off when a
+   checkpointer serializes the state, and this graph deliberately has none.
+
+2. **No `ChatPromptTemplate`** (§2.2). Its f-string templating treats `{` and
+   `}` as variable delimiters, and the input here is arbitrary school-message
+   text — a message containing a brace would break the render or silently
+   swallow content. The chains build `BaseMessage[]` and pipe it into
+   `model.withStructuredOutput(schema)`, which is still a traced runnable.
+
+3. **No node-level `retryPolicy` on `syncToGoogle`** (§2.6). A node retry
+   re-runs the node from the top, and this one iterates every unsynced event;
+   a retry would re-push the ones that already succeeded. Per-event `try/catch`
+   leaving failures unsynced for the next pass is the correct granularity.
+
+And one thing the plan got wrong on a fact: LangChain's default `maxRetries` is
+**6**, not 3, so the un-disabled stacking hazard was 6 × 3 = 18 attempts, with
+six of them burned on a quota-exhausted account before our fast-fail could see
+it.
+
 ## 4. Acceptance criteria
 
 1. All backend unit tests, e2e, and frontend tests pass; 0 type errors.
