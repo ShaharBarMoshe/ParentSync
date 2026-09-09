@@ -1,224 +1,172 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { MessageClassifierService } from './message-classifier.service';
-import { LLM_SERVICE } from '../../shared/constants/injection-tokens';
+import { RELEVANCE_CLASSIFIER } from '../ports/ai-ports';
 import { SettingsService } from '../../settings/settings.service';
+import { PromptRegistry } from '../prompts/prompt-registry.service';
 
 describe('MessageClassifierService', () => {
   let service: MessageClassifierService;
-  let mockLlmService: { callLLM: jest.Mock };
+  let mockClassifier: { classify: jest.Mock };
   let mockCache: { get: jest.Mock; set: jest.Mock };
   let mockSettings: { findByKey: jest.Mock; create: jest.Mock };
+  let mockPrompts: { classifierPrompt: jest.Mock };
 
-  const settingsResolver = (overrides: Record<string, string> = {}) => (key: string) => {
-    const defaults: Record<string, string> = {
-      classifier_enabled: 'true',
+  const settingsResolver =
+    (overrides: Record<string, string> = {}) =>
+    (key: string) => {
+      const defaults: Record<string, string> = { classifier_enabled: 'true' };
+      const v = overrides[key] ?? defaults[key];
+      if (v === undefined)
+        return Promise.reject(new Error(`Setting not found: ${key}`));
+      return Promise.resolve({ value: v });
     };
-    const v = overrides[key] ?? defaults[key];
-    if (v === undefined) return Promise.reject(new Error(`Setting not found: ${key}`));
-    return Promise.resolve({ value: v });
-  };
 
   beforeEach(async () => {
-    mockLlmService = { callLLM: jest.fn() };
-    mockCache = { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined) };
+    mockClassifier = {
+      classify: jest.fn().mockResolvedValue({ isEvent: true, reason: 'ok' }),
+    };
+    mockCache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
+    };
     mockSettings = {
       findByKey: jest.fn().mockImplementation(settingsResolver()),
       create: jest.fn().mockResolvedValue(undefined),
+    };
+    mockPrompts = {
+      classifierPrompt: jest
+        .fn()
+        .mockResolvedValue({ prompt: 'CLASSIFY', version: 'v1' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessageClassifierService,
-        { provide: LLM_SERVICE, useValue: mockLlmService },
+        { provide: RELEVANCE_CLASSIFIER, useValue: mockClassifier },
         { provide: CACHE_MANAGER, useValue: mockCache },
         { provide: SettingsService, useValue: mockSettings },
+        { provide: PromptRegistry, useValue: mockPrompts },
       ],
     }).compile();
 
     service = module.get(MessageClassifierService);
   });
 
-  describe('classify — happy path', () => {
-    it('returns isEvent=true for a YES verdict', async () => {
-      mockLlmService.callLLM.mockResolvedValue('YES — explicit date and activity');
-
-      const v = await service.classify('טיול שנתי ביום שלישי');
-
-      expect(v.isEvent).toBe(true);
-      expect(v.reason).toBe('explicit date and activity');
-      expect(mockLlmService.callLLM).toHaveBeenCalledTimes(1);
+  describe('verdict pass-through', () => {
+    it('returns the port verdict unchanged for a positive answer', async () => {
+      mockClassifier.classify.mockResolvedValue({
+        isEvent: true,
+        reason: 'explicit date and activity',
+      });
+      await expect(service.classify('Trip on Monday')).resolves.toEqual({
+        isEvent: true,
+        reason: 'explicit date and activity',
+      });
     });
 
-    it('returns isEvent=false for a NO verdict', async () => {
-      mockLlmService.callLLM.mockResolvedValue('NO — absence notice');
-
-      const v = await service.classify('לא נגיע היום, יש בית חם');
-
-      expect(v.isEvent).toBe(false);
-      expect(v.reason).toBe('absence notice');
-    });
-
-    it('accepts en-dash, em-dash, hyphen, or colon as the separator', async () => {
-      for (const sep of ['—', '–', '-', ':']) {
-        mockLlmService.callLLM.mockResolvedValueOnce(`YES ${sep} valid event`);
-        const v = await service.classify(`probe-${sep}`);
-        expect(v.isEvent).toBe(true);
-      }
-    });
-
-    it('takes only the first line, ignoring trailing commentary', async () => {
-      mockLlmService.callLLM.mockResolvedValue('NO — chit chat\nFollow-up: this is unsolicited extra text');
-
-      const v = await service.classify('שלום!');
-
-      expect(v.isEvent).toBe(false);
-      expect(v.reason).toBe('chit chat');
-    });
-
-    it('truncates an overlong reason to 80 chars', async () => {
-      const longReason = 'a'.repeat(200);
-      mockLlmService.callLLM.mockResolvedValue(`NO — ${longReason}`);
-
-      const v = await service.classify('probe');
-
-      expect(v.reason.length).toBeLessThanOrEqual(80);
-    });
-
-    it('uses "(no reason)" placeholder when the model returns just YES/NO', async () => {
-      mockLlmService.callLLM.mockResolvedValue('NO');
-
-      const v = await service.classify('probe');
-
-      expect(v.isEvent).toBe(false);
-      expect(v.reason).toBe('(no reason)');
+    it('returns the port verdict unchanged for a negative answer', async () => {
+      mockClassifier.classify.mockResolvedValue({
+        isEvent: false,
+        reason: 'chit-chat',
+      });
+      const verdict = await service.classify('thanks!');
+      expect(verdict.isEvent).toBe(false);
     });
   });
 
   describe('short-circuits', () => {
-    it('returns isEvent=false (without calling LLM) for an empty message', async () => {
-      const v = await service.classify('   ');
-
-      expect(v.isEvent).toBe(false);
-      expect(v.reason).toBe('empty-message');
-      expect(mockLlmService.callLLM).not.toHaveBeenCalled();
+    it('rejects an empty message without reaching the port', async () => {
+      const verdict = await service.classify('   ');
+      expect(verdict).toEqual({ isEvent: false, reason: 'empty-message' });
+      expect(mockClassifier.classify).not.toHaveBeenCalled();
     });
 
-    it('returns isEvent=true (without calling LLM) when classifier_enabled = false', async () => {
-      mockSettings.findByKey.mockImplementation(settingsResolver({ classifier_enabled: 'false' }));
-
-      const v = await service.classify('any message');
-
-      expect(v.isEvent).toBe(true);
-      expect(v.reason).toBe('classifier-disabled');
-      expect(mockLlmService.callLLM).not.toHaveBeenCalled();
-    });
-
-    it('defaults to enabled when classifier_enabled setting is missing', async () => {
-      // No classifier_enabled in resolver defaults override → falls through to true.
-      mockLlmService.callLLM.mockResolvedValue('YES — sample');
-      mockSettings.findByKey.mockImplementation((key: string) => {
-        if (key === 'classifier_enabled') return Promise.reject(new Error('Not found'));
-        return Promise.reject(new Error('Not found'));
+    it('passes everything through when the classifier is switched off', async () => {
+      mockSettings.findByKey.mockImplementation(
+        settingsResolver({ classifier_enabled: 'false' }),
+      );
+      const verdict = await service.classify('anything');
+      expect(verdict).toEqual({
+        isEvent: true,
+        reason: 'classifier-disabled',
       });
-
-      const v = await service.classify('probe');
-
-      expect(v.isEvent).toBe(true);
-      expect(mockLlmService.callLLM).toHaveBeenCalled();
-    });
-  });
-
-  describe('fail-open contract', () => {
-    it('returns isEvent=true with reason=classifier-fail-open when LLM throws', async () => {
-      mockLlmService.callLLM.mockRejectedValue(new Error('429 quota exceeded'));
-
-      const v = await service.classify('probe');
-
-      expect(v.isEvent).toBe(true);
-      expect(v.reason).toBe('classifier-fail-open');
+      expect(mockClassifier.classify).not.toHaveBeenCalled();
     });
 
-    it('returns isEvent=true when the response is empty', async () => {
-      mockLlmService.callLLM.mockResolvedValue('');
-
-      const v = await service.classify('probe');
-
-      expect(v.isEvent).toBe(true);
-      expect(v.reason).toBe('classifier-empty-response');
-    });
-
-    it('returns isEvent=true when the response is unparseable', async () => {
-      mockLlmService.callLLM.mockResolvedValue('I think this is probably an event, here is why...');
-
-      const v = await service.classify('probe');
-
-      expect(v.isEvent).toBe(true);
-      expect(v.reason).toBe('classifier-unparseable');
+    it('defaults to enabled when the setting is missing', async () => {
+      mockSettings.findByKey.mockRejectedValue(new Error('not found'));
+      await service.classify('Trip on Monday');
+      expect(mockClassifier.classify).toHaveBeenCalled();
     });
   });
 
   describe('caching', () => {
-    it('caches the verdict keyed on prompt-version + content hash', async () => {
-      mockLlmService.callLLM.mockResolvedValue('YES — match');
-
-      await service.classify('same content');
-      expect(mockCache.set).toHaveBeenCalledTimes(1);
-      const [cacheKey] = mockCache.set.mock.calls[0];
-      expect(cacheKey).toMatch(/^classify:[0-9a-f]{16}:[0-9a-f]{64}$/);
+    it('caches a real verdict keyed on prompt version and content', async () => {
+      mockClassifier.classify.mockResolvedValue({
+        isEvent: false,
+        reason: 'chit-chat',
+      });
+      await service.classify('thanks!');
+      expect(mockCache.set).toHaveBeenCalledWith(
+        expect.stringContaining('classify:v1:'),
+        { isEvent: false, reason: 'chit-chat' },
+        expect.any(Number),
+      );
     });
 
-    it('serves the cached verdict on second call (no LLM)', async () => {
-      mockCache.get.mockResolvedValueOnce({ isEvent: false, reason: 'cached' });
+    it('serves a cached verdict without reaching the port', async () => {
+      mockCache.get.mockResolvedValue({ isEvent: false, reason: 'cached' });
+      const verdict = await service.classify('thanks!');
+      expect(verdict.reason).toBe('cached');
+      expect(mockClassifier.classify).not.toHaveBeenCalled();
+    });
 
-      const v = await service.classify('same content');
+    it('never caches a fail-open verdict, so an outage lasts one call', async () => {
+      mockClassifier.classify.mockResolvedValue({
+        isEvent: true,
+        reason: 'classifier-fail-open',
+      });
+      const verdict = await service.classify('Trip on Monday');
+      expect(verdict.isEvent).toBe(true);
+      expect(mockCache.set).not.toHaveBeenCalled();
+    });
 
-      expect(v.isEvent).toBe(false);
-      expect(v.reason).toBe('cached');
-      expect(mockLlmService.callLLM).not.toHaveBeenCalled();
+    it('busts the cache when the prompt version changes', async () => {
+      await service.classify('same text');
+      const firstKey = mockCache.get.mock.calls[0][0];
+      mockPrompts.classifierPrompt.mockResolvedValue({
+        prompt: 'EDITED',
+        version: 'v2',
+      });
+      await service.classify('same text');
+      expect(mockCache.get.mock.calls[1][0]).not.toBe(firstKey);
     });
   });
 
   describe('date context', () => {
-    it('prepends the messageDate to the user prompt when supplied', async () => {
-      mockLlmService.callLLM.mockResolvedValue('YES — date present');
-
-      await service.classify('content', '2026-06-20');
-
-      const messages = mockLlmService.callLLM.mock.calls[0][0];
-      const userMsg = messages.find((m: { role: string }) => m.role === 'user');
-      expect(userMsg.content).toContain('Current date: 2026-06-20');
+    it('forwards the message date so relative dates resolve correctly', async () => {
+      await service.classify('trip tomorrow', '2026-03-01');
+      expect(mockClassifier.classify).toHaveBeenCalledWith(
+        'trip tomorrow',
+        '2026-03-01',
+      );
     });
 
-    it('omits the date prefix when messageDate is not supplied', async () => {
-      mockLlmService.callLLM.mockResolvedValue('YES — no date');
-
-      await service.classify('content');
-
-      const messages = mockLlmService.callLLM.mock.calls[0][0];
-      const userMsg = messages.find((m: { role: string }) => m.role === 'user');
-      expect(userMsg.content).not.toContain('Current date:');
-    });
-  });
-
-  describe('onModuleInit', () => {
-    it('seeds the default classifier prompt when not customized', async () => {
-      mockSettings.findByKey.mockRejectedValue(new Error('Not found'));
-
-      await service.onModuleInit();
-
-      expect(mockSettings.create).toHaveBeenCalledWith({
-        key: 'llm_classifier_prompt',
-        value: expect.stringContaining('binary classifier'),
-      });
+    it('forwards undefined when no date is supplied', async () => {
+      await service.classify('trip tomorrow');
+      expect(mockClassifier.classify).toHaveBeenCalledWith(
+        'trip tomorrow',
+        undefined,
+      );
     });
 
-    it('leaves the prompt alone when the user has marked it custom', async () => {
-      mockSettings.findByKey.mockResolvedValue({ value: 'true' });
-
-      await service.onModuleInit();
-
-      expect(mockSettings.create).not.toHaveBeenCalled();
+    it('trims the content before handing it to the port', async () => {
+      await service.classify('  padded  ');
+      expect(mockClassifier.classify).toHaveBeenCalledWith(
+        'padded',
+        undefined,
+      );
     });
   });
 });

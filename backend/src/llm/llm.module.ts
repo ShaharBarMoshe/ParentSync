@@ -1,100 +1,59 @@
-import { Logger, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { GeminiService } from './services/gemini.service';
-import { LangChainLlmService } from './services/langchain-llm.service';
-import { LangChainEmbeddingService } from './services/langchain-embedding.service';
+import { GeminiChatFactory } from './adapters/gemini-chat.factory';
+import { ChainRunner } from './adapters/chain-runner.service';
+import { ExtractionChain } from './adapters/extraction.chain';
+import { ClassifierChain } from './adapters/classifier.chain';
+import { DuplicateJudgeChain } from './adapters/duplicate-judge.chain';
+import { EmbeddingAdapter } from './adapters/embedding.adapter';
 import { TracingService } from './observability/tracing.service';
-import { SettingsService } from '../settings/settings.service';
-import { LLM_RUNTIME_KEY } from '../settings/constants/setting-keys';
-import type { ILLMService } from './interfaces/llm-service.interface';
-import type { IEmbeddingService } from './interfaces/embedding-service.interface';
-import { GeminiEmbeddingService } from './services/gemini-embedding.service';
+import { PromptRegistry } from './prompts/prompt-registry.service';
 import { MessageParserService } from './services/message-parser.service';
 import { MessageClassifierService } from './services/message-classifier.service';
 import { LlmRateLimiter } from './guards/llm-throttle.guard';
-import { LlmQueueProcessor } from './queue/llm-queue.processor';
 import { LlmPromptController } from './controllers/llm-prompt.controller';
 import { NegativeExamplesController } from './controllers/negative-examples.controller';
 import { NegativeExampleEntity } from './entities/negative-example.entity';
 import { TypeOrmNegativeExampleRepository } from './repositories/typeorm-negative-example.repository';
 import {
-  LLM_SERVICE,
+  EVENT_EXTRACTOR,
+  RELEVANCE_CLASSIFIER,
+  DUPLICATE_JUDGE,
+} from './ports/ai-ports';
+import {
   EMBEDDING_SERVICE,
   NEGATIVE_EXAMPLE_REPOSITORY,
 } from '../shared/constants/injection-tokens';
 import { SettingsModule } from '../settings/settings.module';
 
-const runtimeLogger = new Logger('LlmRuntime');
-
 /**
- * Pick the adapter family for this boot.
+ * Every AI capability in the app, and the only place `@langchain/*` is wired.
  *
- * `llm_runtime` defaults to `langchain`; setting it to `legacy` falls back to
- * the Gemini SDK adapters. A temporary escape hatch for the Phase 26
- * migration — this app runs a real family's daily sync, and a bad parse path
- * means missed school events. Remove once LangChain has a few weeks of clean
- * runs. Read once at boot, so switching it needs a restart.
+ * The four ports below are the entire AI surface the rest of the app can see.
+ * Each is served by exactly one adapter — there is no runtime switch and no
+ * second implementation to drift from the first. Rolling back a bad release
+ * means installing the previous AppImage, which `install-local.sh` keeps.
  */
-async function selectRuntime<T>(
-  settings: SettingsService,
-  langchain: T,
-  legacy: T,
-  label: string,
-): Promise<T> {
-  let choice = 'langchain';
-  try {
-    choice = (await settings.findByKey(LLM_RUNTIME_KEY)).value.trim().toLowerCase();
-  } catch {
-    // Unset — take the default.
-  }
-
-  if (choice === 'legacy') {
-    runtimeLogger.warn(
-      `${label} runtime: legacy Gemini SDK adapter (llm_runtime=legacy)`,
-    );
-    return legacy;
-  }
-  runtimeLogger.log(`${label} runtime: LangChain`);
-  return langchain;
-}
-
 @Module({
   imports: [
     SettingsModule,
     TypeOrmModule.forFeature([NegativeExampleEntity]),
     CacheModule.register({
-      ttl: 86400, // 24 hours default
+      ttl: 86400, // 24 hours
       max: 1000,
     }),
   ],
   controllers: [LlmPromptController, NegativeExamplesController],
   providers: [
-    // Both adapter families are constructible; the factories below pick one
-    // per boot from the `llm_runtime` setting. See `selectRuntime`.
-    GeminiService,
-    GeminiEmbeddingService,
-    LangChainLlmService,
-    LangChainEmbeddingService,
+    GeminiChatFactory,
+    ChainRunner,
     TracingService,
-    {
-      provide: LLM_SERVICE,
-      inject: [SettingsService, LangChainLlmService, GeminiService],
-      useFactory: (
-        settings: SettingsService,
-        langchain: ILLMService,
-        legacy: ILLMService,
-      ) => selectRuntime(settings, langchain, legacy, 'LLM'),
-    },
-    {
-      provide: EMBEDDING_SERVICE,
-      inject: [SettingsService, LangChainEmbeddingService, GeminiEmbeddingService],
-      useFactory: (
-        settings: SettingsService,
-        langchain: IEmbeddingService,
-        legacy: IEmbeddingService,
-      ) => selectRuntime(settings, langchain, legacy, 'embedding'),
-    },
+    PromptRegistry,
+    { provide: EVENT_EXTRACTOR, useClass: ExtractionChain },
+    { provide: RELEVANCE_CLASSIFIER, useClass: ClassifierChain },
+    { provide: DUPLICATE_JUDGE, useClass: DuplicateJudgeChain },
+    { provide: EMBEDDING_SERVICE, useClass: EmbeddingAdapter },
     {
       provide: NEGATIVE_EXAMPLE_REPOSITORY,
       useClass: TypeOrmNegativeExampleRepository,
@@ -102,16 +61,17 @@ async function selectRuntime<T>(
     MessageParserService,
     MessageClassifierService,
     LlmRateLimiter,
-    LlmQueueProcessor,
   ],
   exports: [
     TracingService,
-    LLM_SERVICE,
+    PromptRegistry,
+    EVENT_EXTRACTOR,
+    RELEVANCE_CLASSIFIER,
+    DUPLICATE_JUDGE,
     EMBEDDING_SERVICE,
     MessageParserService,
     MessageClassifierService,
     LlmRateLimiter,
-    LlmQueueProcessor,
     NEGATIVE_EXAMPLE_REPOSITORY,
   ],
 })

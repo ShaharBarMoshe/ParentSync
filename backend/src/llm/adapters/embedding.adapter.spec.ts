@@ -1,4 +1,4 @@
-import { LangChainEmbeddingService } from './langchain-embedding.service';
+import { EmbeddingAdapter } from './embedding.adapter';
 import { SettingsService } from '../../settings/settings.service';
 import { EmbeddingFailedError } from '../interfaces/embedding-service.interface';
 import { LlmQuotaExhaustedError } from '../errors/llm-quota-exhausted.error';
@@ -13,8 +13,8 @@ jest.mock('@langchain/google-genai', () => ({
   }),
 }));
 
-describe('LangChainEmbeddingService', () => {
-  let service: LangChainEmbeddingService;
+describe('EmbeddingAdapter', () => {
+  let service: EmbeddingAdapter;
   let settings: Record<string, string>;
 
   const vector = (seed: number) => [seed, seed + 1, seed + 2];
@@ -31,7 +31,7 @@ describe('LangChainEmbeddingService', () => {
       }),
     } as unknown as SettingsService;
 
-    service = new LangChainEmbeddingService(settingsService);
+    service = new EmbeddingAdapter(settingsService);
     await service.onModuleInit();
     embedDocuments.mockResolvedValue([vector(1)]);
   });
@@ -66,7 +66,7 @@ describe('LangChainEmbeddingService', () => {
     });
 
     it('fails clearly when no API key is configured', async () => {
-      const bare = new LangChainEmbeddingService({
+      const bare = new EmbeddingAdapter({
         findByKeyDecrypted: jest.fn().mockRejectedValue(new Error('x')),
       } as unknown as SettingsService);
       await bare.onModuleInit();

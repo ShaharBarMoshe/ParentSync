@@ -28,10 +28,10 @@ const CACHE_MAX_ENTRIES = 128;
  * window, so that loop was N sequential round-trips per checked event.
  */
 @Injectable()
-export class LangChainEmbeddingService
+export class EmbeddingAdapter
   implements IEmbeddingService, OnModuleInit
 {
-  private readonly logger = new Logger(LangChainEmbeddingService.name);
+  private readonly logger = new Logger(EmbeddingAdapter.name);
   private embeddings: GoogleGenerativeAIEmbeddings | null = null;
   /** LRU: insertion order is reuse order; oldest entries get evicted. */
   private readonly cache = new Map<string, number[]>();
