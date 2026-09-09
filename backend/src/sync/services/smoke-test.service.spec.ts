@@ -58,6 +58,7 @@ describe('SmokeTestService', () => {
       ),
       reactToMessage: jest.fn().mockResolvedValue(undefined),
       deleteMessage: jest.fn().mockResolvedValue(true),
+      findMessageIdsContaining: jest.fn().mockResolvedValue([]),
     };
 
     messageRepository = {
@@ -130,6 +131,7 @@ describe('SmokeTestService', () => {
     (service as any).reactionPollMs = 20;
     (service as any).pollIntervalMs = 1;
     (service as any).scrapePollMs = 50;
+    (service as any).channelSweepBackoffMs = 1;
   });
 
   afterEach(() => {
@@ -163,6 +165,7 @@ describe('SmokeTestService', () => {
       'delete-source-message',
       'sweep-orphan-events',
       'sweep-orphan-messages',
+      'sweep-channel-messages',
     ]);
     expect(result.cleanup?.every((s) => s.ok)).toBe(true);
 
@@ -227,6 +230,82 @@ describe('SmokeTestService', () => {
     expect(sweepEvents?.ok).toBe(true);
     expect(sweepEvents?.detail).toMatch(/event\(s\)/);
     expect(result.cleanupFailed).toBe(false);
+  });
+
+  it('deletes every marked message left in the channel, row or no row', async () => {
+    // Residue whose DB rows are already gone: the id-based and DB-sweep steps
+    // cannot see these at all, so only the channel sweep removes them. The
+    // second scan comes back clean, so one pass is enough.
+    whatsappService.findMessageIdsContaining
+      .mockResolvedValueOnce(['wa-old-source', 'wa-old-card'])
+      .mockResolvedValue([]);
+
+    const result = await service.run('manual');
+
+    expect(result.status).toBe('passed');
+    expect(whatsappService.findMessageIdsContaining).toHaveBeenCalledWith(
+      'Test Channel',
+      '[ps-smoke-test]',
+    );
+    expect(whatsappService.deleteMessage).toHaveBeenCalledWith('wa-old-source');
+    expect(whatsappService.deleteMessage).toHaveBeenCalledWith('wa-old-card');
+
+    const sweep = result.cleanup?.find((s) => s.name === 'sweep-channel-messages');
+    expect(sweep?.ok).toBe(true);
+    expect(sweep?.detail).toMatch(/removed 2 marked message/);
+    expect(result.cleanupFailed).toBe(false);
+  });
+
+  /**
+   * A message sent moments ago frequently refuses to delete until WhatsApp has
+   * settled it, and the delete call reports success either way — so the sweep
+   * has to re-scan and try again rather than trust the first attempt.
+   */
+  it('retries until a re-scan of the channel comes back clean', async () => {
+    whatsappService.findMessageIdsContaining
+      .mockResolvedValueOnce(['wa-fresh'])
+      .mockResolvedValueOnce(['wa-fresh'])
+      .mockResolvedValue([]);
+
+    const result = await service.run('manual');
+
+    expect(whatsappService.deleteMessage).toHaveBeenCalledWith('wa-fresh');
+    expect(
+      whatsappService.deleteMessage.mock.calls.filter(([id]) => id === 'wa-fresh'),
+    ).toHaveLength(2);
+    const sweep = result.cleanup?.find((s) => s.name === 'sweep-channel-messages');
+    expect(sweep?.ok).toBe(true);
+    expect(result.cleanupFailed).toBe(false);
+  });
+
+  it('reports the run dirty when a message never leaves the channel', async () => {
+    // Every re-scan still finds it: the channel is not clean and the run must
+    // say so rather than claim a successful teardown.
+    whatsappService.findMessageIdsContaining.mockResolvedValue(['wa-stuck']);
+
+    const result = await service.run('manual');
+
+    const sweep = result.cleanup?.find((s) => s.name === 'sweep-channel-messages');
+    expect(sweep?.ok).toBe(false);
+    expect(sweep?.error).toContain('wa-stuck');
+    expect(result.cleanupFailed).toBe(true);
+  });
+
+  it('keeps sweeping after one deletion throws', async () => {
+    whatsappService.findMessageIdsContaining
+      .mockResolvedValueOnce(['wa-a', 'wa-b'])
+      .mockResolvedValue([]);
+    whatsappService.deleteMessage.mockImplementation((id: string) =>
+      id === 'wa-a'
+        ? Promise.reject(new Error('delete for everyone timed out'))
+        : Promise.resolve(true),
+    );
+
+    const result = await service.run('manual');
+
+    expect(whatsappService.deleteMessage).toHaveBeenCalledWith('wa-b');
+    const sweep = result.cleanup?.find((s) => s.name === 'sweep-channel-messages');
+    expect(sweep?.ok).toBe(true);
   });
 
   it('surfaces a cleanup failure instead of silently swallowing it', async () => {

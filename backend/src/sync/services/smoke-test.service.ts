@@ -57,6 +57,10 @@ export class SmokeTestService implements OnModuleInit {
   protected scrapePollMs = SCRAPE_POLL_MS;
   protected reactionPollMs = REACTION_POLL_MS;
   protected pollIntervalMs = POLL_INTERVAL_MS;
+  // A message sent moments ago often refuses to delete until WhatsApp has
+  // settled it server-side, so the channel sweep retries with a growing pause.
+  protected channelSweepAttempts = 3;
+  protected channelSweepBackoffMs = 4000;
 
   constructor(
     @Inject(WHATSAPP_SERVICE)
@@ -428,6 +432,13 @@ export class SmokeTestService implements OnModuleInit {
     // the smoke marker so a run always leaves the DB (and calendar) clean.
     await this.sweepMarkedArtifacts(steps, calendarId);
 
+    // The DB sweep above can only delete WhatsApp messages it still has a row
+    // to read an id from. Anything whose row is already gone — a card from a
+    // half-cleaned earlier run, a send whose id was never captured — would
+    // stay in the channel forever. Sweep the channel itself so the smoke test
+    // never leaves visible residue.
+    await this.sweepChannelMessages(steps);
+
     result.cleanupFailed = steps.some((s) => !s.ok);
     if (result.cleanupFailed) {
       const failed = steps.filter((s) => !s.ok).map((s) => s.name).join(', ');
@@ -435,6 +446,62 @@ export class SmokeTestService implements OnModuleInit {
         `Smoke test cleanup left artifacts behind (failed: ${failed})`,
       );
     }
+  }
+
+  /**
+   * Delete every message in the approval channel that carries the smoke
+   * marker — this run's source message, its approval card (tagged by
+   * `ApprovalService.formatApprovalMessage`), and any leftovers from earlier
+   * runs.
+   *
+   * This is the only cleanup step that does not depend on a database row
+   * surviving, so it is what actually guarantees an empty channel. The marker
+   * is smoke-test-only, so nothing a real user or channel wrote can match.
+   */
+  private async sweepChannelMessages(steps: SmokeTestStep[]): Promise<void> {
+    const channel = await this.getApprovalChannel().catch(() => null);
+    if (!channel) return;
+
+    await this.tryCleanup(steps, 'sweep-channel-messages', async () => {
+      // Re-scanning the chat store is the only trustworthy check: deleting a
+      // message resolves even when WhatsApp does not carry the revoke out, and
+      // a just-sent message often refuses to delete until it has settled
+      // server-side. So delete, wait, scan again, and only stop when the scan
+      // comes back clean.
+      let remaining = await this.whatsappService.findMessageIdsContaining(
+        channel,
+        SMOKE_TEST_MARKER,
+      );
+      if (remaining.length === 0) return 'nothing to remove';
+
+      const initial = remaining.length;
+      for (let attempt = 1; attempt <= this.channelSweepAttempts; attempt++) {
+        for (const id of remaining) {
+          try {
+            await this.whatsappService.deleteMessage(id);
+          } catch (err) {
+            this.logger.warn(
+              `Channel sweep: delete failed for ${id}: ${(err as Error).message}`,
+            );
+          }
+        }
+
+        await this.sleep(this.channelSweepBackoffMs * attempt);
+        remaining = await this.whatsappService.findMessageIdsContaining(
+          channel,
+          SMOKE_TEST_MARKER,
+        );
+        if (remaining.length === 0) {
+          return `removed ${initial} marked message(s) from "${channel}"`;
+        }
+      }
+
+      throw new Error(
+        `${remaining.length} of ${initial} marked message(s) are still in ` +
+          `"${channel}" after ${this.channelSweepAttempts} attempts ` +
+          `(${remaining.join(', ')}) — WhatsApp refused to delete them`,
+      );
+    });
   }
 
   /**

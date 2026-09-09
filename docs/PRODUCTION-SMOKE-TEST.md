@@ -27,15 +27,54 @@ On each run the test:
    your own reactions), it falls back to invoking the approval handler directly,
    so the approve → Google Calendar path is always verified.
 6. **Verifies the event** actually exists in Google Calendar.
-7. **Cleans up** (always, best-effort): deletes the Google Calendar event, the
-   local event row, the stored message row, and both WhatsApp messages (the test
-   message and the approval card). Each deletion is recorded as a cleanup step
-   (`result.cleanup[]`); an individual failure is non-fatal to the run but is
-   captured, not swallowed (see `cleanupFailed` below). It then **sweeps** any
-   remaining event/message still carrying the smoke marker (`[ps-smoke-test]`) —
-   the real event pipeline can create a duplicate event from the one smoke
-   message, and this also self-heals orphans leaked by older builds. The marker
-   is smoke-test-only, so the sweep never touches real user data.
+7. **Cleans up** (always, best-effort), in three widening passes. Each deletion
+   is recorded as a cleanup step (`result.cleanup[]`); an individual failure is
+   non-fatal to the run but is captured, not swallowed (see `cleanupFailed`
+   below).
+
+   1. **By tracked id** — the Google Calendar event, the local event row, the
+      stored message row, and both WhatsApp messages (the test message and the
+      approval card).
+   2. **By marker, in the database** (`sweep-orphan-events`,
+      `sweep-orphan-messages`) — every event/message row still carrying
+      `[ps-smoke-test]`, plus the Google event and WhatsApp card each row points
+      at. The real pipeline can create a *duplicate* event from the one smoke
+      message, and this self-heals rows leaked by older builds.
+   3. **By marker, in the channel** (`sweep-channel-messages`) — reads the
+      approval channel directly and deletes every message whose body carries the
+      marker.
+
+   Pass 3 is what actually guarantees an empty channel. Passes 1 and 2 can only
+   delete a WhatsApp message they still have an id for, so a card whose database
+   row was already removed — by an earlier half-completed cleanup, or a send
+   whose id was never captured — would otherwise stay visible in the group
+   forever. To make cards findable, `ApprovalService` appends the marker to any
+   approval card built from a smoke-test message; real cards are untouched.
+
+   The marker is smoke-test-only, so no sweep can ever match real user data.
+
+### Why the channel sweep re-scans
+
+Neither WhatsApp signal you would reach for is trustworthy here:
+
+- `msg.delete(true)` **resolves even when the revoke never happens**. A message
+  sent moments earlier routinely refuses to delete until WhatsApp has settled it
+  server-side, while the call reports success.
+- `getMessageById` **misses messages that plainly exist** — the same MsgKey
+  lookup weakness described in `WHATSAPP-RESILIENCE.md` — so "not found" is not
+  evidence of deletion either.
+
+Trusting them produced a channel that filled up one message per run while every
+layer logged success. So the sweep treats a fresh read of the chat store as the
+only proof: delete everything marked, pause, scan again, and repeat (three
+attempts, growing pause) until the scan comes back empty. If it never does, the
+step fails and sets `cleanupFailed` — a message left in the group is reported,
+never assumed away.
+
+`WhatsAppService.deleteMessage` correspondingly promises only that the delete
+calls went through: delete-for-everyone, then delete-for-me if that throws (past
+the revoke window, the message still leaves this account's chat). Callers that
+must be certain verify with `findMessageIdsContaining`.
 
 A run ends in one of three states:
 
@@ -104,8 +143,12 @@ To find a real cleanup failure on a deployed instance, grep the app log for the
 - `backend/src/sync/controllers/smoke-test.controller.ts` — `run` / `status`.
 - `backend/src/shared/constants/smoke-test.ts` — marker, setting keys, types.
 - `backend/src/messages/services/whatsapp.service.ts` — `reactToMessage`,
-  `deleteMessage`, and the scrape exception that lets the test read its own
-  marked message back.
+  `deleteMessage`, `findMessageIdsContaining` (the channel sweep; unlike
+  `getChannelMessages` it returns ids and includes the app's own outgoing
+  messages), and the scrape exception that lets the test read its own marked
+  message back.
+- `backend/src/sync/services/approval.service.ts` — tags approval cards built
+  from a smoke-test message with the marker so the channel sweep can find them.
 
 The service reuses the production `EventSyncService`, `ApprovalService`,
 `GoogleCalendarService`, and the message/event repositories — so it exercises
