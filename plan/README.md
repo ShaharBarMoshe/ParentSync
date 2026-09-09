@@ -50,6 +50,7 @@
 | [Phase 23](phase23-calendar-conflict-dedup-and-end-times.md) | Calendar conflict dedup + event end times | Done |
 | [Phase 24](phase24-prompt-architecture.md) | Two-stage prompt (classifier + extractor) + eval-first methodology | Done |
 | [Phase 25](phase25-production-smoke-test.md) | Production Smoke Test — end-to-end self-test on deploy + daily | Done |
+| [Phase 26](phase26-langchain-langgraph.md) | LangChain adapters, LangGraph orchestration, opt-in LangSmith tracing | In progress |
 
 ## Architecture
 
