@@ -105,6 +105,7 @@ async function selectRuntime<T>(
     LlmQueueProcessor,
   ],
   exports: [
+    TracingService,
     LLM_SERVICE,
     EMBEDDING_SERVICE,
     MessageParserService,

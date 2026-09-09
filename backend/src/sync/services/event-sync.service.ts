@@ -32,6 +32,13 @@ import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 import { isQuotaExhaustedError } from '../../llm/errors/llm-quota-exhausted.error';
+import { StateGraph, START, END } from '@langchain/langgraph';
+import {
+  EventSyncStateAnnotation,
+  type EventSyncState,
+  type EventSyncUpdate,
+} from '../graph/event-sync.state';
+import { TracingService } from '../../llm/observability/tracing.service';
 
 /** Outcome of one event-sync pass. */
 export interface EventSyncResult {
@@ -67,6 +74,7 @@ export class EventSyncService {
     private readonly appErrorEmitter: AppErrorEmitterService,
     private readonly dedupService: MessageDeduplicationService,
     private readonly calendarConflictDedup: CalendarConflictDedupService,
+    private readonly tracingService: TracingService,
   ) {}
 
   async syncSingleEventToGoogle(event: CalendarEventEntity): Promise<void> {
@@ -153,17 +161,90 @@ export class EventSyncService {
     }
   }
 
+  /**
+   * The event-sync pipeline as a LangGraph.
+   *
+   * Built once and reused; compilation is pure wiring. The conditional edges
+   * are the three places the real pipeline short-circuits: nothing fresh to
+   * parse, a depleted account, and nothing persisted worth screening. Step 2
+   * (pushing to Google) runs on every path, including the short-circuits —
+   * events from earlier passes may still be waiting.
+   */
+  private graph: ReturnType<EventSyncService['buildGraph']> | null = null;
+
+  private buildGraph() {
+    return new StateGraph(EventSyncStateAnnotation)
+      .addNode('loadMessages', () => this.nodeLoadMessages())
+      .addNode('dedupFilter', (s: EventSyncState) => this.nodeDedupFilter(s))
+      .addNode('extract', (s: EventSyncState) => this.nodeExtract(s))
+      .addNode('processGroups', (s: EventSyncState) => this.nodeProcessGroups(s))
+      .addNode('syncToGoogle', () => this.nodeSyncToGoogle())
+      .addEdge(START, 'loadMessages')
+      .addEdge('loadMessages', 'dedupFilter')
+      .addConditionalEdges(
+        'dedupFilter',
+        (s: EventSyncState) =>
+          s.freshIndices.length === 0 ? 'syncToGoogle' : 'extract',
+        ['extract', 'syncToGoogle'],
+      )
+      .addConditionalEdges(
+        'extract',
+        (s: EventSyncState) =>
+          s.quotaExhausted ? 'syncToGoogle' : 'processGroups',
+        ['processGroups', 'syncToGoogle'],
+      )
+      .addEdge('processGroups', 'syncToGoogle')
+      .addEdge('syncToGoogle', END)
+      .compile();
+  }
+
   private async runEventSync(): Promise<EventSyncResult> {
     this.logger.log('Starting event sync...');
 
-    let messagesParsed = 0;
-    let messagesFailed = 0;
-    let eventsCreated = 0;
-    let eventsSynced = 0;
-    // Set when the LLM account runs out of quota mid-pass. The remaining
-    // messages stay unparsed so the next sync can pick them up unchanged.
-    let quotaExhausted = false;
+    const graph = (this.graph ??= this.buildGraph());
+    const callbacks = await this.tracingService.callbacks();
+    const final = await graph.invoke(
+      {},
+      { callbacks, runName: 'event-sync' },
+    );
 
+    // LangGraph resolves to undefined when no node wrote a channel. Every path
+    // here does write one, but a crash in the daily sync over a defaulting
+    // detail is not worth the risk.
+    const { messagesParsed, messagesFailed, eventsCreated, eventsSynced } =
+      final?.counters ?? {
+        messagesParsed: 0,
+        messagesFailed: 0,
+        eventsCreated: 0,
+        eventsSynced: 0,
+      };
+
+    const failedNote = messagesFailed > 0 ? `, ${messagesFailed} failed` : '';
+    const skippedNote = final?.quotaExhausted
+      ? ' — parse pass aborted (LLM quota exhausted), messages left for the next sync'
+      : '';
+    this.logger.log(
+      `Event sync completed: ${messagesParsed} messages parsed${failedNote}, ${eventsCreated} events created, ${eventsSynced} events synced${skippedNote}`,
+    );
+
+    return { messagesParsed, messagesFailed, eventsCreated, eventsSynced };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Graph nodes
+  //
+  // Each node is a transaction boundary: any QueryRunner it opens is committed
+  // or rolled back before it returns. Holding one across an edge would keep a
+  // SQLite write transaction open while the graph runtime awaits, locking the
+  // database file for every other caller.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Find unparsed messages, cluster them by channel and time proximity, and
+   * attach what extraction needs: the child, a date anchor so relative dates
+   * resolve as the sender meant them, and any images in the cluster.
+   */
+  private async nodeLoadMessages(): Promise<EventSyncUpdate> {
     // Step 1: Parse unparsed messages using transactions
     const unparsedMessages = await this.messageRepository.findUnparsed();
     this.logger.log(`Found ${unparsedMessages.length} unparsed messages`);
@@ -175,7 +256,7 @@ export class EventSyncService {
     );
 
     // Prepare batch: merge each group's content and look up child info
-    const groupMeta: {
+    const groups: {
       group: MessageEntity[];
       childName?: string;
       childId?: string;
@@ -216,7 +297,7 @@ export class EventSyncService {
       // attribute a single image back to its individual message.
       const mergedImages = group.flatMap((m) => m.images ?? []);
 
-      groupMeta.push({
+      groups.push({
         group,
         childName,
         childId: firstMessage.childId,
@@ -227,6 +308,19 @@ export class EventSyncService {
       });
     }
 
+    return { groups };
+  }
+
+  /**
+   * Semantic pre-filter: a group whose content matches an already-parsed
+   * message skips the LLM entirely. Fail-open — an error on one group sends it
+   * down the fresh path rather than dropping it.
+   */
+  private async nodeDedupFilter(
+    state: EventSyncState,
+  ): Promise<EventSyncUpdate> {
+    const groups = state.groups;
+    let parsedFromDuplicates = 0;
     // Phase 20 — semantic dedup pre-filter. Split groups into "already seen"
     // (skip the LLM entirely) and "fresh" (send to the batch parser). Dedup
     // is fail-open: an error on a single group falls through to the fresh
@@ -234,8 +328,8 @@ export class EventSyncService {
     const freshIndices: number[] = [];
     const duplicateIndices: number[] = [];
     let dupSimSum = 0;
-    for (let i = 0; i < groupMeta.length; i++) {
-      const meta = groupMeta[i];
+    for (let i = 0; i < groups.length; i++) {
+      const meta = groups[i];
       const dedup = await this.dedupService.findDuplicateOf(meta.mergedContent);
       meta.dedup = dedup;
       if (dedup.match) {
@@ -249,19 +343,36 @@ export class EventSyncService {
     if (duplicateIndices.length > 0) {
       const avgSim = dupSimSum / duplicateIndices.length;
       this.logger.log(
-        `Dedup pass: ${duplicateIndices.length}/${groupMeta.length} groups skipped (avgSim=${avgSim.toFixed(3)})`,
+        `Dedup pass: ${duplicateIndices.length}/${groups.length} groups skipped (avgSim=${avgSim.toFixed(3)})`,
       );
       await this.markDuplicatesAsParsed(
-        duplicateIndices.map((i) => groupMeta[i]),
+        duplicateIndices.map((i) => groups[i]),
       );
-      messagesParsed += duplicateIndices.reduce(
-        (sum, i) => sum + groupMeta[i].group.length,
+      parsedFromDuplicates = duplicateIndices.reduce(
+        (sum, i) => sum + groups[i].group.length,
         0,
       );
     }
 
-    const freshGroups = freshIndices.map((i) => groupMeta[i]);
 
+    return {
+      groups,
+      freshIndices,
+      duplicateIndices,
+      counters: { messagesParsed: parsedFromDuplicates },
+    };
+  }
+
+  /**
+   * One batched extraction call covering every fresh group. A depleted account
+   * aborts the pass here: the groups stay unparsed so the next sync retries
+   * them unchanged, rather than being marked done and lost.
+   */
+  private async nodeExtract(
+    state: EventSyncState,
+  ): Promise<EventSyncUpdate> {
+    const freshGroups = state.freshIndices.map((i) => state.groups[i]);
+    let quotaExhausted = false;
     // Batch parse fresh groups in a single LLM call.
     // Each group's content includes its own date context (based on message timestamps)
     // so relative dates like "tomorrow" resolve relative to when the message was sent.
@@ -299,7 +410,32 @@ export class EventSyncService {
     // Process each fresh group's parsed events. Skipped entirely when the
     // parse pass was aborted — there is nothing to apply and the messages must
     // stay unparsed.
-    for (let i = 0; !quotaExhausted && i < freshGroups.length; i++) {
+    return { parsed: batchResult, quotaExhausted, approvalEnabled };
+  }
+
+  /**
+   * Persist each fresh group's events, screen them, request approval and apply
+   * dismissals.
+   *
+   * Deliberately one node rather than the four it looks like. The per-group
+   * try/catch spans all of it: if screening or approval throws, the group's
+   * messages are still marked parsed so a poison message cannot loop forever,
+   * and the group is counted failed rather than parsed. Splitting these into
+   * separate nodes would put that error boundary in the wrong place for the
+   * sake of a prettier diagram.
+   */
+  private async nodeProcessGroups(
+    state: EventSyncState,
+  ): Promise<EventSyncUpdate> {
+    const freshGroups = state.freshIndices.map((i) => state.groups[i]);
+    const batchResult = state.parsed;
+    const approvalEnabled = state.approvalEnabled;
+    const calendarIdForDedup = await this.getCalendarId();
+    let messagesParsed = 0;
+    let messagesFailed = 0;
+    let eventsCreated = 0;
+
+    for (let i = 0; i < freshGroups.length; i++) {
       const meta = freshGroups[i];
       const parsedEvents = batchResult.get(String(i)) || [];
 
@@ -420,6 +556,13 @@ export class EventSyncService {
       }
     }
 
+
+    return { counters: { messagesParsed, messagesFailed, eventsCreated } };
+  }
+
+  /** Push everything still unsynced to Google Calendar or Google Tasks. */
+  private async nodeSyncToGoogle(): Promise<EventSyncUpdate> {
+    let eventsSynced = 0;
     // Step 2: Sync unsynced events to Google Calendar / Google Tasks
     const calendarId = await this.getCalendarId();
     const unsyncedEvents = await this.eventRepository.findUnsynced();
@@ -456,16 +599,9 @@ export class EventSyncService {
       }
     }
 
-    const failedNote = messagesFailed > 0 ? `, ${messagesFailed} failed` : '';
-    const skippedNote = quotaExhausted
-      ? ' — parse pass aborted (LLM quota exhausted), messages left for the next sync'
-      : '';
-    this.logger.log(
-      `Event sync completed: ${messagesParsed} messages parsed${failedNote}, ${eventsCreated} events created, ${eventsSynced} events synced${skippedNote}`,
-    );
-
-    return { messagesParsed, messagesFailed, eventsCreated, eventsSynced };
+    return { counters: { eventsSynced } };
   }
+
 
   private static readonly MERGE_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 

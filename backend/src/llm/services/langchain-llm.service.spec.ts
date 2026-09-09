@@ -268,8 +268,9 @@ describe('LangChainLlmService', () => {
         ),
       );
 
-      const error = await service
+      const error: Error = await service
         .callLLM([{ role: 'user', content: 'hi' }])
+        .then(() => new Error('expected a rejection'))
         .catch((e: Error) => e);
 
       expect(error.message).toMatch(/REDACTED/);
