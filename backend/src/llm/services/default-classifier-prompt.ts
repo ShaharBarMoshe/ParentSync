@@ -3,10 +3,11 @@
  *
  * Stage 1 of the two-stage extraction pipeline. The classifier decides
  * whether the message is worth passing to the (more expensive) extractor.
- * The contract is binary: YES / NO + one-line reason.
+ * The contract is `{ isEvent, reason }`, enforced by VerdictSchema —
+ * the prompt states the judgement, never the output format.
  *
  * Design goals:
- * - Tiny. ~200 tokens. Most messages will be classified NO and never reach
+ * - Tiny. ~200 tokens. Most messages classify false and never reach
  *   the extractor, saving ~3,800 tokens per parse.
  * - Stable. No dynamic content (negatives, recent rejections). Cache-friendly.
  * - Conservative for false negatives. The hard floor on the eval (recall
@@ -15,27 +16,24 @@
 
 export const DEFAULT_CLASSIFIER_PROMPT = `You are a binary classifier. Given a single WhatsApp message from a school or community parent group, decide whether it describes an actionable calendar event or task for the recipient family.
 
-Answer YES if the message contains AT LEAST ONE of:
+Set isEvent = true if the message contains AT LEAST ONE of:
 - An explicit future date or deadline ("ביום שלישי", "מחר", "ב-15.5", "עד יום רביעי") AND a concrete activity (trip, meeting, test, party, ceremony, performance, visit, appointment, pickup).
 - A teacher/organizer announcement of a specific event with a date.
 - An action item with a date or deadline: payment to make, form to fill, document to sign, item to bring, clothing to wear.
 - A cancellation, delay, or schedule change for a previously-announced event.
 - The message is explicitly marked as important ("הודעה חשובה", "חשוב!", "important", "שימו לב").
 
-Answer NO if the message is any of:
+Set isEvent = false if the message is any of:
 - Chit-chat, greetings, thanks, status updates ("we'll arrive in 20 minutes", "on our way", "thank you!").
 - Absence notices: a parent reporting that their OWN child won't be coming, will be late, or is going somewhere else ("X לא מגיע", "X חולה היום", "X הולך ל... ולא מגיע", "לא נגיע היום", "לא נגיע מחר").
 - Spontaneous present-tense activity messages without a specific future date ("אנחנו הולכים ל...", "אנחנו בדרך ל...", "we're going to...").
 - Ad-hoc peer-to-peer requests: rides ("מישהו יכול לתת טרמפ"), borrowed items ("יש למישהו ספר להשאיל?"), lost-and-found ("מי איבד...", "מצאתי..."), open-ended questions ("מישהו יודע אם...").
 - Personal registration notes: a parent reporting they signed up their OWN child for something ("רשמתי את X", "הרשמתי את X", "נרשמנו ל-").
-- Routine daily/weekly school timetables ("מערכת למחר", "מערכת ליום...", a list of "שיעור 1/2/3..."). This holds even when the timetable ends with a ציוד / equipment list — that is the standard kit for those lessons, not a one-off request — and even when a lesson is NAMED like an event ("שיעור 3- טקס קבלת ילדי א'", "שיעור 4- קבלת שבת", "חינוך גופני", "מסיבת סיום"). A lesson inside a timetable is a lesson, not an event. Only answer YES if the message adds something OUTSIDE the timetable — a dated one-off announcement, or an explicit request to bring something unusual for a specific named occasion.
+- Routine daily/weekly school timetables ("מערכת למחר", "מערכת ליום...", a list of "שיעור 1/2/3..."). This holds even when the timetable ends with a ציוד / equipment list — that is the standard kit for those lessons, not a one-off request — and even when a lesson is NAMED like an event ("שיעור 3- טקס קבלת ילדי א'", "שיעור 4- קבלת שבת", "חינוך גופני", "מסיבת סיום"). A lesson inside a timetable is a lesson, not an event. Only set isEvent = true if the message adds something OUTSIDE the timetable — a dated one-off announcement, or an explicit request to bring something unusual for a specific named occasion.
 - Vague references to "something happening" ("יש בית חם", "יש אירוע", "יש מפגש") with NO explicit date / time / title.
 - Discussion about scheduling that hasn't reached agreement yet ("אולי שלישי?", no confirmation).
 
-If the message contains BOTH an absence/registration/help-request signal AND a vague mention of an event without a date, answer NO. DO NOT invent a date or title to fill in what wasn't said.
+If the message contains BOTH an absence/registration/help-request signal AND a vague mention of an event without a date, set isEvent = false. DO NOT invent a date or title to fill in what wasn't said.
 
-Output EXACTLY one line in this format:
-YES — <≤8 word reason>
-NO — <≤8 word reason>
-
-No other text, no markdown, no JSON.`;
+Give "reason" as at most 8 words. The response schema defines the output
+shape — do not restate it or wrap it in markdown.`;

@@ -1,225 +1,285 @@
 # LangChain & LangGraph in ParentSync
 
-How the AI layer is built: what LangChain does here, what LangGraph does here,
-and — mostly — *why it is shaped this way*, because the shape is the part that
-is easy to get wrong twice.
+A code tour of the AI layer: which file does what, what is actually sent to
+Gemini, and what comes back. Written for whoever next has to change it.
 
-- **LangChain** answers one question at a time: "what events are in this
-  message?", "is this message worth reading?", "are these two events the same?"
-- **LangGraph** decides which of those questions get asked, in what order, and
-  what happens to the answers.
+This is not a LangChain tutorial — it assumes you can read the
+[LangChain docs](https://docs.langchain.com). It is about *this* codebase.
 
-Related: [ARCHITECTURE.md](ARCHITECTURE.md) for the app as a whole,
-[OBSERVABILITY.md](OBSERVABILITY.md) for reading a trace,
-[semantic-dedup.md](semantic-dedup.md) for the four dedup layers.
+Related: [ARCHITECTURE.md](ARCHITECTURE.md) · [OBSERVABILITY.md](OBSERVABILITY.md)
+· [semantic-dedup.md](semantic-dedup.md) · [PROMPT-CUSTOMIZATION.md](PROMPT-CUSTOMIZATION.md)
 
 ---
 
-## Why this exists
-
-An earlier attempt put LangChain behind the port the app already had:
-
-```ts
-ILLMService.callLLM(messages: LlmMessage[]): Promise<string>
-```
-
-That port is transport-shaped — strings in, one string out. Everything
-downstream existed *because* of it: ~180 lines of JSON repair (markdown-fence
-stripping, brace matching, `coerceToEventArray`), a hand-rolled
-`{"1": [...], "2": [...]}` batch protocol, and a "batch failed, reparse every
-group individually" fallback. Swapping the transport underneath bought a traced
-run and nothing else.
-
-It also made structured output impossible: `withStructuredOutput` returns a
-typed object, and a port returning `string` has nowhere to put one.
-
-**The rule that came out of it:** a port names a *capability the domain needs*,
-not the *mechanism that serves it*. Get that wrong and mechanism concerns leak
-upward until a domain service is doing brace matching.
-
----
-
-## The four ports
-
-Everything the app can ask an AI to do, and nothing else:
-
-| Token | Contract | Adapter |
-|-------|----------|---------|
-| `EVENT_EXTRACTOR` | `extract(ExtractionRequest[]) → ExtractionResult[]` | `ExtractionChain` |
-| `RELEVANCE_CLASSIFIER` | `classify(text, dateContext) → ClassifierVerdict` | `ClassifierChain` |
-| `DUPLICATE_JUDGE` | `areIdentical(a, b) → boolean` | `DuplicateJudgeChain` |
-| `EMBEDDING_SERVICE` | `embedText` / `embedBatch` | `EmbeddingAdapter` |
-
-Defined in `backend/src/llm/ports/ai-ports.ts` — a file that imports **zero**
-LangChain types. That is enforced, not asserted: `src/llm/architecture.spec.ts`
-fails the build if `@langchain/*` is imported anywhere outside
-`llm/adapters/`, `llm/observability/` and `sync/graph/`.
-
-Each port also carries a failure *direction*, and those are load-bearing:
-
-| Port | On failure | Why that direction |
-|------|-----------|--------------------|
-| `EVENT_EXTRACTOR` | throws | An exhausted account is a system-wide stop. Returning `[]` would mark messages parsed and lose real events for good. |
-| `RELEVANCE_CLASSIFIER` | fails **open** (`isEvent: true`) | A broken gate that says "not an event" silently drops school events — the one failure nobody notices. |
-| `DUPLICATE_JUDGE` | returns `false` | A wrong `false` costs one dismissal. A wrong `true` deletes a real event with no trace. |
-| `EMBEDDING_SERVICE` | throws `EmbeddingFailedError` | Dedup catches it and parses the message normally. |
-
----
-
-## LangChain layer
+## Where everything lives
 
 ```
 backend/src/llm/
-├── ports/ai-ports.ts            # the four contracts (no LangChain)
-├── schemas/extraction.schema.ts # zod → provider schema
-├── domain/event-normalizer.ts   # pure domain rules (no LangChain, no I/O)
-├── prompts/prompt-registry.ts   # the two user-editable prompts
-├── adapters/
-│   ├── gemini-chat.factory.ts   # model construction + settings hot-reload
-│   ├── chain-runner.service.ts  # rate limit → retry ladder → tracing
-│   ├── extraction.chain.ts
-│   ├── classifier.chain.ts
-│   ├── duplicate-judge.chain.ts
-│   └── embedding.adapter.ts
-└── services/
-    ├── message-parser.service.ts     # cache + gate + delegation
-    └── message-classifier.service.ts # on/off + cache + delegation
+  ports/ai-ports.ts              4 interfaces, zero LangChain imports
+  schemas/extraction.schema.ts   the zod sent to Gemini as responseSchema
+  domain/event-normalizer.ts     pure rules applied to what Gemini returns
+  prompts/prompt-registry.ts     reads llm_system_prompt / llm_classifier_prompt
+  services/default-system-prompt.ts      shipped extractor prompt (Hebrew rules)
+  services/default-classifier-prompt.ts  shipped gate prompt
+  adapters/
+    gemini-chat.factory.ts       new ChatGoogleGenerativeAI per call
+    chain-runner.service.ts      rate limit → retry → tracing, one place
+    extraction.chain.ts          IEventExtractor
+    classifier.chain.ts          IRelevanceClassifier
+    duplicate-judge.chain.ts     IDuplicateJudge
+    embedding.adapter.ts         IEmbeddingService
+  services/message-parser.service.ts      cache + gate, calls the extractor port
+  services/message-classifier.service.ts  on/off + cache, calls the gate port
+
+backend/src/sync/graph/
+  event-sync.graph.ts            8 nodes wired together
+  event-sync.state.ts            the channels those nodes pass around
+  nodes/*.node.ts                one class each
 ```
 
-### A chain is three things
+Four injection tokens are the entire AI surface. Everything else in the app
+sees only these:
+
+| Token | Adapter | Model call |
+|-------|---------|-----------|
+| `EVENT_EXTRACTOR` | `ExtractionChain` | `extract-events`, `extract-events-batch` |
+| `RELEVANCE_CLASSIFIER` | `ClassifierChain` | `classify-relevance` |
+| `DUPLICATE_JUDGE` | `DuplicateJudgeChain` | `judge-duplicate` |
+| `EMBEDDING_SERVICE` | `EmbeddingAdapter` | `gemini-embedding-001` |
+
+---
+
+## One message, end to end
+
+This is a real run — the deploy smoke test on v1.5.1, taken from the journal.
+A single Hebrew WhatsApp message arrives in the approval channel.
+
+### 1. `loadMessages` — no AI
+
+```
+LOG [LoadMessagesNode] Found 1 unparsed messages
+LOG [LoadMessagesNode] Grouped 1 messages into 1 groups
+```
+
+`load-messages.node.ts` reads unparsed rows, clusters them per channel within a
+**2-hour window** (`MERGE_WINDOW_MS`), and builds one `GroupMeta` per cluster.
+Two fields matter downstream:
+
+- `mergedContent` — a single message passes through verbatim; a cluster gets
+  one line per message, prefixed `[<time>, <date>] <sender>: ` in `he-IL`
+  locale, so the model can follow a correction ("actually it's at 10, not 9")
+  across messages.
+- `messageDate` — the **newest** timestamp in the cluster, not today. A message
+  parsed three days late must still resolve "מחר" to the day after it was sent.
+
+### 2. `dedupFilter` — embeddings, no chat model
+
+`findDuplicateOf(mergedContent)` — SHA-256 first, then a
+`gemini-embedding-001` vector at ≥ 0.92 cosine. A hit marks the group parsed
+and it never reaches a chat model. Details in
+[semantic-dedup.md](semantic-dedup.md).
+
+### 3. `extract` node → `MessageParserService` → the ports
+
+`extract.node.ts` calls `parseMessageBatch(requests, fallbackDate, perGroupDates)`.
+`message-parser.service.ts` then does three things in order, and **nothing
+else** — it is policy, not provider code:
 
 ```ts
-// 1. a model, built fresh per call (settings can change under us)
-const chat = this.chatFactory.create({ maxTokens: 2048 });
+// 1. Cache.                     message-parser.service.ts:99
+//    key: msg-parse:<promptVersion>:<sha256(content + images)>, 24h TTL
+// 2. Stage-1 gate.              message-parser.service.ts:115
+//    skipped for image-bearing groups — the classifier cannot see images
+// 3. Extract.                   message-parser.service.ts:149
+```
 
-// 2. bound to a schema — the provider now enforces the shape
-const chain = chat.withStructuredOutput(SingleExtractionSchema, {
-  name: 'extract_events',
-});
+The prompt version in the cache key is `sha256(promptText).slice(0,16)`, so
+editing the prompt in Settings invalidates every cached parse made under the
+old one. Otherwise a prompt fix would appear to do nothing.
 
-// 3. run under the one policy wrapper
+### 4. The gate call
+
+```
+LOG   [ChainRunner] classify-relevance (model: gemini-2.5-flash-lite, attempt: 1)
+DEBUG [ChainRunner] classify-relevance succeeded in 802ms
+```
+
+`classifier.chain.ts` sends two messages — the prompt from
+`default-classifier-prompt.ts` as a `SystemMessage`, and
+`Current date: 2026-09-09\n\n<message text>` as a `HumanMessage` — bound to:
+
+```ts
+VerdictSchema = z.object({ isEvent: z.boolean(), reason: z.string() })
+```
+
+Before structured output this asked for the literal line `YES — <reason>` and
+pattern-matched it, with three separate fail-open branches for an empty
+response, an unparseable one, and a first line polluted by commentary. A
+`z.boolean()` removes all three: the provider cannot return "YES, but let me
+explain" into a boolean.
+
+### 5. The extraction call
+
+```
+LOG [ChainRunner] extract-events (model: gemini-2.5-flash-lite, attempt: 1)
+LOG [ExtractionChain] Extracted 1 raw → 1 valid events (group 0)
+```
+
+`extraction.chain.ts:50` splits the requests before sending anything:
+
+```ts
+const withImages = requests.filter((r) => r.images?.length);   // one call each
+const textOnly   = requests.filter((r) => !r.images?.length);  // batched by 8
+```
+
+Image groups go alone because a model gets one image bundle per request and
+cannot tell which message owns which image. Text groups batch in chunks of
+`MAX_BATCH_SIZE = 8` — beyond that, free-tier models start returning empty
+results for the later groups. A chunk of exactly one takes the single-message
+path instead: shorter prompt, simpler schema.
+
+**Single-message shape** (`extractOne`, line 82):
+
+```
+SystemMessage: <llm_system_prompt from Settings, or the shipped default>
+HumanMessage:  Current date: 2026-09-09
+
+               Message to parse:
+               <mergedContent>
+```
+→ `SingleExtractionSchema` = `{ events: Event[] }`
+
+**Batch shape** (`extractBatch`, line 117):
+
+```
+HumanMessage:  Parse the following 3 messages. Each carries its own
+               "Current date" — resolve relative dates like "tomorrow" against
+               that message's date, not against any other.
+               Return one result per message, echoing its id exactly.
+
+               ===MESSAGE id="0"===
+               Current date for this message: 2026-09-07
+               <group 0 text>
+
+               ===MESSAGE id="1"===
+               ...
+```
+→ `BatchExtractionSchema` = `{ results: [{ id: string, events: Event[] }] }`
+
+Results are matched back **by echoed id, never by position**. A group the model
+omitted comes back as `{ id, events: [] }` and logs
+`Batch result missing group id "1"`; an id we never sent logs
+`Batch result carried unknown group id`. Under the old
+`{"1": [...], "2": [...]}` protocol both cases were silent.
+
+### 6. Normalization
+
+`Extracted 1 raw → 1 valid events` is `event-normalizer.ts` running over what
+came back. The schema guarantees `date` is a *string*; this is the layer that
+rejects `"next tuesday"`. It also:
+
+- allows an empty `date` **only** for `cancel`/`delay` (the message may name
+  the event to cancel without repeating when it was)
+- drops a malformed `endTime`, or one not strictly after `time`, without
+  killing the event
+- collapses several `create` events sharing (title, date, location,
+  description) into one — "arrive at 17:00, party 17:30–18:00" is one gathering
+  described twice, not two approval cards
+
+### 7. The rest of the pass
+
+```
+LOG [PersistEventsNode]  Persisted embeddings on 1 message rows
+LOG [EventSyncService]   Event sync completed: 1 messages parsed, 1 events created, 0 events synced
+```
+
+`persistEvents` writes the event and marks the messages parsed **in one
+transaction per group**. `screenEvents` then runs the last AI call —
+`judge-duplicate` — against same-day siblings, before `requestApproval` sends
+the WhatsApp card.
+
+---
+
+## The pieces worth knowing
+
+### `ChainRunner` — every model call goes through it
+
+`chain-runner.service.ts`. Rate limiter → retry ladder → this invocation's
+LangSmith callbacks. Adapters never call `.invoke()` themselves:
+
+```ts
 const output = await this.runner.run(chain, messages, {
   model: this.chatFactory.defaultModel,
   runName: 'extract-events',
 });
 ```
 
-`output` is a typed object. There is no response text to repair.
+`runName` is what you search for in a trace, so give every call site its own.
 
-**Why messages, not `ChatPromptTemplate`.** LangChain's prompt templates treat
-`{` and `}` as variable delimiters, and the input here is arbitrary school
-message text. One parent pasting a brace would break the render or silently
-swallow content. The chains build `BaseMessage[]` directly and pipe it into
-`withStructuredOutput`, which is still a fully traced runnable.
+The retry ladder (`llm-retry-policy.ts`) is ours rather than LangChain's
+because it distinguishes cases LangChain's generic retry cannot:
 
-### `ChainRunner` — the one place a chain meets the world
-
-Every provider call in the app goes through `ChainRunner.run()`, which applies,
-in order: the shared rate limiter → the retry ladder → this invocation's
-LangSmith callbacks.
-
-Two things are deliberately **not** delegated to LangChain:
-
-**Retries.** `LlmRetryPolicy` stays because it distinguishes cases LangChain's
-generic retry cannot:
-
-| Error | Behaviour |
-|-------|-----------|
-| 4xx other than 429 | never retried — a wrong model name fails the same way five times |
-| quota/credit exhausted | fails immediately; only a human topping up the account clears it |
-| transient 429 | separate, longer ladder — this one does clear on its own |
+| Error | What happens |
+|-------|--------------|
+| 4xx other than 429 | never retried, emits `app.error` — a wrong model name fails identically five times |
+| quota/credit exhausted | `LlmQuotaExhaustedError` immediately; only a human topping up the account clears it |
+| transient 429 | separate, longer ladder (this one does clear on its own) |
 | anything else | exponential backoff |
 
-Consequently `maxRetries: 0` on every chat model, asserted in
-`gemini-chat.factory.spec.ts`. **LangChain's default is 6**, so leaving it on
-would mean 6 × 3 = 18 attempts, with six of them burned against a dead account
-before our fast-fail could see the error.
+Which is why `gemini-chat.factory.ts` sets `maxRetries: 0`. **LangChain's
+default is 6**, not 3 — leaving it on would mean 6 × 3 = 18 attempts per call,
+six of them burned against a dead account before our fast-fail sees the error.
+`gemini-chat.factory.spec.ts` asserts `caller.maxRetries === 0`.
 
-**Rate limiting.** `LlmRateLimiter` stays rather than LangChain's
-`InMemoryRateLimiter`: `ChatGoogleGenerativeAI` 2.3.0 exposes no `rateLimiter`
-option, a model-bound limiter would reset with each per-call model instance,
-and ours also gates the embedding path a chat-model limiter cannot see.
+The rate limiter stays ours too: `ChatGoogleGenerativeAI` 2.3.0 exposes no
+`rateLimiter` option, a model-bound one would reset with each per-call model
+instance, and ours also gates embeddings.
 
-### Schemas: what Gemini will and will not accept
+### `GeminiChatFactory` — a new model per call, on purpose
+
+Model name, temperature and token budget are per-call, and the API key can
+change under us at any moment. `@OnEvent('settings.changed')` swaps
+`gemini_api_key` / `gemini_model` with no restart. Construction opens no
+connection, so it is cheap.
+
+### Prompts are settings, not constants
+
+`prompt-registry.service.ts` owns both editable prompts. On every boot it
+re-seeds the shipped default **unless** the user has marked that prompt custom
+(`llm_system_prompt_is_custom`), so a shipped rule change actually reaches an
+installed app instead of freezing at whatever was written on first install.
+
+The prompts state *judgement*, never *output format* — the schema owns the
+shape. Instructions like "return a JSON object keyed by message number" are not
+merely redundant under structured output, they contradict the schema the same
+request carries.
+
+### What Gemini will not accept
 
 Gemini validates `generationConfig.responseSchema` against a **protobuf
 definition**, not general JSON Schema, and rejects out-of-subset requests with
 a 400 *before the model runs*.
 
-| Not allowed | Converts to | Use instead |
-|-------------|-------------|-------------|
+| Don't | Converts to | Do |
+|-------|-------------|-----|
 | `.nullable()` | `type: ["string","null"]` | `.optional()` alone |
 | unions | `anyOf` | one shape |
-| `z.record()` | dynamic keys | an array of `{ id, … }` |
+| `z.record()` | dynamic keys | array of `{ id, … }` |
 
-This is not theoretical. `.nullable()` shipped in v1.5.0 and took the entire
-extraction path down with *"Proto field is not repeating, cannot start list"* —
-classification kept working, because a boolean and a string convert cleanly, so
-only extraction was dead. The chain specs mock `withStructuredOutput`, so the
-schema was never actually converted anywhere in the test suite.
+`.nullable()` shipped in v1.5.0 and took the whole extraction path down with
+*"Proto field is not repeating, cannot start list"*. Classification kept
+working, because a boolean and a string convert cleanly — so only extraction
+was dead, and only in production.
 
 `schemas/schema-compat.spec.ts` now runs LangChain's own `toJsonSchema` over
-everything in `PROVIDER_SCHEMAS` and walks the result, reporting the offending
-**field path** — more than Gemini's proto path gives you. Add every new
-provider-facing schema to that export.
-
-### The batch protocol
-
-Batches ask for an array, and the model echoes back the id it was given:
-
-```ts
-z.object({
-  results: z.array(z.object({
-    id: z.string(),          // echoed — results match by id, never by position
-    events: z.array(EventSchema),
-  })),
-})
-```
-
-A mismatched or missing id is logged loudly (`Batch result missing group id`)
-instead of a group silently receiving `[]`.
-
-### Structured output guarantees shape, never correctness
-
-`withStructuredOutput` will happily return `date: "next tuesday"` — it satisfies
-`z.string()`. `domain/event-normalizer.ts` is the layer that says no. It is
-pure (no I/O, no framework) and holds:
-
-- ISO date validation, with an empty `date` allowed **only** for cancel/delay
-- `endTime` accepted only if well-formed and strictly after `time` — dropped,
-  not fatal, so one bad field cannot kill an otherwise good event
-- `collapseSingleGathering` — several `create` events sharing
-  (title, date, location, description) are one gathering described from several
-  angles ("arrive at 17:00, party 17:30–18:00"), not several approval cards
-
-Keep it separate. In a "structured output replaces validation" rewrite this is
-the piece that quietly disappears, and losing it puts wrong dates on a real
-family's calendar.
-
-### Who owns what
-
-The adapter owns anything provider-shaped; the service owns policy.
-
-| `ExtractionChain` (adapter) | `MessageParserService` (domain) |
-|---|---|
-| batching (≤8 text groups per call) | the 24h result cache |
-| image groups sent alone | the stage-1 classifier gate |
-| prompt assembly, schema binding | image messages bypass the gate |
-| normalization of the result | rethrowing quota exhaustion |
+everything in `PROVIDER_SCHEMAS` and reports the offending **field path**.
+Register every new provider-facing schema there.
 
 ---
 
-## LangGraph layer
+## The graph
 
-```
-backend/src/sync/graph/
-├── event-sync.graph.ts     # wiring only
-├── event-sync.state.ts     # channels + reducers
-├── sync-settings.service.ts
-└── nodes/                  # one injectable class each
-```
-
-### The graph
+`event-sync.graph.ts` — the wiring is the whole file.
 
 ```
 loadMessages → dedupFilter ─┬─(nothing fresh)───────────────→ syncToGoogle
@@ -230,163 +290,109 @@ loadMessages → dedupFilter ─┬─(nothing fresh)─────────
                                                                                               syncToGoogle → END
 ```
 
-| Node | Does | Transaction? |
-|------|------|--------------|
-| `loadMessages` | find unparsed, cluster by channel + 2h proximity, attach child/date/images | no |
-| `dedupFilter` | semantic pre-filter; mark duplicates parsed | **yes** |
-| `extract` | one extraction pass over fresh groups | no |
-| `persistEvents` | write events, mark messages parsed | **yes**, per group |
-| `screenEvents` | past → auto-approve; sibling dup → reject; calendar conflict → bind | no |
-| `requestApproval` | send WhatsApp approval cards | no |
-| `processDismissals` | apply cancel/delay | no |
-| `syncToGoogle` | push unsynced to Calendar / Tasks | no |
+| Node | AI? | Transaction? |
+|------|-----|--------------|
+| `loadMessages` | — | — |
+| `dedupFilter` | embeddings | **yes** |
+| `extract` | classifier + extractor | — |
+| `persistEvents` | — | **yes**, one per group |
+| `screenEvents` | duplicate judge + embeddings | — |
+| `requestApproval` | — | — |
+| `processDismissals` | — | — |
+| `syncToGoogle` | — | — |
 
-Each conditional edge exists because the long way round costs something real:
-an extraction call for nothing, a doomed call against a depleted account, or a
-screening pass over events nobody will be asked about. **`syncToGoogle` is on
-every path**, including both short-circuits — events approved in an earlier
-pass may still be waiting.
+Each conditional edge saves something real: an extraction call for nothing, a
+doomed call against a depleted account, or screening events nobody will be
+asked about. `syncToGoogle` is on **every** path including both short-circuits,
+because events approved in an earlier pass may still be waiting.
 
-### Rule 1 — a node is the transaction boundary
+### Three rules for anyone adding a node
 
-The single most important invariant here.
+**1. A node is the transaction boundary.** No `QueryRunner` is ever held across
+an edge — a SQLite write transaction left open while the runtime awaits locks
+the database file for every other caller in the app. Enforced by the
+node-contract test in `event-sync.graph.spec.ts`.
 
-> No `QueryRunner` is ever held across a node edge.
+**2. The error boundary goes where the accounting is.** `persistEvents` wraps
+each group's transaction in a try/catch that, on failure, still marks that
+group's messages parsed (a poison message must not loop forever) and counts
+them **failed**, never parsed. That is why persistence is its own node:
+screening used to sit inside the same try/catch, so one event's failed
+duplicate check flipped a whole group from parsed to failed. `screenEvents`
+now fails open per event instead.
 
-A SQLite write transaction left open while the graph runtime awaits locks the
-database file for every other caller in the app. Whatever a node opens, it
-commits or rolls back before returning. Asserted by the node-contract test in
-`event-sync.graph.spec.ts`.
+**3. Counters are deltas.** Each node returns only its own increment and the
+reducer in `event-sync.state.ts` adds them. Every other channel is
+last-write-wins and owned by exactly one node.
 
-### Rule 2 — put the error boundary where the accounting is
+### Deliberately not used
 
-`persistEvents` is one transaction *per group*, wrapped in a try/catch that, on
-failure, still marks that group's messages parsed (a poison message must not
-loop forever) and counts them **failed**, never parsed.
+So nobody re-litigates these from scratch:
 
-That is why persistence is its own node. Screening used to live inside the same
-try/catch, which meant one event's failed duplicate check flipped a whole
-group from parsed to failed. `screenEvents` now fails open per event: the event
-keeps its place in the approval queue and the group's accounting is untouched.
-
-### Rule 3 — counters are deltas, not totals
-
-```ts
-counters: Annotation<SyncCounters, Partial<SyncCounters>>({
-  reducer: (prev, next) => ({
-    messagesParsed: prev.messagesParsed + (next.messagesParsed ?? 0),
-    // …
-  }),
-})
-```
-
-Each node returns only its own delta and the reducer adds them. Read-modify-
-write on a shared counter would be wrong the moment two nodes run concurrently.
-Every other channel is last-write-wins — each is owned by exactly one node.
-
-### What we deliberately did *not* adopt
-
-Worth stating, because "use LangGraph properly" invites all of these:
-
-**`interrupt()` for the approval flow.** It is textbook human-in-the-loop, and
-still wrong here. Resume needs a durable checkpointer and a thread held open
-for as long as a parent takes to answer a WhatsApp message — hours, or never.
-Worse, LangGraph re-runs a resumed node **from the top**, and `requestApproval`
-has already written to SQLite by then: a resume would send every card twice.
-The `PENDING` row *is* the durable interrupt, and unlike an in-memory thread it
-survives an app restart.
-
-**Any checkpointer at all.** With no interrupts, unparsed message rows are
-already the durable work queue — a crash mid-pass is recovered by the next sync
-reading the same rows. `MemorySaver` would add a per-thread copy of the state
-for no recovery benefit, and being in-memory would not survive the restart it
-supposedly protects against.
-
-**`create_agent` / a tool-calling loop.** The pipeline is fixed and
-deterministic. An agent loop would add nondeterminism to a path that writes to
-a family's calendar.
-
-**`Send` fan-out for per-event screening.** It would give a per-event trace,
-which is genuinely useful. Rejected for now: every branch contends on the same
-rate limiter, so there is no throughput win, and it muddies the transaction
-story. Revisit if per-event traces become the debugging bottleneck.
-
-**`StateSchema` + zod** (LangGraph v1's newer idiom). It wants a zod schema per
-channel, and half of these hold TypeORM entities and a `Map` — they would come
-out as `z.custom<T>()`: zod as paperwork, validating nothing. That trade only
-pays off when a checkpointer serializes the state, and this graph has none. The
-state stays on `Annotation.Root`.
-
-**A node `retryPolicy` on `syncToGoogle`.** A node retry re-runs from the top,
-and this node iterates every unsynced event — a retry would re-push the ones
-that already succeeded. Per-event try/catch, leaving failures unsynced for the
-next pass, is the correct granularity.
+| | Why not |
+|---|---|
+| `interrupt()` for approval | Resume needs a durable checkpointer and a thread held open for as long as a parent takes to reply — hours, or never. LangGraph re-runs a resumed node **from the top**, and `requestApproval` has already written to SQLite: a resume would send every card twice. The `PENDING` row is the durable interrupt, and it survives a restart. |
+| any checkpointer | Unparsed message rows are already the durable work queue; a crash mid-pass is recovered by the next sync reading the same rows. `MemorySaver` would cost memory per thread for no recovery benefit. |
+| `create_agent` / tool loop | The pipeline is fixed. An agent loop would add nondeterminism to a path that writes to a family's calendar. |
+| `Send` fan-out for screening | Would give per-event traces, but every branch contends on the same rate limiter, so no throughput win — and it muddies the transaction story. |
+| `StateSchema` + zod | Half these channels hold TypeORM entities and a `Map`; they would be `z.custom<T>()` — zod validating nothing. Pays off only with a serializing checkpointer, which this graph has none. Stays on `Annotation.Root`. |
+| node `retryPolicy` on `syncToGoogle` | A node retry re-runs from the top, and this node iterates every unsynced event — it would re-push the ones that already succeeded. |
+| `ChatPromptTemplate` | Its templating treats `{`/`}` as variable delimiters, and the input is arbitrary parent-written text. Chains build `BaseMessage[]` directly. |
 
 ---
 
-## Tracing
+## Changing this code
 
-Off by default. One sync pass is one `event-sync` run with a child run per
-node, and each provider call is named at its call site:
+### Add an AI capability
 
-| Run name | Where |
-|----------|-------|
-| `classify-relevance` | `ClassifierChain` |
-| `extract-events` | `ExtractionChain`, single-message path |
-| `extract-events-batch` | `ExtractionChain`, batch path |
-| `judge-duplicate` | `DuplicateJudgeChain` |
+1. Contract into `ports/ai-ports.ts` — no LangChain types, and decide the
+   failure *direction* (see below).
+2. Schema into `schemas/extraction.schema.ts` **and `PROVIDER_SCHEMAS`**, or
+   the compat spec will not cover it.
+3. Adapter in `adapters/`: build messages, bind the schema, run through
+   `ChainRunner` with a distinct `runName`.
+4. Register the token in `llm.module.ts`, export it.
+5. Consumers mock the **port**, never the chain.
 
-Activation is per-invocation `callbacks` from `TracingService`, never the
-process-wide `LANGSMITH_TRACING` env var — that cannot be switched off without
-a restart, which is the wrong shape for a UI toggle. Full detail, including
-what redaction does and does not hide, in [OBSERVABILITY.md](OBSERVABILITY.md).
+Failure direction is a real decision, not a default:
 
----
+| Port | On failure | Because |
+|------|-----------|---------|
+| `EVENT_EXTRACTOR` | throws | Returning `[]` would mark messages parsed and lose real events for good. |
+| `RELEVANCE_CLASSIFIER` | `isEvent: true` | A gate erring toward "not an event" drops school events silently — the failure nobody notices. |
+| `DUPLICATE_JUDGE` | `false` | A wrong `false` costs one dismissal; a wrong `true` deletes a real event. |
+| `EMBEDDING_SERVICE` | throws | Dedup catches it and parses normally. |
 
-## Working on this code
+### Add a graph node
 
-### Adding a new AI capability
+One injectable class in `graph/nodes/` with a single `run(state)`, taking only
+the collaborators it needs. Add any new channel to `event-sync.state.ts`,
+register in `sync.module.ts`, wire in `event-sync.graph.ts`. If it opens a
+transaction, it closes it before returning.
 
-1. Add the contract to `ports/ai-ports.ts` — no LangChain types, and decide the
-   failure direction.
-2. Add its zod schema to `schemas/extraction.schema.ts` **and to
-   `PROVIDER_SCHEMAS`**, or the compat spec will not cover it.
-3. Write the adapter in `adapters/`: build messages, bind the schema, run it
-   through `ChainRunner` with a distinct `runName`.
-4. Register the token in `llm.module.ts` and export it.
-5. Mock the port — not the chain — in every consumer's tests.
+### Which spec catches what
 
-### Adding a graph node
+| Spec | Catches |
+|------|---------|
+| `schemas/schema-compat.spec.ts` | anything Gemini's proto will reject |
+| `adapters/*.spec.ts` | batching, image split, id matching, fail-open |
+| `domain/event-normalizer.spec.ts` | date/time rules, single-gathering collapse |
+| `graph/nodes/*.spec.ts` | one node against a stubbed state |
+| `graph/event-sync.graph.spec.ts` | routing, counters, node contract |
+| `services/event-sync.service.spec.ts` | real graph + real nodes, mocked boundaries |
+| `llm/architecture.spec.ts` | `@langchain/*` escaping the adapter layer |
 
-1. One injectable class in `graph/nodes/`, one `run(state)` method, taking only
-   the collaborators it needs.
-2. Add any new state it produces to `event-sync.state.ts`.
-3. Register it in `sync.module.ts` and wire it in `event-sync.graph.ts`.
-4. If it opens a transaction, it closes it before returning.
-
-### Tests, and the gap to watch
-
-| Layer | Spec | Catches |
-|-------|------|---------|
-| Schemas | `schema-compat.spec.ts` | anything Gemini's proto will reject |
-| Chains | `adapters/*.spec.ts` | batching, id matching, fail-open |
-| Domain | `event-normalizer.spec.ts` | date/time rules, collapse |
-| Nodes | `nodes/*.spec.ts` | one node against a stubbed state |
-| Graph | `event-sync.graph.spec.ts` | routing, counters, node contract |
-| Pipeline | `event-sync.service.spec.ts` | real graph + real nodes, mocked boundaries |
-| Boundary | `architecture.spec.ts` | `@langchain/*` escaping the adapter layer |
-
-The chain specs mock `withStructuredOutput`, which is fast and stable — and
-means **nothing in them ever converts a schema for real**. That gap is what
-`schema-compat.spec.ts` exists to close. Anything else that only happens at the
-provider boundary needs the same treatment, or it will first be seen by the
-production smoke test ([PRODUCTION-SMOKE-TEST.md](PRODUCTION-SMOKE-TEST.md)).
+**The gap to keep in mind:** the chain specs mock `withStructuredOutput`, so
+nothing in them ever converts a schema for real. That is what
+`schema-compat.spec.ts` exists to close. Anything else that only manifests at
+the provider boundary needs the same treatment, or the
+[production smoke test](PRODUCTION-SMOKE-TEST.md) will be the first thing to
+notice.
 
 ### Rollback
 
 There is no runtime switch — no `llm_runtime`, no second adapter family. The
-rollback path is the previous AppImage; `scripts/install-local.sh` keeps the
-last four.
+rollback path is the previous AppImage; `install-local.sh` keeps the last four.
 
 ```bash
 ls ~/.local/share/parentsync/versions/
