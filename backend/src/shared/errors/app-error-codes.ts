@@ -24,6 +24,8 @@ export const AppErrorCodes = {
 
   // LLM (in addition to per-status codes from Gemini)
   LLM_ALL_PROVIDERS_FAILED: 'LLM_ALL_PROVIDERS_FAILED',
+  // Account is out of quota/prepaid credit — retrying cannot help.
+  LLM_QUOTA_EXHAUSTED: 'LLM_QUOTA_EXHAUSTED',
 } as const;
 
 export type AppErrorCode = (typeof AppErrorCodes)[keyof typeof AppErrorCodes];

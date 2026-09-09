@@ -28,7 +28,7 @@ Answer NO if the message is any of:
 - Spontaneous present-tense activity messages without a specific future date ("אנחנו הולכים ל...", "אנחנו בדרך ל...", "we're going to...").
 - Ad-hoc peer-to-peer requests: rides ("מישהו יכול לתת טרמפ"), borrowed items ("יש למישהו ספר להשאיל?"), lost-and-found ("מי איבד...", "מצאתי..."), open-ended questions ("מישהו יודע אם...").
 - Personal registration notes: a parent reporting they signed up their OWN child for something ("רשמתי את X", "הרשמתי את X", "נרשמנו ל-").
-- Routine school timetables (מערכת) with no explicit one-off event and no equipment list.
+- Routine daily/weekly school timetables ("מערכת למחר", "מערכת ליום...", a list of "שיעור 1/2/3..."). This holds even when the timetable ends with a ציוד / equipment list — that is the standard kit for those lessons, not a one-off request — and even when a lesson is NAMED like an event ("שיעור 3- טקס קבלת ילדי א'", "שיעור 4- קבלת שבת", "חינוך גופני", "מסיבת סיום"). A lesson inside a timetable is a lesson, not an event. Only answer YES if the message adds something OUTSIDE the timetable — a dated one-off announcement, or an explicit request to bring something unusual for a specific named occasion.
 - Vague references to "something happening" ("יש בית חם", "יש אירוע", "יש מפגש") with NO explicit date / time / title.
 - Discussion about scheduling that hasn't reached agreement yet ("אולי שלישי?", no confirmation).
 

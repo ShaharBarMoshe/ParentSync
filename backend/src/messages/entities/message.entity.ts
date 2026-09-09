@@ -48,7 +48,7 @@ export class MessageEntity {
   @Column({ type: 'simple-json', nullable: true })
   images: MessageImage[] | null;
 
-  // Gemini text-embedding-004 vector of the merged-group content at parse
+  // Gemini `gemini-embedding-001` vector of the merged-group content at parse
   // time. Used by MessageDeduplicationService to short-circuit forwards of
   // the same flyer across multiple WhatsApp groups. Null for historical
   // messages parsed before Phase 20 — they are excluded from similarity.

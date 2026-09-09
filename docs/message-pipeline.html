@@ -449,7 +449,7 @@ svg text { font-family: var(--font-sans); }
       <tr><td><code>childId</code></td><td>INTEGER FK</td><td>Links to <code>settings.children</code></td></tr>
       <tr><td><code>parsed</code></td><td>BOOLEAN</td><td><code>false</code> until processed by LLM pipeline</td></tr>
       <tr><td><code>images</code></td><td>simple-json</td><td>Base64-encoded image array; up to 4 MB per row <span class="badge yellow">⚠ memory</span></td></tr>
-      <tr><td><code>embedding</code></td><td>simple-json</td><td>768-dim float array (Gemini <code>text-embedding-004</code>); NULL until dedup pass</td></tr>
+      <tr><td><code>embedding</code></td><td>simple-json</td><td>3072-dim float array (Gemini <code>gemini-embedding-001</code>); NULL until dedup pass</td></tr>
       <tr><td><code>contentHash</code></td><td>VARCHAR + B-tree index</td><td>SHA-256 of normalised content; NULL until dedup pass; <code>IDX_31f33f4f…</code></td></tr>
     </tbody>
   </table>
@@ -595,7 +595,7 @@ svg text { font-family: var(--font-sans); }
         <!-- Embed -->
         <line x1="210" y1="212" x2="210" y2="232" stroke="#8b949e" stroke-width="1.2" marker-end="url(#a2)"/>
         <rect x="100" y="232" width="220" height="32" rx="6" fill="#2a1a3a" stroke="#bc8cff" stroke-width="1.2"/>
-        <text x="210" y="253" text-anchor="middle" font-size="11" fill="#bc8cff">Gemini embed (text-embedding-004)</text>
+        <text x="210" y="253" text-anchor="middle" font-size="11" fill="#bc8cff">Gemini embed (gemini-embedding-001)</text>
 
         <!-- Cosine -->
         <line x1="210" y1="264" x2="210" y2="284" stroke="#8b949e" stroke-width="1.2" marker-end="url(#a2)"/>

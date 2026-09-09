@@ -4,6 +4,7 @@ import { MessageParserService } from './message-parser.service';
 import { MessageClassifierService } from './message-classifier.service';
 import { LLM_SERVICE } from '../../shared/constants/injection-tokens';
 import { SettingsService } from '../../settings/settings.service';
+import { LlmQuotaExhaustedError } from '../errors/llm-quota-exhausted.error';
 
 describe('MessageParserService', () => {
   let service: MessageParserService;
@@ -1027,6 +1028,86 @@ describe('MessageParserService', () => {
       await service.onModuleInit();
 
       expect(mockSettingsService.create).not.toHaveBeenCalled();
+    });
+  });
+  describe('exhausted LLM quota', () => {
+    const quotaError = () =>
+      new LlmQuotaExhaustedError('Your prepayment credits are depleted.');
+
+    it('parseMessage rethrows instead of reporting "no events"', async () => {
+      mockLlmService.callLLM.mockRejectedValue(quotaError());
+
+      await expect(service.parseMessage('school trip tomorrow')).rejects.toThrow(
+        LlmQuotaExhaustedError,
+      );
+    });
+
+    it('parseMessageBatch does not retry per group against a dead account', async () => {
+      mockLlmService.callLLM.mockRejectedValue(quotaError());
+
+      await expect(
+        service.parseMessageBatch([
+          { id: '0', content: 'trip on monday' },
+          { id: '1', content: 'party on tuesday' },
+          { id: '2', content: 'meeting on friday' },
+        ]),
+      ).rejects.toThrow(LlmQuotaExhaustedError);
+
+      // One batch attempt — not one batch plus three individual fallbacks.
+      expect(mockLlmService.callLLM).toHaveBeenCalledTimes(1);
+    });
+
+    it('still returns [] for an ordinary parse failure', async () => {
+      mockLlmService.callLLM.mockRejectedValue(new Error('malformed response'));
+
+      await expect(service.parseMessage('anything')).resolves.toEqual([]);
+    });
+  });
+  describe('response shape coercion', () => {
+    it('keeps a single event returned as a bare object instead of an array', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify({
+          title: 'אסיפת הורים לכיתת בדיקה',
+          date: '2026-09-04',
+          time: '17:00',
+          location: 'כיתה',
+        }),
+      );
+
+      const events = await service.parseMessage('אסיפת הורים מחר ב-17:00');
+
+      expect(events).toHaveLength(1);
+      expect(events[0].title).toBe('אסיפת הורים לכיתת בדיקה');
+      expect(events[0].date).toBe('2026-09-04');
+    });
+
+    it('still flattens a batch-shaped object', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify({
+          '0': [{ title: 'A', date: '2026-09-04' }],
+          '1': [{ title: 'B', date: '2026-09-05' }],
+        }),
+      );
+
+      const events = await service.parseMessage('two things');
+      expect(events.map((e) => e.title)).toEqual(['A', 'B']);
+    });
+
+    it('still returns [] for an object that is not an event', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify({ reason: 'not an event', confidence: 0.1 }),
+      );
+
+      await expect(service.parseMessage('hello')).resolves.toEqual([]);
+    });
+
+    it('still handles a normal array response', async () => {
+      mockLlmService.callLLM.mockResolvedValue(
+        JSON.stringify([{ title: 'Trip', date: '2026-09-10' }]),
+      );
+
+      const events = await service.parseMessage('trip');
+      expect(events).toHaveLength(1);
     });
   });
 });

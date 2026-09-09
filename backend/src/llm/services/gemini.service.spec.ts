@@ -3,6 +3,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { GeminiService } from './gemini.service';
 import { LlmRateLimiter } from '../guards/llm-throttle.guard';
 import { SettingsService } from '../../settings/settings.service';
+import { LlmQuotaExhaustedError } from '../errors/llm-quota-exhausted.error';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 const generateContentMock = jest.fn();
 
@@ -14,6 +16,7 @@ jest.mock('@google/genai', () => ({
 
 describe('GeminiService', () => {
   let service: GeminiService;
+  let module: TestingModule;
 
   beforeEach(async () => {
     generateContentMock.mockReset();
@@ -22,7 +25,7 @@ describe('GeminiService', () => {
       usageMetadata: { totalTokenCount: 7 },
     });
 
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
         GeminiService,
         {
@@ -122,5 +125,82 @@ describe('GeminiService', () => {
 
     expect(generateContentMock.mock.calls[0][0].model).toBe('gemini-2.5-flash');
     expect(result).toBe('hello back');
+  });
+  describe('exhausted quota vs transient rate limit', () => {
+    const depleted = () => {
+      const err: any = new Error(
+        '{"error":{"code":429,"message":"Your prepayment credits are depleted. ' +
+          'Please go to AI Studio at https://ai.studio/projects to manage your ' +
+          'project and billing.","status":"RESOURCE_EXHAUSTED"}}',
+      );
+      err.status = 429;
+      return err;
+    };
+
+    const rateLimited = () => {
+      const err: any = new Error('429 Too Many Requests');
+      err.status = 429;
+      return err;
+    };
+
+    it('fails immediately on a depleted account instead of retrying', async () => {
+      generateContentMock.mockRejectedValue(depleted());
+
+      await expect(
+        service.callLLM([{ role: 'user', content: 'hi' }]),
+      ).rejects.toThrow(LlmQuotaExhaustedError);
+
+      // One attempt only — no backoff ladder against an account that cannot pay.
+      expect(generateContentMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('emits LLM_QUOTA_EXHAUSTED so the UI can surface it', async () => {
+      generateContentMock.mockRejectedValue(depleted());
+      const emitter = module.get(EventEmitter2);
+      const emitted: any[] = [];
+      emitter.on('app.error', (e: unknown) => emitted.push(e));
+
+      await expect(
+        service.callLLM([{ role: 'user', content: 'hi' }]),
+      ).rejects.toThrow(LlmQuotaExhaustedError);
+
+      expect(emitted).toHaveLength(1);
+      expect(emitted[0]).toEqual(
+        expect.objectContaining({
+          source: 'llm',
+          code: AppErrorCodes.LLM_QUOTA_EXHAUSTED,
+        }),
+      );
+    });
+
+    it('still retries a plain per-minute rate limit', async () => {
+      generateContentMock
+        .mockRejectedValueOnce(rateLimited())
+        .mockResolvedValue({ text: '[]', usageMetadata: { totalTokenCount: 1 } });
+
+      // The retry waits RATE_LIMIT_DELAY_MS (10s) for real; skip it.
+      jest.useFakeTimers();
+      try {
+        const pending = service.callLLM([{ role: 'user', content: 'hi' }]);
+        await jest.advanceTimersByTimeAsync(11_000);
+        await expect(pending).resolves.toBe('[]');
+      } finally {
+        jest.useRealTimers();
+      }
+
+      expect(generateContentMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not redact-leak the API key into the thrown message', async () => {
+      const err: any = new Error(
+        'prepayment credits are depleted (key=AIzaSECRETVALUE123)',
+      );
+      err.status = 429;
+      generateContentMock.mockRejectedValue(err);
+
+      await expect(
+        service.callLLM([{ role: 'user', content: 'hi' }]),
+      ).rejects.toThrow(/REDACTED/);
+    });
   });
 });

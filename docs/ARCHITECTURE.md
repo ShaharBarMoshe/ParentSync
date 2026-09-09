@@ -64,7 +64,7 @@ ParentSync is a private-use desktop application built with Electron, wrapping a 
 | `SettingsModule` | User settings CRUD, stored in SQLite |
 | `MessagesModule` | WhatsApp scraping (whatsapp-web.js), Gmail fetching, message storage |
 | `CalendarModule` | Calendar events CRUD, Google Calendar sync |
-| `LlmModule` | Gemini client, embeddings (`text-embedding-004`), two-stage parsing pipeline (`MessageClassifierService` → `MessageParserService`), configurable classifier + extractor prompts |
+| `LlmModule` | Gemini client, embeddings (`gemini-embedding-001`), two-stage parsing pipeline (`MessageClassifierService` → `MessageParserService`), configurable classifier + extractor prompts |
 | `SyncModule` | Scheduled sync orchestration, event-driven flow, WhatsApp approval channel, **`MessageDeduplicationService` (semantic pre-filter)** |
 | `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) |
 | `MonitorModule` | Analytics aggregation, charts data |
@@ -80,7 +80,7 @@ All external services are behind injection tokens so they can be swapped in test
 | `GMAIL_SERVICE` | `IGmailService` | `GmailOAuth2Adapter` |
 | `GOOGLE_CALENDAR_SERVICE` | `IGoogleCalendarService` | `GoogleCalendarOAuth2Adapter` |
 | `LLM_SERVICE` | `ILLMService` | `GeminiService` |
-| `EMBEDDING_SERVICE` | `IEmbeddingService` | `GeminiEmbeddingService` (Gemini `text-embedding-004`) |
+| `EMBEDDING_SERVICE` | `IEmbeddingService` | `GeminiEmbeddingService` (Gemini `gemini-embedding-001`, 3072 dims) |
 | `SETTINGS_REPOSITORY` | `ISettingsRepository` | `TypeOrmSettingsRepository` |
 | `NEGATIVE_EXAMPLE_REPOSITORY` | `INegativeExampleRepository` | `TypeOrmNegativeExampleRepository` |
 | `DISMISSAL_REPOSITORY` | `IDismissalRepository` | `TypeOrmDismissalRepository` |
@@ -110,7 +110,7 @@ React + TypeScript + Vite. No state management library — just React state + AP
 5. SyncService groups messages by channel + proximity.
    `MessageDeduplicationService` filters groups already-seen via SHA-256 hash
    or embedding similarity (default threshold 0.92, Gemini
-   `text-embedding-004`). Duplicate groups are marked parsed and skip
+   `gemini-embedding-001`). Duplicate groups are marked parsed and skip
    steps 6–8 entirely.
 6. SyncService sends fresh groups to MessageParserService.
    **Stage 1 — Classifier**: each text-only group is first passed to
@@ -198,9 +198,12 @@ The Electron main process (`electron/main.ts`):
 | SQLite (not PostgreSQL) | Single-user desktop app, no external DB needed. WAL mode + `synchronous=NORMAL` for safe concurrent reads. `auto_vacuum=INCREMENTAL` + daily `DbHygieneService` cron keeps the file bounded (steady-state ~15 MB). |
 | `synchronize: true` always | No dev/prod split, private-use app |
 | OAuth tokens encrypted at rest | Protect Google API tokens if device is compromised |
-| whatsapp-web.js (not direct API) | No official WhatsApp API for personal accounts |
+| whatsapp-web.js (not direct API) | No official WhatsApp API for personal accounts. It drives a headless Chromium against WhatsApp Web's internal modules, which change without notice — `WhatsAppService` carries page-level compatibility patches and dead-session recovery for that. See `docs/WHATSAPP-RESILIENCE.md`. |
 | LLM behind a port (Gemini implementation; mock adapter for tests) | Tests inject a mock without touching the real API |
 | Two-stage parse pipeline (classifier → extractor) with separately editable prompts | Most messages are not events; gating them on a cheap classifier saves ~70% of LLM cost vs single-stage. Each prompt is independently editable from Settings; cache keys fold in both prompt-version hashes. The 😢-driven negative-example feedback loop was retired in v1.4.0 — the LLM ignored the appended block, it broke cache hit rate, and it bloated every parse. Rejections are still logged for the user's reference. |
 | Multi-layer duplicate suppression (semantic message dedup → in-memory single-gathering collapse → exact event dedup → LLM event dedup → calendar overlap dedup) | Five orthogonal stages — embeddings catch byte- and paraphrase-level forwards before the LLM; the in-memory collapse catches the LLM violating its own single-gathering rule (deterministic, can't fail open like Layer 3); exact dedup catches LLM nondeterminism across syncs; the LLM tiebreaker catches "same gathering, different framing"; the calendar overlap layer catches events the user pre-added manually or synced from another source. See `docs/semantic-dedup.md`. |
+| Exhausted LLM quota fails fast, transient 429 retries | Google returns 429/`RESOURCE_EXHAUSTED` for both a per-minute rate limit and a depleted prepaid balance, but only the first clears on its own. `isQuotaExhaustedError` (`llm/errors/llm-quota-exhausted.error.ts`) separates them: a depleted account throws `LlmQuotaExhaustedError` on the first attempt, emits `LLM_QUOTA_EXHAUSTED`, and aborts the parse pass with the messages left unparsed for the next sync. Previously one dead account cost 8 retries per message plus the batch parser's per-message fallback — hours of guaranteed-failing traffic — and the swallowed error marked those messages parsed with no events, losing them for good. |
+| `messagesParsed` counts only completed groups | A failed group is counted in `messagesFailed` and named in the completion log. It is still marked parsed so a poison message cannot loop forever, but it is never reported as a successful parse. |
+| Event sync coalesces concurrent passes | `syncAll()` emits `sync.completed`, whose `@OnEvent` handler runs `syncEvents()` without being awaited, and the Dashboard calls `POST /api/sync/events` immediately after `POST /api/sync/manual`. Two passes started ~90ms apart, both called `findUnparsed()` before either marked anything parsed, and both created events — near-identical duplicates from a single source message that no dedup layer catches, because they are built concurrently from the same input. `syncEvents()` now returns the in-flight pass to any second caller instead of starting a rival one. `syncAll()`'s `SyncLockService` never covered this path. |
 | Centralised AppErrorEmitterService with per-code dedupe | One source of truth for what bubbles up to the frontend ErrorModal; retry loops can't flood the modal |
 | Inline SVG icon system | Zero dependencies, type-safe, no icon font overhead |

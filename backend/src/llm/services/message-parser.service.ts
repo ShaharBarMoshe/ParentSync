@@ -9,6 +9,7 @@ import { SettingsService } from '../../settings/settings.service';
 import { DEFAULT_SYSTEM_PROMPT } from './default-system-prompt';
 import { MessageClassifierService } from './message-classifier.service';
 import { LLM_SYSTEM_PROMPT_KEY, LLM_SYSTEM_PROMPT_IS_CUSTOM_KEY } from '../../settings/constants/setting-keys';
+import { isQuotaExhaustedError } from '../errors/llm-quota-exhausted.error';
 
 interface BuiltPrompt {
   prompt: string;
@@ -133,6 +134,11 @@ export class MessageParserService implements OnModuleInit {
 
       return validatedEvents;
     } catch (error) {
+      // An exhausted account is a system-wide stop, not "this message has no
+      // events". Swallowing it to [] marked the message parsed and dropped it
+      // for good, while reporting a successful parse.
+      if (isQuotaExhaustedError(error)) throw error;
+
       this.logger.error(`Failed to parse message: ${error.message}`);
       return [];
     }
@@ -316,6 +322,10 @@ export class MessageParserService implements OnModuleInit {
         return result;
       }
     } catch (error) {
+      // The per-group fallback below would repeat the same doomed call once per
+      // group. On an exhausted account, stop here.
+      if (isQuotaExhaustedError(error)) throw error;
+
       this.logger.warn(
         `Batch parse failed, falling back to individual parsing: ${error.message}`,
       );
@@ -442,6 +452,17 @@ export class MessageParserService implements OnModuleInit {
           `Flattened batch-shaped response ({${Object.keys(parsed as object).join(',')}}) into a ${flat.length}-event array`,
         );
         return flat;
+      }
+
+      // A single event returned bare, e.g. {"title":"...","date":"..."}
+      // instead of [{...}]. The prompt asks for an array and the batch path
+      // always gets one, but the single-message path sometimes does not —
+      // and dropping it silently loses a perfectly good event.
+      if ('title' in (parsed as Record<string, unknown>)) {
+        this.logger.log(
+          'Wrapped a bare single-event object response into a 1-event array',
+        );
+        return [parsed];
       }
     }
     return [];
@@ -596,9 +617,9 @@ export class MessageParserService implements OnModuleInit {
     const hasher = crypto.createHash('sha256').update(content);
     if (images && images.length > 0) {
       for (const img of images) {
-        hasher.update(' img ');
+        hasher.update('\u0000img\u0000');
         hasher.update(img.mimeType);
-        hasher.update(' ');
+        hasher.update('\u0000');
         hasher.update(img.data);
       }
     }

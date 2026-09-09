@@ -55,6 +55,8 @@ interface FixtureLine {
 
 interface EvalResult {
   bucket: Bucket;
+  /** First line of the message, so a failure can be identified without re-running. */
+  excerpt?: string;
   expected: FixtureLine['expected'];
   predicted: FixtureLine['expected'];
   classifierVerdict?: { isEvent: boolean; reason: string };
@@ -78,12 +80,36 @@ interface Metrics {
   perBucketFN: Record<Bucket, number>;
 }
 
+/** The model the app itself is configured with, read from the same settings row. */
+function getConfiguredModel(): string | undefined {
+  try {
+    const dbPath = path.join(
+      os.homedir(),
+      '.config',
+      'parentsync',
+      'parentsync.db',
+    );
+    if (!fs.existsSync(dbPath)) return undefined;
+    const db = new Database(dbPath, { readonly: true });
+    const row = db
+      .prepare("SELECT value FROM user_settings WHERE key='gemini_model'")
+      .get() as { value: string } | undefined;
+    db.close();
+    return row?.value?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function parseArgs(): { mode: Mode; fixturePath: string; outPath?: string; limit: number; model: string } {
   let mode: Mode = 'current';
   let fixturePath = path.join(__dirname, '..', 'test', 'fixtures', 'prompt-eval.jsonl');
   let outPath: string | undefined;
   let limit = Infinity;
-  let model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  // Default to whatever the app is actually configured to use, so the eval
+  // measures production behaviour and does not rot when Google retires a
+  // model (gemini-2.0-flash now 404s).
+  let model = process.env.GEMINI_MODEL || getConfiguredModel() || 'gemini-2.5-flash-lite';
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
     if (argv[i].startsWith('--mode=')) mode = argv[i].slice('--mode='.length) as Mode;
@@ -241,7 +267,14 @@ async function runLine(client: GoogleGenAI, model: string, mode: Mode, line: Fix
     failure = (err as Error).message;
   }
 
-  return { bucket: line.bucket, expected: line.expected, predicted, classifierVerdict, tokensIn, latencyMs, failure };
+  const excerpt = line.messageContent
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' / ')
+    .slice(0, 90);
+  return { bucket: line.bucket, excerpt, expected: line.expected, predicted, classifierVerdict, tokensIn, latencyMs, failure };
 }
 
 function computeMetrics(results: EvalResult[]): Metrics {
@@ -326,6 +359,29 @@ function formatReport(mode: Mode, metrics: Metrics, results: EvalResult[]): stri
     lines.push(`| ${b} | ${metrics.perBucketFP[b]} | ${metrics.perBucketFN[b]} |`);
   }
   lines.push('');
+
+  // Which lines failed, not just how many — otherwise the report says a
+  // regression happened without saying where.
+  const misses = results.filter(
+    (r) =>
+      !r.failure &&
+      (r.expected.length > 0) !== (r.predicted.length > 0),
+  );
+  if (misses.length > 0) {
+    lines.push('## Failing lines');
+    lines.push('');
+    lines.push('| Kind | Bucket | Expected | Predicted | Message |');
+    lines.push('|---|---|---:|---:|---|');
+    for (const m of misses) {
+      const kind = m.expected.length > 0 ? 'FN' : 'FP';
+      const excerpt = (m.excerpt ?? '').replace(/\|/g, '\\|');
+      lines.push(
+        `| ${kind} | ${m.bucket} | ${m.expected.length} | ${m.predicted.length} | ${excerpt} |`,
+      );
+    }
+    lines.push('');
+  }
+
   const errors = results.filter((r) => r.failure);
   if (errors.length > 0) {
     lines.push('## Run errors');

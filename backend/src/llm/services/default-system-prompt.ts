@@ -51,8 +51,11 @@ When multiple messages discuss scheduling:
 
 ROUTINE SCHOOL SCHEDULES (מערכת)
 - A daily/weekly timetable listing routine subjects is NOT a list of events. Forms like "מערכת למחר:\\nשיעור 1- עברית..." — DO NOT emit one event per lesson.
-- Any equipment/preparation list inside a schedule (introduced by "ציוד:", "להביא:", "צריך להביא:", "לארוז:") IS extractable — emit a SINGLE task titled "להביא ציוד" with the items in description.
-- Within a schedule, also call out non-routine items: tests (מבחן), trips (טיול), special days (יום ספורט, יום לבן). Routine subjects (עברית, חשבון, אנגלית, ספורט-class, חינוך גופני, אומנות, הללוהו במחול) are NOT events.
+- An equipment list inside a routine timetable (introduced by "ציוד:", "להביא:") is the standard daily kit for those lessons — books, notebooks, a reading book. DO NOT emit an event for it.
+- Only emit a SINGLE task titled "להביא ציוד" when the items are tied to a specific non-routine occasion (a trip, a test, a party, a themed day) rather than the everyday books and notebooks.
+- Within a schedule, call out ONLY items the family must act on or prepare for: tests (מבחן), trips (טיול), themed days (יום ספורט, יום לבן, תחפושות).
+- Everything else listed as a lesson is NOT an event, even when it is named like one. In-school ceremonies and assemblies the class simply attends during the school day — "טקס קבלת ילדי א'", "קבלת שבת", "מסיבת כיתה", "זמן קריאה", "אסיפת בוקר" — are part of the normal day and require nothing from the parent. Routine subjects (עברית, חשבון, אנגלית, חינוך גופני, אומנות, הללוהו במחול) are likewise NOT events.
+- A lesson slot ("שיעור 3- ...") is a lesson. Emit it only if it is a test, a trip, or a themed day the child must prepare for.
 - If a schedule contains neither equipment nor a non-routine item, return [].
 
 ACTION ITEMS (payments, forms, documents, things to bring/wear)
@@ -96,7 +99,12 @@ Output: [{"title":"להביא ציוד","date":"2026-03-15","description":"לה�
 EXAMPLES — schedule
 
 Input: "מערכת ליום שלישי:\\nשיעור 1- מבחן באנגלית.\\nשיעור 2- חשבון.\\nציוד: ספר אנגלית, מחברת חשבון."
-Output: [{"title":"מבחן באנגלית","date":"2026-03-17"},{"title":"להביא ציוד","date":"2026-03-17","description":"ספר אנגלית, מחברת חשבון"}]
+Output: [{"title":"מבחן באנגלית","date":"2026-03-17"}]
+(The ציוד here is the standard kit for those lessons — no "להביא ציוד" task.)
+
+Input: "מערכת למחר:\\nשיעור 1- חשבון.\\nשיעור 2- עברית.\\nשיעור 3- טקס קבלת ילדי א'.\\nשיעור 4- קבלת שבת וזמן קריאה.\\nציוד: קסם וחברים, מחברת עברית, ספר קריאה."
+Output: []
+(Every slot is a lesson the class attends; the ציוד is the everyday kit.)
 
 Input: "מערכת היום:\\nעברית, חשבון, מדעים, אומנות."
 Output: []

@@ -4,6 +4,11 @@ import { GoogleGenAI } from '@google/genai';
 import { ILLMService, LlmMessage } from '../interfaces/llm-service.interface';
 import { LlmRateLimiter } from '../guards/llm-throttle.guard';
 import { SettingsService } from '../../settings/settings.service';
+import {
+  LlmQuotaExhaustedError,
+  isQuotaExhaustedError,
+} from '../errors/llm-quota-exhausted.error';
+import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 const MAX_RETRIES = 3;
@@ -135,6 +140,22 @@ export class GeminiService implements ILLMService, OnModuleInit {
           throw error;
         }
 
+        // A depleted account also arrives as 429/RESOURCE_EXHAUSTED, but it
+        // will never succeed on retry — only a human topping up the account
+        // clears it. Fail immediately instead of burning the whole backoff
+        // ladder (and then the batch parser's per-message fallback) on it.
+        if (isQuotaExhaustedError(error)) {
+          const duration = Date.now() - startTime;
+          this.logger.error(
+            `Gemini quota/credit exhausted after ${duration}ms — not retrying: ${this.sanitizeError(error.message)}`,
+          );
+          this.emitQuotaExhausted();
+          throw new LlmQuotaExhaustedError(
+            this.sanitizeError(error.message),
+            error,
+          );
+        }
+
         // For 429, allow extra retries with longer delays
         if (status === 429 && rateLimitRetries < MAX_RETRIES_RATE_LIMIT) {
           rateLimitRetries++;
@@ -163,6 +184,18 @@ export class GeminiService implements ILLMService, OnModuleInit {
       `Gemini call failed after retries (${duration}ms): ${this.sanitizeError(lastError?.message)}`,
     );
     throw lastError;
+  }
+
+  private emitQuotaExhausted() {
+    this.eventEmitter.emit('app.error', {
+      source: 'llm',
+      code: AppErrorCodes.LLM_QUOTA_EXHAUSTED,
+      message:
+        'Gemini rejected the request because the API quota or prepaid credit ' +
+        'is exhausted. Parsing is paused until the Google AI Studio project ' +
+        'has credit again — see https://ai.studio/projects.',
+      timestamp: new Date().toISOString(),
+    });
   }
 
   private emitCriticalError(status: number, model: string) {

@@ -7,8 +7,18 @@ import {
 } from '../interfaces/embedding-service.interface';
 import { SettingsService } from '../../settings/settings.service';
 import { sha256 } from '../../shared/utils/hash';
+import {
+  LlmQuotaExhaustedError,
+  isQuotaExhaustedError,
+} from '../errors/llm-quota-exhausted.error';
 
-const EMBEDDING_MODEL = 'text-embedding-004';
+// Google retired `text-embedding-004` — it now answers 404 on embedContent.
+// `gemini-embedding-001` is its GA replacement and returns 3072 dimensions
+// (the old model returned 768). Vectors from the two models are not
+// comparable, but MessageDeduplicationService already skips candidates whose
+// stored vector has a different length, so old rows are ignored rather than
+// compared wrongly.
+const EMBEDDING_MODEL = 'gemini-embedding-001';
 const CACHE_MAX_ENTRIES = 128;
 
 /**
@@ -87,6 +97,21 @@ export class GeminiEmbeddingService implements IEmbeddingService, OnModuleInit {
       return values;
     } catch (err) {
       if (err instanceof EmbeddingFailedError) throw err;
+
+      // Same account as GeminiService, so a depleted balance shows up here
+      // too. Distinguish it: dedup still fails open, but the error type and
+      // log level make it clear this is a stopped account rather than a
+      // flaky call.
+      if (isQuotaExhaustedError(err)) {
+        this.logger.error(
+          `Embedding quota/credit exhausted — semantic dedup is disabled until the account has credit again: ${(err as Error).message}`,
+        );
+        throw new LlmQuotaExhaustedError(
+          `Gemini embed failed: ${(err as Error).message}`,
+          err,
+        );
+      }
+
       this.logger.warn(
         `Embedding API failed: ${(err as Error).message} chars=${text.length}`,
       );
