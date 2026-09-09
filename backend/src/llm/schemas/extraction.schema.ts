@@ -3,16 +3,25 @@ import { z } from 'zod';
 /**
  * Provider-facing schemas for structured output.
  *
- * Gemini's structured-output mode accepts only a subset of OpenAPI schema.
- * Two rules follow from that and are load-bearing here:
+ * Gemini's structured-output mode does not accept general JSON Schema — the
+ * request is validated against a protobuf definition, and anything outside
+ * that subset is rejected with a 400 before the model ever runs. Three rules
+ * follow, and all three are load-bearing:
  *
- * 1. **No `z.record()`.** Dynamic keys are not expressible in that subset. The
- *    old batch protocol asked for `{"1": [...], "2": [...]}`, which is exactly
- *    a record — it cannot be ported to structured output. Batches are an
- *    array of `{ id, events }` instead, and the echoed `id` turns a
- *    misalignment into a loud error rather than a group silently getting `[]`.
- * 2. **No unions.** Optional fields are `.nullable().optional()` rather than
- *    modelled as variants; the normalizer treats `null` and absent alike.
+ * 1. **No `z.record()`.** Dynamic keys are not expressible. The old batch
+ *    protocol asked for `{"1": [...], "2": [...]}`, which is exactly a record.
+ *    Batches are an array of `{ id, events }` instead, and the echoed `id`
+ *    turns a misalignment into a loud error rather than a group silently
+ *    getting `[]`.
+ * 2. **No `.nullable()`.** It converts to `type: ["string", "null"]`, and
+ *    Gemini's `type` field is not repeating:
+ *    `Proto field is not repeating, cannot start list`. Use `.optional()`
+ *    alone — an absent field says "not stated" just as well, and the
+ *    normalizer already treats absent, null and empty alike.
+ * 3. **No unions.** Same reason: they land as `anyOf`.
+ *
+ * `schema-compat.spec.ts` enforces all three against the real LangChain
+ * conversion, so this fails in CI rather than against a live sync.
  *
  * `.describe()` text is part of the contract the model sees — it replaces the
  * format instructions that used to be prose in the prompt.
@@ -28,34 +37,31 @@ export const EventSchema = z.object({
     ),
   time: z
     .string()
-    .nullable()
-    .optional()
-    .describe('Start time as HH:MM (24-hour), or null for an all-day event.'),
-  endTime: z
-    .string()
-    .nullable()
     .optional()
     .describe(
-      'End time as HH:MM (24-hour). Only when the message states a range or ' +
-        'a duration; otherwise null.',
+      'Start time as HH:MM (24-hour). Omit entirely for an all-day event.',
     ),
-  location: z.string().nullable().optional().describe('Location, or null.'),
+  endTime: z
+    .string()
+    .optional()
+    .describe(
+      'End time as HH:MM (24-hour). Include only when the message states a ' +
+        'range or a duration; otherwise omit.',
+    ),
+  location: z.string().optional().describe('Location, when the message says.'),
   description: z
     .string()
-    .nullable()
     .optional()
-    .describe('Extra detail worth keeping, or null.'),
+    .describe('Extra detail worth keeping, when there is any.'),
   action: z
     .enum(['create', 'cancel', 'delay'])
-    .nullable()
     .optional()
     .describe(
       'create for a new event, cancel to call one off, delay to move one. ' +
-        'Defaults to create when null.',
+        'Defaults to create when omitted.',
     ),
   originalTitle: z
     .string()
-    .nullable()
     .optional()
     .describe(
       'For cancel/delay only: the title of the existing event being changed, ' +
@@ -63,12 +69,10 @@ export const EventSchema = z.object({
     ),
   newDate: z
     .string()
-    .nullable()
     .optional()
     .describe('For delay only: the new date as YYYY-MM-DD.'),
   newTime: z
     .string()
-    .nullable()
     .optional()
     .describe('For delay only: the new time as HH:MM.'),
 });
@@ -115,6 +119,14 @@ export const IdenticalSchema = z.object({
     .boolean()
     .describe('True when both descriptions refer to the same real gathering.'),
 });
+
+/** Every schema that is ever sent to a provider — the compat spec sweeps these. */
+export const PROVIDER_SCHEMAS = {
+  SingleExtractionSchema,
+  BatchExtractionSchema,
+  VerdictSchema,
+  IdenticalSchema,
+} as const;
 
 export type SchemaEvent = z.infer<typeof EventSchema>;
 export type BatchExtraction = z.infer<typeof BatchExtractionSchema>;

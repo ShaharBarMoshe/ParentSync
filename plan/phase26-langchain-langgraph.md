@@ -1,7 +1,7 @@
 # Phase 26: LangChain + LangGraph + LangSmith (from-scratch redesign)
 
-**Status**: Redesigned — supersedes the adapter-swap plan (commits `d5d535c`,
-`1f7d2ee`, `d0b10a8`)
+**Status**: Implemented and deployed (v1.5.1) — supersedes the adapter-swap
+plan (commits `d5d535c`, `1f7d2ee`, `d0b10a8`)
 **Branch**: `feat/langchain-langgraph`
 
 Rebuild every AI interaction on LangChain, express the event-sync pass as a
