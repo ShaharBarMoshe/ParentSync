@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OutOfBandAlertService } from './out-of-band-alert.service';
-import { GMAIL_SERVICE } from '../../shared/constants/injection-tokens';
-import { WhatsAppService } from '../../messages/services/whatsapp.service';
+import {
+  GMAIL_SERVICE,
+  WHATSAPP_SERVICE,
+} from '../../shared/constants/injection-tokens';
 import { SettingsService } from '../../settings/settings.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 
@@ -38,7 +40,7 @@ describe('OutOfBandAlertService', () => {
       providers: [
         OutOfBandAlertService,
         { provide: GMAIL_SERVICE, useValue: mockGmail },
-        { provide: WhatsAppService, useValue: mockWhatsApp },
+        { provide: WHATSAPP_SERVICE, useValue: mockWhatsApp },
         { provide: SettingsService, useValue: mockSettings },
       ],
     }).compile();

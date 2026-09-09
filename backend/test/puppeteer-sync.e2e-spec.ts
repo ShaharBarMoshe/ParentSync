@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import puppeteer, { Browser, Page } from 'puppeteer';
+import { describeLive } from './helpers/live-e2e';
 
 const BACKEND_URL = 'http://localhost:3000';
 const FRONTEND_URL = 'http://localhost:5173';
@@ -13,7 +14,7 @@ const TEST_TIMEOUT = 180_000;
  * Full-stack E2E test: starts backend + frontend, then uses Puppeteer
  * to trigger sync and verify channels get scanned using existing DB data.
  */
-describe('Puppeteer – Sync & Channel Scan (e2e)', () => {
+describeLive('Puppeteer – Sync & Channel Scan (e2e)', () => {
   let backend: ChildProcess;
   let frontend: ChildProcess;
   let browser: Browser;

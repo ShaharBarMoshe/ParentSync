@@ -28,11 +28,16 @@ describe('Security (e2e)', () => {
     getChannelMessages: jest.fn().mockResolvedValue([]),
     sendMessage: jest.fn().mockResolvedValue('mock-msg-id'),
     disconnect: jest.fn().mockResolvedValue(undefined),
+    reactToMessage: jest.fn().mockResolvedValue(undefined),
+    deleteMessage: jest.fn().mockResolvedValue(true),
+    findMessageIdsContaining: jest.fn().mockResolvedValue([]),
   };
 
   const mockGmailService: IGmailService = {
     getEmails: jest.fn().mockResolvedValue([]),
     getEmailsSince: jest.fn().mockResolvedValue([]),
+    sendEmail: jest.fn().mockResolvedValue(undefined),
+    getConnectedEmail: jest.fn().mockResolvedValue(null),
   };
 
   const mockGoogleCalendarService: IGoogleCalendarService = {

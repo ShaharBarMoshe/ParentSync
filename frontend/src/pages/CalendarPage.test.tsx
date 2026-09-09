@@ -21,6 +21,8 @@ const mockEvents = [
     time: '09:00',
     location: 'City Zoo',
     source: 'whatsapp' as const,
+    // CalendarPage only renders approved / none events.
+    approvalStatus: 'approved' as const,
     sourceId: 'm1',
     googleEventId: 'g1',
     syncedToGoogle: true,
@@ -35,6 +37,7 @@ const mockEvents = [
     time: '18:00',
     location: null,
     source: 'email' as const,
+    approvalStatus: 'none' as const,
     sourceId: 'm2',
     googleEventId: null,
     syncedToGoogle: false,

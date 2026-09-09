@@ -28,7 +28,7 @@ Clean Architecture + Hexagonal (Ports & Adapters) on **NestJS**, organized by **
 | `SettingsModule` | User settings CRUD |
 | `MessagesModule` | WhatsApp scraping, Gmail fetching, message storage |
 | `CalendarModule` | Calendar events, Google Calendar sync |
-| `LlmModule` | LLM client, message parsing, `EMBEDDING_SERVICE` (Gemini `text-embedding-004`) |
+| `LlmModule` | LLM client, message parsing, `EMBEDDING_SERVICE` (Gemini `gemini-embedding-001`) |
 | `SyncModule` | Scheduled sync orchestration, event-driven flow, WhatsApp approval channel, `MessageDeduplicationService` (semantic pre-filter) |
 | `AuthModule` | OAuth 2.0 flows for Google APIs |
 | `MonitorModule` | Analytics aggregation, charts data |
@@ -102,7 +102,29 @@ cd frontend && npm run dev         # Start frontend dev server (port 5173)
 cd backend && npm test             # Run unit tests
 cd backend && npm run test:e2e     # Run E2E tests (Supertest)
 cd frontend && npm test            # Run frontend tests
+
+# E2E specs that need real external state (running dev servers, a Chrome
+# profile logged into WhatsApp, live LLM/Google credentials, a populated DB)
+# are skipped by default — they cannot pass in an ordinary run. To include them:
+cd backend && E2E_LIVE=1 npm run test:e2e
 ```
+
+Use `npm test`, not `npx jest`: a `pretest` hook rebuilds `better-sqlite3` when
+its native ABI does not match the local Node (packaging rebuilds it for
+Electron's ABI, which makes every DB-backed suite fail under plain `jest`).
+
+### Test conventions
+
+- **Never hard-code a fixture date.** Events dated today or earlier are dropped
+  at creation, and fetches only look back a fixed scan window, so a literal date
+  quietly stops exercising the code once it ages out — the test then fails, or
+  worse, passes vacuously. Use `backend/test/helpers/relative-dates.ts`
+  (`daysFromNow`, `minutesAgo`, `daysAgo`).
+- **Count the LLM call you mean.** The relevance classifier and the extractor
+  share the `LLM_SERVICE` port; assert on the system prompt
+  (`'calendar event extractor'`) rather than a raw `callLLM` count.
+- **A module mock must cover every export the component imports.** A missing one
+  is `undefined` at call time and throws before anything renders.
 
 ## Implementation Plan
 

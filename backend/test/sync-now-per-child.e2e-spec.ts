@@ -15,6 +15,7 @@ import type { IGoogleCalendarService } from '../src/calendar/interfaces/google-c
 import { CalendarEventEntity } from '../src/calendar/entities/calendar-event.entity';
 import { MessageEntity } from '../src/messages/entities/message.entity';
 import { ChildEntity } from '../src/settings/entities/child.entity';
+import { describeLive } from './helpers/live-e2e';
 
 /**
  * E2E test: Per-Child Sync — WhatsApp Web → LLM → Google Calendar.
@@ -37,7 +38,7 @@ import { ChildEntity } from '../src/settings/entities/child.entity';
  *   cd backend
  *   npx jest --config test/jest-e2e.json test/sync-now-per-child.e2e-spec.ts --runInBand
  */
-describe('Sync Now — Per-Child WhatsApp → LLM → Google Calendar (e2e)', () => {
+describeLive('Sync Now — Per-Child WhatsApp → LLM → Google Calendar (e2e)', () => {
   let app: INestApplication;
   let dataSource: DataSource;
   let childService: ChildService;

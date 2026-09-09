@@ -6,6 +6,7 @@ import PromptEditor from '../components/PromptEditor';
 import NegativeExamplesPanel from '../components/NegativeExamplesPanel';
 import UninstallModal from '../components/UninstallModal';
 import Icon from '../components/icons/Icon';
+import { parseChannelNames, serializeChannelNames } from '../utils/channelNames';
 
 // Google Calendar color palette
 const CALENDAR_COLORS: { id: string; name: string; hex: string }[] = [
@@ -277,7 +278,7 @@ function ChildCard({
   const [expanded, setExpanded] = useState(false);
   const [name, setName] = useState(child.name);
   const [channels, setChannels] = useState<string[]>(
-    child.channelNames ? child.channelNames.split(',').map((c) => c.trim()).filter(Boolean) : [],
+    parseChannelNames(child.channelNames),
   );
   const [newChannel, setNewChannel] = useState('');
   const [teacherEmails, setTeacherEmails] = useState(child.teacherEmails || '');
@@ -289,7 +290,7 @@ function ChildCard({
   // Reset local state when child prop changes
   useEffect(() => {
     setName(child.name);
-    setChannels(child.channelNames ? child.channelNames.split(',').map((c) => c.trim()).filter(Boolean) : []);
+    setChannels(parseChannelNames(child.channelNames));
     setNewChannel('');
     setTeacherEmails(child.teacherEmails || '');
     setCalendarColor(child.calendarColor);
@@ -302,7 +303,7 @@ function ChildCard({
   function getEditData(): Partial<Child> {
     return {
       name: name.trim(),
-      channelNames: channels.length > 0 ? channels.join(', ') : null,
+      channelNames: channels.length > 0 ? serializeChannelNames(channels) : null,
       teacherEmails: teacherEmails.trim() || null,
       calendarColor,
     };
@@ -311,7 +312,7 @@ function ChildCard({
   function saveChannels(updatedChannels: string[]) {
     setChannels(updatedChannels);
     onSave(child.id, {
-      channelNames: updatedChannels.length > 0 ? updatedChannels.join(', ') : null,
+      channelNames: updatedChannels.length > 0 ? serializeChannelNames(updatedChannels) : null,
     });
   }
 

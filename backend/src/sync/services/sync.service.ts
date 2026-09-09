@@ -19,6 +19,7 @@ import { ChildService } from '../../settings/child.service';
 import { ChildEntity } from '../../settings/entities/child.entity';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import type { ChannelSyncDetail } from '../entities/sync-log.entity';
+import { parseChannelNames } from '../../shared/utils/channel-names';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS =
@@ -227,17 +228,24 @@ export class SyncService {
     totalMessages += gmailResult.messageCount;
     channelDetails.push(...gmailResult.channelDetails);
 
-    // Only skip lastScanAt update if ALL channels failed (total sync failure).
-    // Individual channel errors (e.g. channel not found) are logged but
-    // shouldn't block progress for the channels that succeeded.
-    const allFailed =
-      channelDetails.length > 0 &&
-      channelDetails.every((ch) => ch.skipped);
-    if (!allFailed) {
+    // Evaluated per source, not across the whole child: a child with working
+    // Gmail but every WhatsApp channel failing used to advance lastScanAt
+    // anyway, permanently skipping that WhatsApp window. Individual channel
+    // errors (e.g. one channel not found) still shouldn't block progress for
+    // the channels that succeeded.
+    const sourceFullyFailed = (details: ChannelSyncDetail[]): boolean =>
+      details.length > 0 && details.every((ch) => ch.skipped);
+
+    const failedSources = [
+      sourceFullyFailed(whatsappResult.channelDetails) ? 'WhatsApp' : null,
+      sourceFullyFailed(gmailResult.channelDetails) ? 'Gmail' : null,
+    ].filter((source): source is string => source !== null);
+
+    if (failedSources.length === 0) {
       await this.childService.update(child.id, { lastScanAt: new Date() });
     } else {
       this.logger.warn(
-        `Not updating lastScanAt for child "${child.name}" — all channels failed`,
+        `Not updating lastScanAt for child "${child.name}" — all ${failedSources.join(' and ')} channels failed`,
       );
     }
 
@@ -273,10 +281,7 @@ export class SyncService {
       return { messageCount: 0, channelDetails };
     }
 
-    const channels = child.channelNames
-      .split(',')
-      .map((ch) => ch.trim())
-      .filter((ch) => ch.length > 0);
+    const channels = parseChannelNames(child.channelNames);
 
     if (channels.length === 0) {
       return { messageCount: 0, channelDetails };

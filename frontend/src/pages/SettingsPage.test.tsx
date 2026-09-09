@@ -389,7 +389,7 @@ describe('SettingsPage', () => {
       await waitFor(() => {
         expect(mockChildrenApi.update).toHaveBeenCalledWith(
           'child-1',
-          expect.objectContaining({ channelNames: 'Grade 3A Parents, Sports Club' }),
+          expect.objectContaining({ channelNames: 'Grade 3A Parents\nSports Club' }),
         );
       });
     });
@@ -417,7 +417,7 @@ describe('SettingsPage', () => {
       await waitFor(() => {
         expect(mockChildrenApi.update).toHaveBeenCalledWith(
           'child-1',
-          expect.objectContaining({ channelNames: 'Grade 3A Parents, Music' }),
+          expect.objectContaining({ channelNames: 'Grade 3A Parents\nMusic' }),
         );
       });
     });

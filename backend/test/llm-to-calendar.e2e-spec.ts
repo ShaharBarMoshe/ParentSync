@@ -7,6 +7,7 @@ import { OAuthService } from '../src/auth/services/oauth.service';
 import { GOOGLE_CALENDAR_SERVICE } from '../src/shared/constants/injection-tokens';
 import type { IGoogleCalendarService } from '../src/calendar/interfaces/google-calendar-service.interface';
 import { CalendarEventEntity } from '../src/calendar/entities/calendar-event.entity';
+import { describeLive } from './helpers/live-e2e';
 
 /**
  * Integration test: OpenRouter LLM parses Hebrew text → creates Google Calendar event.
@@ -22,7 +23,7 @@ import { CalendarEventEntity } from '../src/calendar/entities/calendar-event.ent
  *
  * Run: NODE_OPTIONS="--experimental-vm-modules" npx jest --config test/jest-e2e.json test/llm-to-calendar.e2e-spec.ts --runInBand
  */
-describe('LLM to Google Calendar Integration (e2e)', () => {
+describeLive('LLM to Google Calendar Integration (e2e)', () => {
   let app: INestApplication;
   let messageParser: MessageParserService;
   let googleCalendarService: IGoogleCalendarService;

@@ -31,6 +31,17 @@ import {
 import { ApprovalStatus } from '../../shared/enums/approval-status.enum';
 import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
+import { isQuotaExhaustedError } from '../../llm/errors/llm-quota-exhausted.error';
+
+/** Outcome of one event-sync pass. */
+export interface EventSyncResult {
+  /** Messages whose group completed successfully (includes dedup skips). */
+  messagesParsed: number;
+  /** Messages whose group threw and was marked parsed to avoid a retry loop. */
+  messagesFailed: number;
+  eventsCreated: number;
+  eventsSynced: number;
+}
 
 @Injectable()
 export class EventSyncService {
@@ -109,16 +120,49 @@ export class EventSyncService {
     }
   }
 
-  async syncEvents(): Promise<{
-    messagesParsed: number;
-    eventsCreated: number;
-    eventsSynced: number;
-  }> {
+  /**
+   * In-flight pass, so two callers can never parse the same messages at once.
+   *
+   * `syncAll()` emits `sync.completed`, whose @OnEvent handler runs
+   * `syncEvents()` without being awaited, and the Dashboard then calls
+   * `POST /api/sync/events` right after `POST /api/sync/manual`. That started a
+   * second pass ~90ms behind the first; both had already called
+   * `findUnparsed()` before either marked anything parsed, so both parsed the
+   * same messages and both created events — near-identical duplicates from one
+   * source message. The scheduled sync overlapping a manual one does the same.
+   *
+   * Callers join the running pass instead of starting a rival one, which also
+   * gives the Dashboard the behaviour it wanted: wait for events to be built.
+   */
+  private inFlightPass: Promise<EventSyncResult> | null = null;
+
+  async syncEvents(): Promise<EventSyncResult> {
+    if (this.inFlightPass) {
+      this.logger.log(
+        'Event sync already running — joining the in-flight pass instead of starting a second one',
+      );
+      return this.inFlightPass;
+    }
+
+    const pass = this.runEventSync();
+    this.inFlightPass = pass;
+    try {
+      return await pass;
+    } finally {
+      this.inFlightPass = null;
+    }
+  }
+
+  private async runEventSync(): Promise<EventSyncResult> {
     this.logger.log('Starting event sync...');
 
     let messagesParsed = 0;
+    let messagesFailed = 0;
     let eventsCreated = 0;
     let eventsSynced = 0;
+    // Set when the LLM account runs out of quota mid-pass. The remaining
+    // messages stay unparsed so the next sync can pick them up unchanged.
+    let quotaExhausted = false;
 
     // Step 1: Parse unparsed messages using transactions
     const unparsedMessages = await this.messageRepository.findUnparsed();
@@ -229,11 +273,22 @@ export class EventSyncService {
         images: meta.mergedImages.length > 0 ? meta.mergedImages : undefined,
       }));
       const fallbackDate = new Date().toISOString().split('T')[0];
-      batchResult = await this.messageParserService.parseMessageBatch(
-        batchInput,
-        fallbackDate,
-        freshGroups.map((meta) => meta.messageDate),
-      );
+      try {
+        batchResult = await this.messageParserService.parseMessageBatch(
+          batchInput,
+          fallbackDate,
+          freshGroups.map((meta) => meta.messageDate),
+        );
+      } catch (error) {
+        if (!isQuotaExhaustedError(error)) throw error;
+        // Leave every fresh group unparsed — they are still valid input, the
+        // account just cannot pay for the call right now. Marking them parsed
+        // here would drop them permanently.
+        quotaExhausted = true;
+        this.logger.error(
+          `LLM quota exhausted — skipping the parse pass, ${freshGroups.length} group(s) left unparsed for the next sync: ${error.message}`,
+        );
+      }
     }
 
     const approvalEnabled = await this.approvalService.isApprovalEnabled();
@@ -241,8 +296,10 @@ export class EventSyncService {
     // can reuse it. Step 2 below redeclares this in its own scope.
     const calendarIdForDedup = await this.getCalendarId();
 
-    // Process each fresh group's parsed events
-    for (let i = 0; i < freshGroups.length; i++) {
+    // Process each fresh group's parsed events. Skipped entirely when the
+    // parse pass was aborted — there is nothing to apply and the messages must
+    // stay unparsed.
+    for (let i = 0; !quotaExhausted && i < freshGroups.length; i++) {
       const meta = freshGroups[i];
       const parsedEvents = batchResult.get(String(i)) || [];
 
@@ -354,7 +411,9 @@ export class EventSyncService {
         this.logger.error(
           `Failed to process message group (${meta.group.length} messages): ${error.message}`,
         );
-        // Mark all as parsed to avoid infinite retry
+        messagesFailed += meta.group.length;
+        // Mark all as parsed to avoid infinite retry on a poison message.
+        // Counted as failed, never as parsed — see the completion log.
         for (const msg of meta.group) {
           await this.messageRepository.update(msg.id, { parsed: true });
         }
@@ -397,11 +456,15 @@ export class EventSyncService {
       }
     }
 
+    const failedNote = messagesFailed > 0 ? `, ${messagesFailed} failed` : '';
+    const skippedNote = quotaExhausted
+      ? ' — parse pass aborted (LLM quota exhausted), messages left for the next sync'
+      : '';
     this.logger.log(
-      `Event sync completed: ${messagesParsed} messages parsed, ${eventsCreated} events created, ${eventsSynced} events synced`,
+      `Event sync completed: ${messagesParsed} messages parsed${failedNote}, ${eventsCreated} events created, ${eventsSynced} events synced${skippedNote}`,
     );
 
-    return { messagesParsed, eventsCreated, eventsSynced };
+    return { messagesParsed, messagesFailed, eventsCreated, eventsSynced };
   }
 
   private static readonly MERGE_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours

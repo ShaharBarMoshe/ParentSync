@@ -10,7 +10,7 @@
   "main": "electron/dist/main.js",
   "private": true,
   "scripts": {
-    "rebuild:native": "npx @electron/rebuild -m backend",
+    "rebuild:native": "npx @electron/rebuild --force -m backend",
     "electron:dev": "npm run build:electron && concurrently \"cd frontend && npm run dev\" \"cd backend && PORT=41932 npm run start:dev\" \"wait-on http://localhost:5173 http://localhost:41932/api/health && ELECTRON_DEV=1 PORT=41932 electron .\"",
     "electron:start": "npm run build:all && npm run rebuild:native && electron .",
     "build:electron": "tsc -p electron/tsconfig.json",

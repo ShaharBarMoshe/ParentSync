@@ -29,6 +29,7 @@ import type {
   LlmMessage,
 } from '../src/llm/interfaces/llm-service.interface';
 import { MessageSource } from '../src/shared/enums/message-source.enum';
+import { minutesAgo } from './helpers/relative-dates';
 
 /**
  * Integration: image-bearing WhatsApp messages flow through the sync pipeline
@@ -72,11 +73,16 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
     getChannelMessages: jest.fn(async () => whatsappMessages),
     sendMessage: jest.fn().mockResolvedValue('mock-msg-id'),
     disconnect: jest.fn().mockResolvedValue(undefined),
+    reactToMessage: jest.fn().mockResolvedValue(undefined),
+    deleteMessage: jest.fn().mockResolvedValue(true),
+    findMessageIdsContaining: jest.fn().mockResolvedValue([]),
   };
 
   const mockGmail: IGmailService = {
     getEmails: jest.fn().mockResolvedValue([]),
     getEmailsSince: jest.fn().mockResolvedValue([]),
+    sendEmail: jest.fn().mockResolvedValue(undefined),
+    getConnectedEmail: jest.fn().mockResolvedValue(null),
   };
 
   const mockCalendar: IGoogleCalendarService = {
@@ -108,7 +114,14 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
 
   const mockLlm: ILLMService = {
     callLLM: jest.fn(async (messages: LlmMessage[]) => {
-      capturedCalls.push(messages);
+      // Capture extraction calls only. The relevance classifier shares this
+      // port but runs on text-only groups, so including it would make the
+      // "one call per group, never bundled" assertions count the wrong thing.
+      const systemPrompt =
+        messages.find((m) => m.role === 'system')?.content ?? '';
+      if (systemPrompt.includes('calendar event extractor')) {
+        capturedCalls.push(messages);
+      }
       return JSON.stringify([
         {
           title: 'School play',
@@ -203,7 +216,7 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
         channel: 'Class A',
         childId: child.body.id,
         content: '',
-        timestamp: new Date('2026-04-13T10:00:00Z'),
+        timestamp: minutesAgo(30),
         sender: 'teacher@c.us',
         parsed: false,
         images: [fakeImage],
@@ -239,7 +252,7 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
         channel: 'Class A',
         childId: child.body.id,
         content: '', // image-only message — no caption
-        timestamp: new Date('2026-04-13T10:00:00Z'),
+        timestamp: minutesAgo(30),
         sender: 'teacher@c.us',
         parsed: false,
         images: [fakeImage],
@@ -274,7 +287,7 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
         channel: 'Class A',
         childId: child.body.id,
         content: 'plain text reminder',
-        timestamp: new Date('2026-04-13T10:00:00Z'),
+        timestamp: minutesAgo(30),
         sender: 'teacher@c.us',
         parsed: false,
       }),
@@ -302,7 +315,7 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
         channel: 'Class A',
         childId: child.body.id,
         content: 'see flyer',
-        timestamp: new Date('2026-04-13T10:00:00Z'),
+        timestamp: minutesAgo(30),
         sender: 'teacher@c.us',
         parsed: false,
         images: [fakeImage],
@@ -312,7 +325,7 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
         channel: 'Class B',
         childId: child.body.id,
         content: 'parent meeting tomorrow',
-        timestamp: new Date('2026-04-13T11:00:00Z'),
+        timestamp: minutesAgo(20),
         sender: 'admin@c.us',
         parsed: false,
       }),

@@ -18,6 +18,7 @@ import { MessageSource } from '../../shared/enums/message-source.enum';
 import { AppErrorEmitterService } from '../../shared/errors/app-error-emitter.service';
 import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 import { MessageDeduplicationService } from './message-deduplication.service';
+import { LlmQuotaExhaustedError } from '../../llm/errors/llm-quota-exhausted.error';
 import { CalendarConflictDedupService } from './calendar-conflict-dedup.service';
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
@@ -186,6 +187,7 @@ describe('EventSyncService', () => {
 
     expect(result).toEqual({
       messagesParsed: 0,
+      messagesFailed: 0,
       eventsCreated: 0,
       eventsSynced: 0,
     });
@@ -1517,6 +1519,159 @@ describe('EventSyncService', () => {
           embedding: fixedEmbedding,
           contentHash: 'h-fresh',
         }),
+      );
+    });
+  });
+  describe('LLM quota exhaustion', () => {
+    const quotaError = () =>
+      new LlmQuotaExhaustedError(
+        '{"error":{"code":429,"message":"Your prepayment credits are depleted.","status":"RESOURCE_EXHAUSTED"}}',
+      );
+
+    it('leaves messages unparsed so the next sync can retry them', async () => {
+      const msg1 = makeMessage({ id: 'msg-1', timestamp: new Date('2026-04-04T10:00:00Z') });
+      const msg2 = makeMessage({ id: 'msg-2', timestamp: new Date('2026-04-04T14:00:00Z') });
+      messageRepository.findUnparsed.mockResolvedValue([msg1, msg2]);
+      messageParserService.parseMessageBatch.mockRejectedValue(quotaError());
+
+      const result = await service.syncEvents();
+
+      // Nothing marked parsed — the messages are fine, the account is not.
+      expect(messageRepository.update).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ parsed: true }),
+      );
+      expect(result.messagesParsed).toBe(0);
+      expect(result.eventsCreated).toBe(0);
+    });
+
+    it('does not report an aborted pass as a successful parse', async () => {
+      const msg = makeMessage({ id: 'msg-1', timestamp: new Date('2026-04-04T10:00:00Z') });
+      messageRepository.findUnparsed.mockResolvedValue([msg]);
+      messageParserService.parseMessageBatch.mockRejectedValue(quotaError());
+
+      const result = await service.syncEvents();
+
+      expect(result.messagesParsed).toBe(0);
+      expect(result.messagesFailed).toBe(0);
+    });
+
+    it('completes the run rather than throwing out of syncEvents', async () => {
+      const msg = makeMessage({ id: 'msg-1', timestamp: new Date('2026-04-04T10:00:00Z') });
+      messageRepository.findUnparsed.mockResolvedValue([msg]);
+      messageParserService.parseMessageBatch.mockRejectedValue(quotaError());
+
+      // Step 2 (pushing already-created events to Google) must still run.
+      await expect(service.syncEvents()).resolves.toEqual(
+        expect.objectContaining({ eventsSynced: 0 }),
+      );
+      expect(eventRepository.findUnsynced).toHaveBeenCalled();
+    });
+
+    it('still propagates non-quota parser failures', async () => {
+      const msg = makeMessage({ id: 'msg-1', timestamp: new Date('2026-04-04T10:00:00Z') });
+      messageRepository.findUnparsed.mockResolvedValue([msg]);
+      messageParserService.parseMessageBatch.mockRejectedValue(
+        new Error('something else broke'),
+      );
+
+      await expect(service.syncEvents()).rejects.toThrow('something else broke');
+    });
+  });
+
+  describe('parse counters', () => {
+    it('counts a failed group as failed, not parsed', async () => {
+      const msg = makeMessage({ id: 'msg-1', timestamp: new Date('2026-04-04T10:00:00Z') });
+      messageRepository.findUnparsed.mockResolvedValue([msg]);
+      messageParserService.parseMessageBatch.mockResolvedValue(
+        new Map([['0', [{ title: 'Trip', date: '2026-04-10', time: '09:00' }]]]),
+      );
+      // Make the group's processing throw after parsing succeeded —
+      // createEventsInTransaction rolls back and rethrows.
+      queryRunner.commitTransaction.mockRejectedValue(new Error('db write failed'));
+
+      const result = await service.syncEvents();
+
+      expect(result.messagesParsed).toBe(0);
+      expect(result.messagesFailed).toBe(1);
+      // Still marked parsed so a poison message cannot loop forever.
+      expect(messageRepository.update).toHaveBeenCalledWith(
+        'msg-1',
+        expect.objectContaining({ parsed: true }),
+      );
+    });
+  });
+  describe('concurrent event-sync passes', () => {
+    /**
+     * Events dated today or earlier are skipped at creation time, so a
+     * hard-coded date silently stops creating anything once it ages out and
+     * these assertions fail for a reason that has nothing to do with
+     * concurrency. Always parse into a date that is still in the future.
+     */
+    const inThreeDays = () =>
+      new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0];
+
+    it('joins an in-flight pass instead of parsing the same messages twice', async () => {
+      const msg = makeMessage({ id: 'msg-1', timestamp: new Date() });
+      messageRepository.findUnparsed.mockResolvedValue([msg]);
+
+      // Hold the parser open so both callers overlap, exactly like
+      // POST /api/sync/manual and POST /api/sync/events 90ms apart.
+      let releaseParser!: (v: Map<string, any>) => void;
+      messageParserService.parseMessageBatch.mockImplementation(
+        () => new Promise((resolve) => { releaseParser = resolve; }),
+      );
+
+      const passA = service.syncEvents();
+      const passB = service.syncEvents();
+
+      // Let pass A reach the parser (findUnparsed + dedup await first).
+      while (!releaseParser) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      releaseParser(new Map([['0', [{ title: 'Trip', date: inThreeDays() }]]]));
+      const [a, b] = await Promise.all([passA, passB]);
+
+      // One parse, one set of events — not two.
+      expect(messageParserService.parseMessageBatch).toHaveBeenCalledTimes(1);
+      expect(messageRepository.findUnparsed).toHaveBeenCalledTimes(1);
+      expect(a).toBe(b);
+      expect(a.eventsCreated).toBe(1);
+    });
+
+    it('creates the event only once across both callers', async () => {
+      const msg = makeMessage({ id: 'msg-1', timestamp: new Date() });
+      messageRepository.findUnparsed.mockResolvedValue([msg]);
+      messageParserService.parseMessageBatch.mockResolvedValue(
+        new Map([['0', [{ title: 'ניתוח דחוף בניו יורק', date: inThreeDays() }]]]),
+      );
+
+      await Promise.all([service.syncEvents(), service.syncEvents()]);
+
+      expect(queryRunner.manager.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a new pass once the previous one finished', async () => {
+      messageRepository.findUnparsed.mockResolvedValue([]);
+
+      await service.syncEvents();
+      await service.syncEvents();
+
+      expect(messageRepository.findUnparsed).toHaveBeenCalledTimes(2);
+    });
+
+    it('clears the in-flight pass when it fails, so the next call still runs', async () => {
+      const msg = makeMessage({ id: 'msg-1', timestamp: new Date('2026-09-05T10:00:00Z') });
+      messageRepository.findUnparsed.mockResolvedValue([msg]);
+      messageParserService.parseMessageBatch.mockRejectedValueOnce(new Error('boom'));
+
+      await expect(service.syncEvents()).rejects.toThrow('boom');
+
+      messageParserService.parseMessageBatch.mockResolvedValue(new Map());
+      await expect(service.syncEvents()).resolves.toEqual(
+        expect.objectContaining({ eventsCreated: 0 }),
       );
     });
   });

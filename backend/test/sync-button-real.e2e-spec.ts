@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import axios from 'axios';
+import { describeLive } from './helpers/live-e2e';
 
 /**
  * Real E2E test: launches the actual running app in Chrome, clicks "Sync Now",
@@ -59,7 +60,7 @@ function copyChrome(): string {
   return tmpDir;
 }
 
-describe('Sync Button — Real App (e2e)', () => {
+describeLive('Sync Button — Real App (e2e)', () => {
   let browser: puppeteer.Browser;
   let page: puppeteer.Page;
   let tmpProfileDir: string;

@@ -607,11 +607,16 @@ describe('SyncService', () => {
     mockChildService.findAll.mockResolvedValue([child]);
     mockMessageRepo.getLastTimestamp.mockResolvedValue(null);
 
+    // Timestamps must sit inside the scan window (24h back for a child that
+    // has never been scanned), so they are relative to now — hard-coded dates
+    // silently stop exercising the batch once they age out of that window.
+    const minutesAgo = (n: number) => new Date(Date.now() - n * 60_000);
+
     // Gmail returns newest first — all three should be stored
     mockGmailService.getEmails.mockResolvedValue([
-      { subject: 'Trip', body: 'Field trip Friday', sender: 'teacher@school.com', timestamp: new Date('2026-06-23T15:00:00Z'), threadId: 't3', label: 'INBOX' },
-      { subject: 'Homework', body: 'Due Wednesday', sender: 'teacher@school.com', timestamp: new Date('2026-06-23T14:00:00Z'), threadId: 't2', label: 'INBOX' },
-      { subject: 'Meeting', body: 'PTA meeting Thursday', sender: 'teacher@school.com', timestamp: new Date('2026-06-23T13:00:00Z'), threadId: 't1', label: 'INBOX' },
+      { subject: 'Trip', body: 'Field trip Friday', sender: 'teacher@school.com', timestamp: minutesAgo(10), threadId: 't3', label: 'INBOX' },
+      { subject: 'Homework', body: 'Due Wednesday', sender: 'teacher@school.com', timestamp: minutesAgo(20), threadId: 't2', label: 'INBOX' },
+      { subject: 'Meeting', body: 'PTA meeting Thursday', sender: 'teacher@school.com', timestamp: minutesAgo(30), threadId: 't1', label: 'INBOX' },
     ]);
 
     await service.syncAll();
@@ -624,14 +629,18 @@ describe('SyncService', () => {
     mockChildService.findAll.mockResolvedValue([child]);
     mockMessageRepo.getLastTimestamp.mockResolvedValue(null);
 
+    // Inside the scan window, so the email actually reaches the dedup check —
+    // with a stale hard-coded date the cutoff dropped it first and this
+    // assertion passed without ever exercising dedup.
     mockGmailService.getEmails.mockResolvedValue([
-      { subject: 'Trip', body: 'Field trip', sender: 'teacher@school.com', timestamp: new Date('2026-06-23T15:00:00Z'), threadId: 't1', label: 'INBOX' },
+      { subject: 'Trip', body: 'Field trip', sender: 'teacher@school.com', timestamp: new Date(Date.now() - 10 * 60_000), threadId: 't1', label: 'INBOX' },
     ]);
 
     mockMessageRepo.existsByChannelTimestampContent.mockResolvedValue(true);
 
     await service.syncAll();
 
+    expect(mockMessageRepo.existsByChannelTimestampContent).toHaveBeenCalled();
     expect(mockMessageRepo.create).not.toHaveBeenCalled();
   });
 
@@ -641,13 +650,133 @@ describe('SyncService', () => {
     mockMessageRepo.getLastTimestamp.mockResolvedValue(null);
 
     mockWhatsappService.getChannelMessages.mockResolvedValue([
-      { content: 'Trip on Friday', timestamp: new Date('2026-06-23T15:00:00Z'), sender: 'Teacher', channel: 'Group A' },
+      { content: 'Trip on Friday', timestamp: new Date(Date.now() - 10 * 60_000), sender: 'Teacher', channel: 'Group A' },
     ]);
 
     mockMessageRepo.existsByChannelTimestampContent.mockResolvedValue(true);
 
     await service.syncAll();
 
+    expect(mockMessageRepo.existsByChannelTimestampContent).toHaveBeenCalled();
     expect(mockMessageRepo.create).not.toHaveBeenCalled();
+  });
+  describe('lastScanAt advancement per source', () => {
+    it('does not advance lastScanAt when every WhatsApp channel fails but Gmail works', async () => {
+      const child = makeChild({
+        id: 'child-1',
+        name: 'Alice',
+        channelNames: 'Group A, Group B',
+        teacherEmails: 'teacher@school.com',
+      });
+      mockChildService.findAll.mockResolvedValue([child]);
+
+      mockWhatsappService.getChannelMessages.mockRejectedValue(
+        new Error("Attempted to use detached Frame 'ABC'."),
+      );
+      mockGmailService.getEmails.mockResolvedValue([
+        {
+          subject: 'Test',
+          body: 'Body',
+          sender: 'teacher@school.com',
+          timestamp: new Date(),
+          label: 'INBOX',
+        },
+      ]);
+
+      await service.syncAll();
+
+      expect(mockChildService.update).not.toHaveBeenCalled();
+    });
+
+    it('does not advance lastScanAt when Gmail fails but WhatsApp works', async () => {
+      const child = makeChild({
+        id: 'child-1',
+        name: 'Alice',
+        channelNames: 'Group A',
+        teacherEmails: 'teacher@school.com',
+      });
+      mockChildService.findAll.mockResolvedValue([child]);
+
+      mockWhatsappService.getChannelMessages.mockResolvedValue([]);
+      mockGmailService.getEmails.mockRejectedValue(new Error('invalid_grant'));
+
+      await service.syncAll();
+
+      expect(mockChildService.update).not.toHaveBeenCalled();
+    });
+
+    it('advances lastScanAt when only some channels of a source fail', async () => {
+      const child = makeChild({
+        id: 'child-1',
+        name: 'Alice',
+        channelNames: 'Group A, Group B',
+        teacherEmails: 'teacher@school.com',
+      });
+      mockChildService.findAll.mockResolvedValue([child]);
+
+      mockWhatsappService.getChannelMessages
+        .mockRejectedValueOnce(new Error('Channel "Group A" not found'))
+        .mockResolvedValue([]);
+      mockGmailService.getEmails.mockResolvedValue([]);
+
+      await service.syncAll();
+
+      expect(mockChildService.update).toHaveBeenCalledWith(
+        'child-1',
+        expect.objectContaining({ lastScanAt: expect.any(Date) }),
+      );
+    });
+
+    it('advances lastScanAt for a child with no configured sources', async () => {
+      const child = makeChild({
+        id: 'child-1',
+        name: 'Alice',
+        channelNames: '',
+        teacherEmails: '',
+      });
+      mockChildService.findAll.mockResolvedValue([child]);
+
+      await service.syncAll();
+
+      expect(mockChildService.update).toHaveBeenCalledWith(
+        'child-1',
+        expect.objectContaining({ lastScanAt: expect.any(Date) }),
+      );
+    });
+  });
+  describe('channel name encoding', () => {
+    it('reads newline-separated channel names, keeping commas inside a name', async () => {
+      const child = makeChild({
+        id: 'child-1',
+        name: 'Alice',
+        channelNames: "בנים שכבת ה', יזמה\nכיתה ה2 הורים",
+        teacherEmails: '',
+      });
+      mockChildService.findAll.mockResolvedValue([child]);
+      mockWhatsappService.getChannelMessages.mockResolvedValue([]);
+
+      await service.syncAll();
+
+      expect(mockWhatsappService.getChannelMessages).toHaveBeenCalledTimes(2);
+      expect(mockWhatsappService.getChannelMessages).toHaveBeenCalledWith("בנים שכבת ה', יזמה");
+      expect(mockWhatsappService.getChannelMessages).toHaveBeenCalledWith('כיתה ה2 הורים');
+    });
+
+    it('still reads legacy comma-separated channel names', async () => {
+      const child = makeChild({
+        id: 'child-1',
+        name: 'Alice',
+        channelNames: 'Group A, Group B',
+        teacherEmails: '',
+      });
+      mockChildService.findAll.mockResolvedValue([child]);
+      mockWhatsappService.getChannelMessages.mockResolvedValue([]);
+
+      await service.syncAll();
+
+      expect(mockWhatsappService.getChannelMessages).toHaveBeenCalledTimes(2);
+      expect(mockWhatsappService.getChannelMessages).toHaveBeenCalledWith('Group A');
+      expect(mockWhatsappService.getChannelMessages).toHaveBeenCalledWith('Group B');
+    });
   });
 });

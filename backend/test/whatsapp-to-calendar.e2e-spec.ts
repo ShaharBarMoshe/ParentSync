@@ -12,6 +12,7 @@ import { OAuthService } from '../src/auth/services/oauth.service';
 import { GOOGLE_CALENDAR_SERVICE } from '../src/shared/constants/injection-tokens';
 import type { IGoogleCalendarService } from '../src/calendar/interfaces/google-calendar-service.interface';
 import { CalendarEventEntity } from '../src/calendar/entities/calendar-event.entity';
+import { describeLive } from './helpers/live-e2e';
 
 /**
  * E2E test: WhatsApp Web (real Chrome session) → LLM parse → Google Calendar.
@@ -31,7 +32,7 @@ import { CalendarEventEntity } from '../src/calendar/entities/calendar-event.ent
  *   cd backend
  *   WHATSAPP_CHANNEL="כיתה ד 3 הורים" NODE_OPTIONS="--experimental-vm-modules" npx jest --config test/jest-e2e.json test/whatsapp-to-calendar.e2e-spec.ts --runInBand
  */
-describe('WhatsApp → LLM → Google Calendar (e2e)', () => {
+describeLive('WhatsApp → LLM → Google Calendar (e2e)', () => {
   let app: INestApplication;
   let settingsService: SettingsService;
   let messageParser: MessageParserService;

@@ -10,11 +10,16 @@ vi.mock('../services/api', () => ({
   },
   calendarApi: {
     getAll: vi.fn(),
+    getInRange: vi.fn(),
   },
   syncApi: {
     triggerManual: vi.fn(),
     syncEvents: vi.fn(),
     getLogs: vi.fn(),
+  },
+  approvalApi: {
+    approve: vi.fn(),
+    reject: vi.fn(),
   },
 }));
 
@@ -75,7 +80,7 @@ beforeEach(() => {
 describe('DashboardPage', () => {
   it('shows loading state initially', () => {
     vi.mocked(messagesApi.getAll).mockReturnValue(new Promise(() => {}));
-    vi.mocked(calendarApi.getAll).mockReturnValue(new Promise(() => {}));
+    vi.mocked(calendarApi.getInRange).mockReturnValue(new Promise(() => {}));
     vi.mocked(syncApi.getLogs).mockReturnValue(new Promise(() => {}));
 
     renderDashboard();
@@ -84,7 +89,7 @@ describe('DashboardPage', () => {
 
   it('renders dashboard with data', async () => {
     vi.mocked(messagesApi.getAll).mockResolvedValue(mockMessages);
-    vi.mocked(calendarApi.getAll).mockResolvedValue(mockEvents);
+    vi.mocked(calendarApi.getInRange).mockResolvedValue(mockEvents);
     vi.mocked(syncApi.getLogs).mockResolvedValue(mockLogs);
 
     renderDashboard();
@@ -101,7 +106,7 @@ describe('DashboardPage', () => {
 
   it('shows empty states when no data', async () => {
     vi.mocked(messagesApi.getAll).mockResolvedValue([]);
-    vi.mocked(calendarApi.getAll).mockResolvedValue([]);
+    vi.mocked(calendarApi.getInRange).mockResolvedValue([]);
     vi.mocked(syncApi.getLogs).mockResolvedValue([]);
 
     renderDashboard();
@@ -114,7 +119,7 @@ describe('DashboardPage', () => {
 
   it('handles sync button click', async () => {
     vi.mocked(messagesApi.getAll).mockResolvedValue([]);
-    vi.mocked(calendarApi.getAll).mockResolvedValue([]);
+    vi.mocked(calendarApi.getInRange).mockResolvedValue([]);
     vi.mocked(syncApi.getLogs).mockResolvedValue([]);
     vi.mocked(syncApi.triggerManual).mockResolvedValue({});
     vi.mocked(syncApi.syncEvents).mockResolvedValue({});
@@ -133,7 +138,7 @@ describe('DashboardPage', () => {
 
   it('shows error state on API failure', async () => {
     vi.mocked(messagesApi.getAll).mockRejectedValue(new Error('fail'));
-    vi.mocked(calendarApi.getAll).mockRejectedValue(new Error('fail'));
+    vi.mocked(calendarApi.getInRange).mockRejectedValue(new Error('fail'));
     vi.mocked(syncApi.getLogs).mockRejectedValue(new Error('fail'));
 
     renderDashboard();
@@ -145,7 +150,7 @@ describe('DashboardPage', () => {
 
   it('expands message on click', async () => {
     vi.mocked(messagesApi.getAll).mockResolvedValue(mockMessages);
-    vi.mocked(calendarApi.getAll).mockResolvedValue([]);
+    vi.mocked(calendarApi.getInRange).mockResolvedValue([]);
     vi.mocked(syncApi.getLogs).mockResolvedValue([]);
 
     renderDashboard();

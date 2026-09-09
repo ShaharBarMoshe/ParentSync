@@ -56,10 +56,15 @@ describe('Semantic Deduplication (e2e)', () => {
       getChannelMessages: jest.fn().mockResolvedValue([]),
       sendMessage: jest.fn().mockResolvedValue('mock-id'),
       disconnect: jest.fn().mockResolvedValue(undefined),
+      reactToMessage: jest.fn().mockResolvedValue(undefined),
+      deleteMessage: jest.fn().mockResolvedValue(true),
+      findMessageIdsContaining: jest.fn().mockResolvedValue([]),
     },
     gmail: {
       getEmails: jest.fn().mockResolvedValue([]),
       getEmailsSince: jest.fn().mockResolvedValue([]),
+      sendEmail: jest.fn().mockResolvedValue(undefined),
+      getConnectedEmail: jest.fn().mockResolvedValue(null),
     },
     calendar: {
       createEvent: jest.fn().mockResolvedValue('mock-gcal-id'),
@@ -107,7 +112,14 @@ describe('Semantic Deduplication (e2e)', () => {
 
   const mockLlm = {
     callLLM: jest.fn().mockImplementation(async (messages: any[]) => {
-      llmCallCount++;
+      // Count extraction calls only. The relevance classifier goes through the
+      // same callLLM port, and these assertions are about whether dedup
+      // avoided a *parse*, not about how many messages were classified.
+      const systemPrompt =
+        messages.find((m) => m.role === 'system')?.content ?? '';
+      if (systemPrompt.includes('calendar event extractor')) {
+        llmCallCount++;
+      }
       const userMsg =
         messages.find((m) => m.role === 'user')?.content ?? '';
       const isBatch = userMsg.includes('===MESSAGE_');

@@ -21,6 +21,7 @@ import type { IGoogleCalendarService } from '../src/calendar/interfaces/google-c
 import type { IGoogleTasksService } from '../src/calendar/interfaces/google-tasks-service.interface';
 import type { ILLMService, LlmMessage } from '../src/llm/interfaces/llm-service.interface';
 import { MessageSource } from '../src/shared/enums/message-source.enum';
+import { daysFromNow, minutesAgo } from './helpers/relative-dates';
 
 /**
  * E2E test verifying the batch LLM parsing flow:
@@ -35,6 +36,7 @@ describe('Batch Parse Flow (e2e)', () => {
   let eventRepo: Repository<CalendarEventEntity>;
   let childRepo: Repository<ChildEntity>;
   let llmCallCount: number;
+  let classifierCallCount: number;
 
   const mockWhatsApp: IWhatsAppService = {
     initialize: jest.fn().mockResolvedValue(undefined),
@@ -44,11 +46,16 @@ describe('Batch Parse Flow (e2e)', () => {
     getChannelMessages: jest.fn().mockResolvedValue([]),
     sendMessage: jest.fn().mockResolvedValue('mock-msg-id'),
     disconnect: jest.fn().mockResolvedValue(undefined),
+    reactToMessage: jest.fn().mockResolvedValue(undefined),
+    deleteMessage: jest.fn().mockResolvedValue(true),
+    findMessageIdsContaining: jest.fn().mockResolvedValue([]),
   };
 
   const mockGmail: IGmailService = {
     getEmails: jest.fn().mockResolvedValue([]),
     getEmailsSince: jest.fn().mockResolvedValue([]),
+    sendEmail: jest.fn().mockResolvedValue(undefined),
+    getConnectedEmail: jest.fn().mockResolvedValue(null),
   };
 
   const mockCalendar: IGoogleCalendarService = {
@@ -74,7 +81,16 @@ describe('Batch Parse Flow (e2e)', () => {
    */
   const mockLlm: ILLMService = {
     callLLM: jest.fn().mockImplementation(async (messages: LlmMessage[]) => {
-      llmCallCount++;
+      // Count extraction calls only. The relevance classifier runs one call
+      // per message through the same callLLM port, so a raw call count
+      // conflates "batching works" with "how many messages were classified".
+      const systemPrompt =
+        messages.find((m) => m.role === 'system')?.content || '';
+      if (systemPrompt.includes('calendar event extractor')) {
+        llmCallCount++;
+      } else {
+        classifierCallCount++;
+      }
       const userMsg = messages.find((m) => m.role === 'user')?.content || '';
 
       // Batch mode: multiple ===MESSAGE_N=== delimiters
@@ -88,13 +104,13 @@ describe('Batch Parse Flow (e2e)', () => {
 
           const events: unknown[] = [];
           if (content.includes('טיול') || content.includes('trip')) {
-            events.push({ title: 'טיול שנתי', date: '2026-04-20' });
+            events.push({ title: 'טיול שנתי', date: daysFromNow(7) });
           }
           if (content.includes('אסיפ') || content.includes('meeting')) {
-            events.push({ title: 'אסיפת הורים', date: '2026-04-22', time: '18:00' });
+            events.push({ title: 'אסיפת הורים', date: daysFromNow(9), time: '18:00' });
           }
           if (content.includes('תשלום') || content.includes('payment')) {
-            events.push({ title: 'תשלום עבור טיול', date: '2026-04-18', description: 'סכום: 120 ש״ח' });
+            events.push({ title: 'תשלום עבור טיול', date: daysFromNow(5), description: 'סכום: 120 ש״ח' });
           }
           result[num] = events;
         }
@@ -103,7 +119,7 @@ describe('Batch Parse Flow (e2e)', () => {
 
       // Single mode: return array
       if (userMsg.includes('טיול') || userMsg.includes('trip')) {
-        return JSON.stringify([{ title: 'טיול שנתי', date: '2026-04-20' }]);
+        return JSON.stringify([{ title: 'טיול שנתי', date: daysFromNow(7) }]);
       }
       return '[]';
     }),
@@ -111,6 +127,7 @@ describe('Batch Parse Flow (e2e)', () => {
 
   beforeAll(async () => {
     llmCallCount = 0;
+    classifierCallCount = 0;
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -146,6 +163,7 @@ describe('Batch Parse Flow (e2e)', () => {
       await childRepo.remove(child);
     }
     llmCallCount = 0;
+    classifierCallCount = 0;
     jest.clearAllMocks();
   });
 
@@ -172,7 +190,7 @@ describe('Batch Parse Flow (e2e)', () => {
         channel: 'Class A',
         childId: child1.body.id,
         content: 'טיול שנתי ביום חמישי הקרוב',
-        timestamp: new Date('2026-04-13T10:00:00Z'),
+        timestamp: minutesAgo(30),
         sender: 'Teacher',
         parsed: false,
       }),
@@ -181,7 +199,7 @@ describe('Batch Parse Flow (e2e)', () => {
         channel: 'Class B',
         childId: child2.body.id,
         content: 'אסיפת הורים ביום שלישי ב-18:00',
-        timestamp: new Date('2026-04-13T11:00:00Z'),
+        timestamp: minutesAgo(20),
         sender: 'Admin',
         parsed: false,
       }),
@@ -190,7 +208,7 @@ describe('Batch Parse Flow (e2e)', () => {
         channel: 'Class A',
         childId: child1.body.id,
         content: 'תשלום עבור הטיול 120 ש״ח',
-        timestamp: new Date('2026-04-13T10:05:00Z'),
+        timestamp: minutesAgo(25),
         sender: 'Teacher',
         parsed: false,
       }),
@@ -204,8 +222,11 @@ describe('Batch Parse Flow (e2e)', () => {
     expect(res.body.messagesParsed).toBe(3);
     expect(res.body.eventsCreated).toBeGreaterThanOrEqual(2);
 
-    // Batch mode: should have made only 1 LLM call (not 2 separate ones)
+    // Batch mode: one extraction call covering every group, not one per group.
     expect(llmCallCount).toBe(1);
+    // The relevance classifier runs once per uncached group (the two Class A
+    // messages merge into one), independently of extraction batching.
+    expect(classifierCallCount).toBe(2);
 
     // Verify events created with child prefixes
     const events = await eventRepo.find({ order: { date: 'ASC' } });

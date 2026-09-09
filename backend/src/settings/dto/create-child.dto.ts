@@ -22,7 +22,10 @@ export class CreateChildDto {
   name: string;
 
   @ApiPropertyOptional({
-    description: 'Comma-separated WhatsApp channel names',
+    description:
+      'Newline-separated WhatsApp channel names. Comma-separated values written ' +
+      'before this change are still accepted, but a group name containing a ' +
+      'comma can only be expressed with the newline form.',
   })
   @IsOptional()
   @IsString()
