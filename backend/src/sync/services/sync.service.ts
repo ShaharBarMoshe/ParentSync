@@ -18,6 +18,7 @@ import { SettingsService } from '../../settings/settings.service';
 import { ChildService } from '../../settings/child.service';
 import { ChildEntity } from '../../settings/entities/child.entity';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { SMOKE_TEST_MARKER } from '../../shared/constants/smoke-test';
 import type { ChannelSyncDetail } from '../entities/sync-log.entity';
 import { parseChannelNames } from '../../shared/utils/channel-names';
 
@@ -339,9 +340,21 @@ export class SyncService {
 
         let channelMessageCount = 0;
         const channelMessages: { sender: string; content: string; timestamp: string }[] = [];
-        // Count all relevant messages fetched (excluding app messages)
+        // Count all relevant messages fetched (excluding app messages).
+        //
+        // Smoke-test messages are dropped here too, and that exclusion is
+        // load-bearing. The WhatsApp scrape deliberately lets marker-carrying
+        // messages past its "ignore my own outgoing messages" filter so the
+        // smoke test can read its own message back through the real path —
+        // but that exception applies to every caller, this scheduled scan
+        // included. A scheduled sync seeing a marked message means a smoke run
+        // is either in flight or already cleaned up after itself, and in both
+        // cases turning it into a real event and a real approval card is pure
+        // litter that no later sweep will find.
         const relevantMessages = messages.filter(
-          (msg) => !msg.content.includes('— ParentSync'),
+          (msg) =>
+            !msg.content.includes('— ParentSync') &&
+            !msg.content.includes(SMOKE_TEST_MARKER),
         );
         for (const msg of relevantMessages) {
           // Only store messages newer than the cutoff
