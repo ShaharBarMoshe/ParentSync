@@ -49,7 +49,7 @@ describe('GmailService', () => {
   beforeEach(() => {
     mockOAuthService = {
       getValidAccessToken: jest.fn().mockResolvedValue('mock-access-token'),
-      getOAuth2Client: jest.fn().mockReturnValue({
+      getAuthenticatedClient: jest.fn().mockResolvedValue({
         setCredentials: jest.fn(),
       }),
     } as any;
@@ -69,7 +69,7 @@ describe('GmailService', () => {
   it('should fetch emails', async () => {
     const emails = await service.getEmails(10);
     expect(emails).toHaveLength(2);
-    expect(mockOAuthService.getValidAccessToken).toHaveBeenCalled();
+    expect(mockOAuthService.getAuthenticatedClient).toHaveBeenCalledWith('gmail');
   });
 
   it('should fetch emails since a date', async () => {

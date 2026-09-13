@@ -18,10 +18,8 @@ export class GoogleCalendarService implements IGoogleCalendarService {
   constructor(private readonly oauthService: OAuthService) {}
 
   private async getCalendarClient(): Promise<calendar_v3.Calendar> {
-    const accessToken = await this.oauthService.getValidAccessToken('calendar');
-    const oauth2Client = this.oauthService.getOAuth2Client();
-    oauth2Client.setCredentials({ access_token: accessToken });
-    return google.calendar({ version: 'v3', auth: oauth2Client });
+    const auth = await this.oauthService.getAuthenticatedClient('calendar');
+    return google.calendar({ version: 'v3', auth });
   }
 
   private buildEventResource(

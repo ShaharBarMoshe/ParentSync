@@ -66,7 +66,7 @@ ParentSync is a private-use desktop application built with Electron, wrapping a 
 | `CalendarModule` | Calendar events CRUD, Google Calendar sync |
 | `LlmModule` | LangChain chains against Gemini, embeddings (`gemini-embedding-001`), two-stage parsing pipeline (`MessageClassifierService` → `MessageParserService`), configurable classifier + extractor prompts, LangSmith tracing |
 | `SyncModule` | Scheduled sync orchestration, the event-sync **LangGraph** (`sync/graph/`), WhatsApp approval channel, **`MessageDeduplicationService` (semantic pre-filter)** |
-| `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) |
+| `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) — see [GOOGLE-AUTH.md](GOOGLE-AUTH.md) |
 | `MonitorModule` | Analytics aggregation, charts data |
 | `SharedModule` | Common entities, config, utilities, crypto, logging |
 

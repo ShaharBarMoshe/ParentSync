@@ -34,10 +34,42 @@ const SCOPES_BY_PURPOSE: Record<OAuthPurpose, string[]> = {
   ],
 };
 
+/** Health of one Google account, as opposed to merely whether a row exists. */
+export type OAuthAccountState =
+  | 'disconnected'
+  | 'connected'
+  | 'expiring'
+  | 'broken';
+
+export interface OAuthAccountStatus {
+  /**
+   * Usable right now. False when the stored refresh token is rejected by
+   * Google, even though a row still exists — see `OAuthTokenEntity`.
+   */
+  authenticated: boolean;
+  state: OAuthAccountState;
+  email?: string;
+  expiresAt?: string;
+  lastError?: string;
+}
+
 @Injectable()
 export class OAuthService implements OnModuleInit {
   private readonly logger = new Logger(OAuthService.name);
-  private oauth2Client: Auth.OAuth2Client | null = null;
+  /**
+   * Client config, kept so a fresh `OAuth2Client` can be built per call.
+   *
+   * A single shared client is unsafe here: `setCredentials()` mutates it, the
+   * app holds tokens for **two different Google accounts** (gmail and calendar
+   * are authorized separately), and `google.gmail({ auth: client })` keeps a
+   * *reference* — so a later `setCredentials` for the other account silently
+   * re-points an already-built API client at the wrong credentials.
+   */
+  private clientConfig: {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+  } | null = null;
   private pendingStates = new Map<
     string,
     { codeVerifier: string; purpose: OAuthPurpose; createdAt: number }
@@ -62,10 +94,10 @@ export class OAuthService implements OnModuleInit {
     this.logger.log(`OAuth init: client_id=${clientId ? 'SET (' + clientId.substring(0, 10) + '...)' : 'MISSING'}, client_secret=${clientSecret ? 'SET (len=' + clientSecret.length + ')' : 'MISSING'}, redirect_uri=${redirectUri}`);
 
     if (clientId && clientSecret) {
-      this.oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+      this.clientConfig = { clientId, clientSecret, redirectUri };
       this.logger.log('Google OAuth configured from settings');
     } else {
-      this.oauth2Client = null;
+      this.clientConfig = null;
       this.logger.warn('Google OAuth not configured — set google_client_id and google_client_secret in settings');
     }
   }
@@ -86,13 +118,31 @@ export class OAuthService implements OnModuleInit {
     }
   }
 
+  /**
+   * A **new** OAuth2Client on every call.
+   *
+   * Deliberately never cached. Callers set credentials on what they get back,
+   * and with two accounts in play a shared instance means one account's token
+   * can land on the other's API client. Construction is local — it opens no
+   * connection — so a fresh one per call costs nothing.
+   */
   private ensureConfigured(): Auth.OAuth2Client {
-    if (!this.oauth2Client) {
+    const { clientId, clientSecret, redirectUri } = this.assertConfigured();
+    return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  }
+
+  /**
+   * Assert the app is configured without building anything. Callers that only
+   * need to fail early — rather than actually talk to Google — use this, so
+   * checking configuration does not allocate a client.
+   */
+  private assertConfigured(): NonNullable<OAuthService['clientConfig']> {
+    if (!this.clientConfig) {
       throw new InternalServerErrorException(
         'Google OAuth not configured. Set google_client_id and google_client_secret in Settings.',
       );
     }
-    return this.oauth2Client;
+    return this.clientConfig;
   }
 
   getAuthorizationUrl(purpose: OAuthPurpose): { url: string; state: string } {
@@ -188,7 +238,7 @@ export class OAuthService implements OnModuleInit {
   }
 
   async getValidAccessToken(purpose: OAuthPurpose): Promise<string> {
-    this.ensureConfigured();
+    this.assertConfigured();
 
     const tokenEntity = await this.tokenRepository.findOne({
       where: { provider: PROVIDER_GOOGLE, purpose },
@@ -217,8 +267,8 @@ export class OAuthService implements OnModuleInit {
   }
 
   async getAuthStatus(): Promise<{
-    gmail: { authenticated: boolean; email?: string };
-    calendar: { authenticated: boolean; email?: string };
+    gmail: OAuthAccountStatus;
+    calendar: OAuthAccountStatus;
   }> {
     const [gmailToken, calendarToken] = await Promise.all([
       this.tokenRepository.findOne({
@@ -230,20 +280,70 @@ export class OAuthService implements OnModuleInit {
     ]);
 
     return {
-      gmail: gmailToken
-        ? { authenticated: true, email: gmailToken.email ?? undefined }
-        : { authenticated: false },
-      calendar: calendarToken
-        ? { authenticated: true, email: calendarToken.email ?? undefined }
-        : { authenticated: false },
+      gmail: OAuthService.describe(gmailToken),
+      calendar: OAuthService.describe(calendarToken),
     };
   }
 
+  /**
+   * Classify one stored token by whether it can actually be used.
+   *
+   * The distinction this draws is the whole point: a row existing means the
+   * account was linked *at some point*, which is not the same as the account
+   * working now. Reporting the former as "connected" showed a green badge in
+   * Settings while every sync failed on a refresh token Google had already
+   * expired.
+   */
+  private static describe(
+    token: OAuthTokenEntity | null,
+  ): OAuthAccountStatus {
+    if (!token) return { authenticated: false, state: 'disconnected' };
+
+    const common = {
+      email: token.email ?? undefined,
+      expiresAt: token.expiresAt?.toISOString(),
+    };
+
+    // A recorded refresh failure is authoritative. `invalid_grant` means
+    // Google rejected the refresh token itself, so no retry clears it — only
+    // re-consent does.
+    if (token.lastRefreshError) {
+      return {
+        authenticated: false,
+        state: 'broken',
+        lastError: token.lastRefreshError,
+        ...common,
+      };
+    }
+
+    // No refresh token means this token dies at expiry with no way back.
+    if (!token.refreshToken) {
+      return {
+        authenticated: false,
+        state: 'broken',
+        lastError: 'No refresh token stored',
+        ...common,
+      };
+    }
+
+    const expiresInMs = token.expiresAt
+      ? token.expiresAt.getTime() - Date.now()
+      : null;
+    if (expiresInMs !== null && expiresInMs < TOKEN_EXPIRY_BUFFER_MS) {
+      // Due a refresh, but nothing is known to be wrong — the next call
+      // refreshes it. Surfaced so the UI can distinguish this from healthy.
+      return { authenticated: true, state: 'expiring', ...common };
+    }
+
+    return { authenticated: true, state: 'connected', ...common };
+  }
+
+  /** True only when the account is usable — not merely linked. */
   async isAuthenticated(purpose: OAuthPurpose): Promise<boolean> {
     const tokenEntity = await this.tokenRepository.findOne({
       where: { provider: PROVIDER_GOOGLE, purpose },
     });
-    return !!tokenEntity;
+    return OAuthService.describe(tokenEntity).authenticated;
   }
 
   async disconnect(purpose: OAuthPurpose): Promise<void> {
@@ -254,10 +354,12 @@ export class OAuthService implements OnModuleInit {
       return;
     }
 
-    // Attempt to revoke the token at Google
-    if (this.oauth2Client) {
+    // Attempt to revoke the token at Google. Best-effort: the local row is
+    // removed either way, so a failed revoke cannot strand the account in a
+    // state the user can neither use nor re-link.
+    if (this.clientConfig) {
       try {
-        await this.oauth2Client.revokeToken(tokenEntity.accessToken);
+        await this.ensureConfigured().revokeToken(tokenEntity.accessToken);
       } catch (error) {
         this.logger.warn(`Token revocation failed: ${error.message}`);
       }
@@ -267,8 +369,33 @@ export class OAuthService implements OnModuleInit {
     this.logger.log(`Google account disconnected for purpose: ${purpose}`);
   }
 
-  getOAuth2Client(): Auth.OAuth2Client {
-    return this.ensureConfigured();
+  /**
+   * A ready-to-use client for one purpose: refreshed if needed, credentials
+   * already set, and **not shared with any other caller**.
+   *
+   * This replaces the old `getOAuth2Client()`, which handed every caller the
+   * same mutable instance. Callers did:
+   *
+   * ```ts
+   * const token  = await oauth.getValidAccessToken('gmail');
+   * const client = oauth.getOAuth2Client();      // shared!
+   * client.setCredentials({ access_token: token });
+   * return google.gmail({ auth: client });       // holds a reference
+   * ```
+   *
+   * Because the API client keeps a *reference*, the next caller's
+   * `setCredentials` re-pointed an already-built client at different
+   * credentials — and since gmail and calendar are authorized to two
+   * different Google accounts, that meant Gmail calls could go out carrying
+   * the calendar account's token.
+   */
+  async getAuthenticatedClient(
+    purpose: OAuthPurpose,
+  ): Promise<Auth.OAuth2Client> {
+    const accessToken = await this.getValidAccessToken(purpose);
+    const client = this.ensureConfigured();
+    client.setCredentials({ access_token: accessToken });
+    return client;
   }
 
   private async refreshAccessToken(
@@ -302,6 +429,8 @@ export class OAuthService implements OnModuleInit {
         tokenEntity.refreshToken = credentials.refresh_token;
       }
 
+      tokenEntity.lastRefreshOk = new Date();
+      tokenEntity.lastRefreshError = null;
       await this.tokenRepository.save(tokenEntity);
       this.logger.log(`OAuth access token refreshed for purpose: ${tokenEntity.purpose}`);
       this.appErrorEmitter.clear(AppErrorCodes.OAUTH_REFRESH_FAILED);
@@ -310,6 +439,19 @@ export class OAuthService implements OnModuleInit {
       return tokenEntity.accessToken;
     } catch (error) {
       this.logger.error(`Token refresh failed: ${error.message}`);
+
+      // Record it on the row so the status endpoint stops claiming this
+      // account is connected. Best-effort: a failed write must not mask the
+      // refresh failure the caller is waiting on.
+      try {
+        tokenEntity.lastRefreshError = String(error.message ?? error);
+        await this.tokenRepository.save(tokenEntity);
+      } catch (saveError) {
+        this.logger.warn(
+          `Could not record refresh failure on the token row: ${(saveError as Error).message}`,
+        );
+      }
+
       this.appErrorEmitter.emit({
         source: 'oauth',
         code: AppErrorCodes.OAUTH_REFRESH_FAILED,
@@ -350,7 +492,14 @@ export class OAuthService implements OnModuleInit {
     if (tokens.expiry_date) {
       tokenEntity.expiresAt = new Date(tokens.expiry_date);
     }
+    // A fresh consent is what clears a `broken` account — without this the
+    // status endpoint would keep reporting the old failure after a successful
+    // reconnect, which is the same lie in the opposite direction.
+    tokenEntity.lastRefreshOk = new Date();
+    tokenEntity.lastRefreshError = null;
 
     await this.tokenRepository.save(tokenEntity);
+    this.appErrorEmitter.clear(AppErrorCodes.OAUTH_REFRESH_FAILED);
+    this.appErrorEmitter.clear(AppErrorCodes.OAUTH_NO_REFRESH_TOKEN);
   }
 }

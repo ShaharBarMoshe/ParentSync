@@ -198,18 +198,44 @@ function GoogleAccountCard({
   purpose: AuthPurpose; label: string; description: string; account: AccountStatus; disconnecting: boolean;
   onConnect: (purpose: AuthPurpose) => void; onDisconnect: (purpose: AuthPurpose) => void;
 }) {
+  // Older backends predate `state`; fall back to the boolean they did send.
+  const state = account.state ?? (account.authenticated ? 'connected' : 'disconnected');
   return (
     <div className="google-account-card">
       <div className="google-account-card__header">
         <h4 className="google-account-card__label">{label}</h4>
-        <span className={`google-account-card__status ${account.authenticated ? 'google-account-card__status--connected' : ''}`}>
-          {account.authenticated ? <><Icon name="circle-check" size={14} /> Connected</> : <><Icon name="circle-x" size={14} /> Not connected</>}
+        <span className={`google-account-card__status google-account-card__status--${state}`}>
+          {state === 'connected' && <><Icon name="circle-check" size={14} /> Connected</>}
+          {state === 'expiring' && <><Icon name="circle-check" size={14} /> Refreshing</>}
+          {state === 'broken' && <><Icon name="triangle-alert" size={14} /> Reconnect needed</>}
+          {state === 'disconnected' && <><Icon name="circle-x" size={14} /> Not connected</>}
         </span>
       </div>
       <p className="google-account-card__description">{description}</p>
-      {account.authenticated ? (
+      {/*
+        A broken account is still linked — it keeps its email and its Disconnect
+        button — but Google will not renew it, so the primary action is to
+        re-consent rather than to disconnect. Showing it as plainly
+        "Not connected" would hide which account needs attention, and with two
+        Google accounts configured that is the only thing worth knowing.
+      */}
+      {state === 'broken' && (
+        <p className="google-account-card__error">
+          Google rejected the stored credentials for {account.email}.
+          {account.lastError?.includes('invalid_grant')
+            ? ' This happens on its own every 7 days while the OAuth app is in "Testing" mode.'
+            : ''}
+        </p>
+      )}
+      {account.authenticated || state === 'broken' ? (
         <div className="google-account-card__connected">
           <span className="google-account-card__email">{account.email}</span>
+          {state === 'broken' && (
+            <button type="button" className="btn btn--google btn--sm" onClick={() => onConnect(purpose)}>
+              {GOOGLE_ICON}
+              Reconnect
+            </button>
+          )}
           <button type="button" className="btn btn--secondary btn--sm" onClick={() => onDisconnect(purpose)} disabled={disconnecting}>
             {disconnecting ? 'Disconnecting...' : <><Icon name="unlink" size={14} /> Disconnect</>}
           </button>
