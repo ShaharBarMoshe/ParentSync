@@ -779,4 +779,79 @@ describe('SyncService', () => {
       expect(mockWhatsappService.getChannelMessages).toHaveBeenCalledWith('Group B');
     });
   });
+  /**
+   * Regression: a smoke-test message reaching the scheduled sync.
+   *
+   * The WhatsApp scrape lets marker-carrying messages past its "ignore my own
+   * outgoing messages" filter so the smoke test can read its own message back.
+   * That exception applies to every caller, this scan included — so on
+   * 2026-09-10 the 07:00 smoke run and the 07:00 scheduled sync overlapped:
+   * the smoke test swept up while the sync was still walking its channels, and
+   * when the scan reached the approval channel it stored the smoke message as
+   * a real one, raised a real approval card, and left both behind for good.
+   */
+  describe('smoke-test messages never enter the real pipeline', () => {
+    const smokeContent =
+      'בדיקת מערכת אוטומטית: אסיפת הורים\n[ps-smoke-test] smoke-123-abc';
+
+    it('does not store a message carrying the smoke-test marker', async () => {
+      mockChildService.findAll.mockResolvedValue([makeChild()]);
+      mockWhatsappService.getChannelMessages.mockResolvedValue([
+        {
+          content: smokeContent,
+          timestamp: new Date(),
+          sender: 'group@g.us',
+          channel: 'Parents Group',
+        },
+      ]);
+      mockGmailService.getEmails.mockResolvedValue([]);
+
+      await service.syncAll();
+
+      expect(mockMessageRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('still stores ordinary messages from the same scan', async () => {
+      mockChildService.findAll.mockResolvedValue([makeChild()]);
+      mockWhatsappService.getChannelMessages.mockResolvedValue([
+        {
+          content: smokeContent,
+          timestamp: new Date(),
+          sender: 'group@g.us',
+          channel: 'Parents Group',
+        },
+        {
+          content: 'טיול שנתי ביום חמישי',
+          timestamp: new Date(),
+          sender: 'teacher@g.us',
+          channel: 'Parents Group',
+        },
+      ]);
+      mockGmailService.getEmails.mockResolvedValue([]);
+
+      await service.syncAll();
+
+      expect(mockMessageRepo.create).toHaveBeenCalledTimes(1);
+      expect(mockMessageRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ content: 'טיול שנתי ביום חמישי' }),
+      );
+    });
+
+    it('keeps dropping the app\'s own approval cards', async () => {
+      mockChildService.findAll.mockResolvedValue([makeChild()]);
+      mockWhatsappService.getChannelMessages.mockResolvedValue([
+        {
+          content: 'אירוע חדש\n\n— ParentSync',
+          timestamp: new Date(),
+          sender: 'group@g.us',
+          channel: 'Parents Group',
+        },
+      ]);
+      mockGmailService.getEmails.mockResolvedValue([]);
+
+      await service.syncAll();
+
+      expect(mockMessageRepo.create).not.toHaveBeenCalled();
+    });
+  });
 });

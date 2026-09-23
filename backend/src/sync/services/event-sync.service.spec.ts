@@ -20,6 +20,17 @@ import { AppErrorCodes } from '../../shared/errors/app-error-codes';
 import { MessageDeduplicationService } from './message-deduplication.service';
 import { LlmQuotaExhaustedError } from '../../llm/errors/llm-quota-exhausted.error';
 import { CalendarConflictDedupService } from './calendar-conflict-dedup.service';
+import { TracingService } from '../../llm/observability/tracing.service';
+import { EventSyncGraph } from '../graph/event-sync.graph';
+import { SyncSettings } from '../graph/sync-settings.service';
+import { LoadMessagesNode } from '../graph/nodes/load-messages.node';
+import { DedupFilterNode } from '../graph/nodes/dedup-filter.node';
+import { ExtractNode } from '../graph/nodes/extract.node';
+import { PersistEventsNode } from '../graph/nodes/persist-events.node';
+import { ScreenEventsNode } from '../graph/nodes/screen-events.node';
+import { RequestApprovalNode } from '../graph/nodes/request-approval.node';
+import { ProcessDismissalsNode } from '../graph/nodes/process-dismissals.node';
+import { SyncToGoogleNode } from '../graph/nodes/sync-to-google.node';
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
   return {
@@ -157,7 +168,21 @@ describe('EventSyncService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        // The graph and its nodes are the real thing; only the boundaries
+        // below (repositories, Google, the parser, the DataSource) are stubbed.
+        // Driving the pass through `syncEvents()` therefore exercises the node
+        // wiring and the conditional edges, not just one node in isolation.
         EventSyncService,
+        EventSyncGraph,
+        SyncSettings,
+        LoadMessagesNode,
+        DedupFilterNode,
+        ExtractNode,
+        PersistEventsNode,
+        ScreenEventsNode,
+        RequestApprovalNode,
+        ProcessDismissalsNode,
+        SyncToGoogleNode,
         { provide: MESSAGE_REPOSITORY, useValue: messageRepository },
         { provide: EVENT_REPOSITORY, useValue: eventRepository },
         { provide: GOOGLE_CALENDAR_SERVICE, useValue: googleCalendarService },
@@ -172,6 +197,11 @@ describe('EventSyncService', () => {
         { provide: AppErrorEmitterService, useValue: appErrorEmitter },
         { provide: MessageDeduplicationService, useValue: dedupService },
         { provide: CalendarConflictDedupService, useValue: calendarConflictDedup },
+        {
+          provide: TracingService,
+          // Tracing is off in tests: no callbacks, no LangSmith client.
+          useValue: { callbacks: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 
@@ -1601,6 +1631,61 @@ describe('EventSyncService', () => {
       );
     });
   });
+  /**
+   * Routing the old straight-line code could not express. Each edge exists
+   * because taking the long way round costs a real LLM call or a wasted
+   * transaction.
+   */
+  describe('graph routing', () => {
+    it('skips extraction entirely when every group was deduped', async () => {
+      const msg = makeMessage({ id: 'msg-1', timestamp: new Date() });
+      messageRepository.findUnparsed.mockResolvedValue([msg]);
+      dedupService.findDuplicateOf.mockResolvedValue({
+        match: { messageId: 'older', similarity: 0.97 },
+      });
+
+      const result = await service.syncEvents();
+
+      expect(messageParserService.parseMessageBatch).not.toHaveBeenCalled();
+      expect(result.messagesParsed).toBe(1);
+      // Step 2 still runs — events from earlier passes may be waiting.
+      expect(eventRepository.findUnsynced).toHaveBeenCalled();
+    });
+
+    it('skips persistence when the account ran out of quota mid-pass', async () => {
+      const msg = makeMessage({ id: 'msg-1', timestamp: new Date() });
+      messageRepository.findUnparsed.mockResolvedValue([msg]);
+      messageParserService.parseMessageBatch.mockRejectedValue(
+        new LlmQuotaExhaustedError('Your prepayment credits are depleted.'),
+      );
+
+      const result = await service.syncEvents();
+
+      expect(result.eventsCreated).toBe(0);
+      // The message stays unparsed so the next sync retries it unchanged.
+      expect(messageRepository.update).not.toHaveBeenCalledWith(
+        'msg-1',
+        expect.objectContaining({ parsed: true }),
+      );
+      expect(eventRepository.findUnsynced).toHaveBeenCalled();
+    });
+
+    it('still pushes to Google when there are no messages at all', async () => {
+      messageRepository.findUnparsed.mockResolvedValue([]);
+
+      const result = await service.syncEvents();
+
+      expect(messageParserService.parseMessageBatch).not.toHaveBeenCalled();
+      expect(eventRepository.findUnsynced).toHaveBeenCalled();
+      expect(result).toEqual({
+        messagesParsed: 0,
+        messagesFailed: 0,
+        eventsCreated: 0,
+        eventsSynced: 0,
+      });
+    });
+  });
+
   describe('concurrent event-sync passes', () => {
     /**
      * Events dated today or earlier are skipped at creation time, so a

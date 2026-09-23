@@ -112,7 +112,9 @@ export class SmokeTestService implements OnModuleInit {
     });
     this.schedulerRegistry.addCronJob(SMOKE_TEST_CRON_JOB, job);
     job.start();
-    this.logger.log(`Smoke test scheduled daily at 07:00`);
+    this.logger.log(
+      `Smoke test scheduled daily (${SMOKE_TEST_CRON_EXPRESSION})`,
+    );
   }
 
   private deregisterCron(): void {

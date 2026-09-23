@@ -177,11 +177,32 @@
     border: 1px solid var(--border);
     border-radius: 4px;
 
-    &--connected {
+    &--connected,
+    &--expiring {
       color: var(--success);
       background: var(--success-bg);
       border-color: var(--success-border);
     }
+
+    // A linked account Google will no longer renew. Visually distinct from
+    // "never connected" (neutral) because the action differs: reconnect the
+    // named account, rather than choose one.
+    &--broken {
+      color: var(--error);
+      background: var(--error-bg);
+      border-color: var(--error-border);
+    }
+  }
+
+  &__error {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--error);
+    background: var(--error-bg);
+    border: 1px solid var(--error-border);
+    border-radius: var(--radius-sm);
+    padding: $spacing-sm $spacing-md;
+    margin-bottom: $spacing-md;
   }
 
   &__description {

@@ -29,6 +29,9 @@
   },
   "dependencies": {
     "@google/genai": "^1.49.0",
+    "@langchain/core": "^1.2.9",
+    "@langchain/google-genai": "^2.3.0",
+    "@langchain/langgraph": "^1.4.14",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/cache-manager": "^3.1.0",
     "@nestjs/common": "^11.0.1",
@@ -50,11 +53,13 @@
     "helmet": "^8.1.0",
     "ics": "^3.11.0",
     "joi": "^18.0.2",
+    "langsmith": "^0.10.2",
     "qrcode-terminal": "^0.12.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "typeorm": "^0.3.28",
-    "whatsapp-web.js": "^1.34.7"
+    "whatsapp-web.js": "^1.34.7",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

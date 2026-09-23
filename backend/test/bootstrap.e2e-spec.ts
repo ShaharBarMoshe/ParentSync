@@ -12,9 +12,14 @@ import {
   GMAIL_SERVICE,
   GOOGLE_CALENDAR_SERVICE,
   GOOGLE_TASKS_SERVICE,
-  LLM_SERVICE,
   CHILD_REPOSITORY,
+  EMBEDDING_SERVICE,
 } from '../src/shared/constants/injection-tokens';
+import {
+  EVENT_EXTRACTOR,
+  RELEVANCE_CLASSIFIER,
+  DUPLICATE_JUDGE,
+} from '../src/llm/ports/ai-ports';
 import { SyncService } from '../src/sync/services/sync.service';
 import { EventSyncService } from '../src/sync/services/event-sync.service';
 import { ApprovalService } from '../src/sync/services/approval.service';
@@ -69,7 +74,10 @@ describe('App Bootstrap (e2e)', () => {
       ['GMAIL_SERVICE', GMAIL_SERVICE],
       ['GOOGLE_CALENDAR_SERVICE', GOOGLE_CALENDAR_SERVICE],
       ['GOOGLE_TASKS_SERVICE', GOOGLE_TASKS_SERVICE],
-      ['LLM_SERVICE', LLM_SERVICE],
+      ['EVENT_EXTRACTOR', EVENT_EXTRACTOR],
+      ['RELEVANCE_CLASSIFIER', RELEVANCE_CLASSIFIER],
+      ['DUPLICATE_JUDGE', DUPLICATE_JUDGE],
+      ['EMBEDDING_SERVICE', EMBEDDING_SERVICE],
       ['CHILD_REPOSITORY', CHILD_REPOSITORY],
     ])('should resolve injection token %s', (_name, token) => {
       const provider = moduleFixture.get(token);

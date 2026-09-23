@@ -64,9 +64,9 @@ ParentSync is a private-use desktop application built with Electron, wrapping a 
 | `SettingsModule` | User settings CRUD, stored in SQLite |
 | `MessagesModule` | WhatsApp scraping (whatsapp-web.js), Gmail fetching, message storage |
 | `CalendarModule` | Calendar events CRUD, Google Calendar sync |
-| `LlmModule` | Gemini client, embeddings (`gemini-embedding-001`), two-stage parsing pipeline (`MessageClassifierService` → `MessageParserService`), configurable classifier + extractor prompts |
-| `SyncModule` | Scheduled sync orchestration, event-driven flow, WhatsApp approval channel, **`MessageDeduplicationService` (semantic pre-filter)** |
-| `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) |
+| `LlmModule` | LangChain chains against Gemini, embeddings (`gemini-embedding-001`), two-stage parsing pipeline (`MessageClassifierService` → `MessageParserService`), configurable classifier + extractor prompts, LangSmith tracing |
+| `SyncModule` | Scheduled sync orchestration, the event-sync **LangGraph** (`sync/graph/`), WhatsApp approval channel, **`MessageDeduplicationService` (semantic pre-filter)** |
+| `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) — see [GOOGLE-AUTH.md](GOOGLE-AUTH.md) |
 | `MonitorModule` | Analytics aggregation, charts data |
 | `SharedModule` | Common entities, config, utilities, crypto, logging |
 
@@ -79,13 +79,35 @@ All external services are behind injection tokens so they can be swapped in test
 | `MESSAGE_REPOSITORY` | `IMessageRepository` | `TypeOrmMessageRepository` |
 | `GMAIL_SERVICE` | `IGmailService` | `GmailOAuth2Adapter` |
 | `GOOGLE_CALENDAR_SERVICE` | `IGoogleCalendarService` | `GoogleCalendarOAuth2Adapter` |
-| `LLM_SERVICE` | `ILLMService` | `GeminiService` |
-| `EMBEDDING_SERVICE` | `IEmbeddingService` | `GeminiEmbeddingService` (Gemini `gemini-embedding-001`, 3072 dims) |
+| `EVENT_EXTRACTOR` | `IEventExtractor` | `ExtractionChain` (LangChain structured output) |
+| `RELEVANCE_CLASSIFIER` | `IRelevanceClassifier` | `ClassifierChain` |
+| `DUPLICATE_JUDGE` | `IDuplicateJudge` | `DuplicateJudgeChain` |
+| `EMBEDDING_SERVICE` | `IEmbeddingService` | `EmbeddingAdapter` (Gemini `gemini-embedding-001`, 3072 dims) |
 | `SETTINGS_REPOSITORY` | `ISettingsRepository` | `TypeOrmSettingsRepository` |
 | `NEGATIVE_EXAMPLE_REPOSITORY` | `INegativeExampleRepository` | `TypeOrmNegativeExampleRepository` |
 | `DISMISSAL_REPOSITORY` | `IDismissalRepository` | `TypeOrmDismissalRepository` |
 
 Tests swap these with mocks via `Test.createTestingModule().overrideProvider()`.
+
+#### Why the AI ports are task-shaped
+
+The three AI ports name a capability ("extract the events from these
+messages") rather than a mechanism ("send these strings to a model"). They
+replaced a single `ILLMService.callLLM(messages): Promise<string>`.
+
+That distinction is not stylistic. A port returning a `string` forces every
+caller to re-derive meaning from text, which is why ~180 lines of JSON repair —
+markdown-fence stripping, brace matching, batch-key heuristics — had grown
+inside `MessageParserService`. Ports that return `ParsedEvent[]` and typed
+verdicts leave nowhere for that code to live, and the provider's structured-
+output mode enforces the shape instead.
+
+`src/llm/architecture.spec.ts` enforces the boundary: nothing outside
+`llm/adapters/`, `llm/observability/` and `sync/graph/` may import
+`@langchain/*`.
+
+See [LANGCHAIN-LANGGRAPH.md](LANGCHAIN-LANGGRAPH.md) for the chains behind
+these ports, the event-sync graph, and the constraints that shaped both.
 
 ## Frontend Architecture
 

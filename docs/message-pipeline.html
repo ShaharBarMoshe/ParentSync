@@ -666,13 +666,13 @@ svg text { font-family: var(--font-sans); }
           </div>
           <div style="flex:1; text-align:center;">
             <div style="color:var(--text-muted); font-size:11px; margin-bottom:4px;">cache MISS</div>
-            <div class="flow-box" style="font-size:12px;">Build prompt: system + negative examples + all groups</div>
+            <div class="flow-box" style="font-size:12px;">Stage-1 classifier gate, then build the extraction request per group</div>
           </div>
         </div>
         <div style="text-align:center; color:var(--text-muted);">↓ (miss path)</div>
-        <div class="flow-box purple">Gemini API call (single request, all groups)</div>
+        <div class="flow-box purple">LangChain chain → Gemini structured output (batched, ≤8 groups per request)</div>
         <div style="text-align:center; color:var(--text-muted);">↓</div>
-        <div class="flow-box">Parse JSON response → ParsedEvent[] per group</div>
+        <div class="flow-box">Schema-validated results, matched back by echoed group id → ParsedEvent[] per group</div>
         <div style="text-align:center; color:var(--text-muted);">↓</div>
         <div class="flow-box blue">createEventsInTransaction()</div>
       </div>

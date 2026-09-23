@@ -15,6 +15,16 @@ import { OutOfBandAlertService } from './services/out-of-band-alert.service';
 import { DbHygieneService } from './services/db-hygiene.service';
 import { SmokeTestService } from './services/smoke-test.service';
 import { SyncLockService } from './services/sync-lock.service';
+import { EventSyncGraph } from './graph/event-sync.graph';
+import { SyncSettings } from './graph/sync-settings.service';
+import { LoadMessagesNode } from './graph/nodes/load-messages.node';
+import { DedupFilterNode } from './graph/nodes/dedup-filter.node';
+import { ExtractNode } from './graph/nodes/extract.node';
+import { PersistEventsNode } from './graph/nodes/persist-events.node';
+import { ScreenEventsNode } from './graph/nodes/screen-events.node';
+import { RequestApprovalNode } from './graph/nodes/request-approval.node';
+import { ProcessDismissalsNode } from './graph/nodes/process-dismissals.node';
+import { SyncToGoogleNode } from './graph/nodes/sync-to-google.node';
 import { SyncController } from './controllers/sync.controller';
 import { ApprovalController } from './controllers/approval.controller';
 import { SmokeTestController } from './controllers/smoke-test.controller';
@@ -48,6 +58,18 @@ import { SettingsModule } from '../settings/settings.module';
     SyncLockService,
     SyncService,
     EventSyncService,
+    // The event-sync graph and its nodes. Each node is injectable so it can be
+    // unit-tested against a stubbed state without standing up the graph.
+    EventSyncGraph,
+    SyncSettings,
+    LoadMessagesNode,
+    DedupFilterNode,
+    ExtractNode,
+    PersistEventsNode,
+    ScreenEventsNode,
+    RequestApprovalNode,
+    ProcessDismissalsNode,
+    SyncToGoogleNode,
     ApprovalService,
     EventDismissalService,
     EventReminderService,

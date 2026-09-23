@@ -42,6 +42,17 @@ describe('EventDismissalService', () => {
       findAll: jest.fn().mockResolvedValue([mockLocalEvent]),
       findById: jest.fn().mockResolvedValue(mockLocalEvent),
       findByTitleSubstringAndChild: jest.fn().mockResolvedValue([]),
+      // Mirrors the real finder rather than returning a fixed value, so a test
+      // that hands back a Google id we do own still exercises the link-back.
+      findByGoogleEventId: jest
+        .fn()
+        .mockImplementation((googleEventId: string) =>
+          Promise.resolve(
+            mockLocalEvent.googleEventId === googleEventId
+              ? mockLocalEvent
+              : null,
+          ),
+        ),
       update: jest.fn().mockImplementation((id, data) =>
         Promise.resolve({ ...mockLocalEvent, ...data, id }),
       ),
@@ -404,6 +415,75 @@ describe('EventDismissalService', () => {
 
       expect(match).not.toBeNull();
       expect(match!.googleResult!.googleEventId).toBe('google-ext-1');
+    });
+
+    it('should link a Google hit back to its local row when we created it', async () => {
+      googleCalendarService.searchEvents.mockResolvedValue([
+        {
+          googleEventId: mockLocalEvent.googleEventId,
+          summary: 'טיול שנתי',
+          date: '2026-04-20',
+        },
+      ]);
+
+      const parsed: ParsedEvent = {
+        title: 'טיול שנתי',
+        action: 'cancel',
+        date: '',
+        originalTitle: 'טיול שנתי',
+      };
+
+      const match = await service.findMatchingEvent(parsed);
+
+      // The local row must win over the bare Google result, or approving the
+      // dismissal would delete from Google and leave our copy orphaned.
+      expect(match!.localEvent!.id).toBe(mockLocalEvent.id);
+      expect(match!.googleResult).toBeUndefined();
+      expect(eventRepository.findByGoogleEventId).toHaveBeenCalledWith(
+        mockLocalEvent.googleEventId,
+      );
+      // The old implementation scanned the whole table once per Google hit.
+      expect(eventRepository.findAll).not.toHaveBeenCalled();
+    });
+
+    it('should widen to a date-free search when the dated one misses', async () => {
+      const eventOnAnotherDate = { ...mockLocalEvent, date: '2026-04-22' };
+      eventRepository.findByTitleSubstringAndChild
+        .mockResolvedValueOnce([]) // "Alice: X" on 2026-04-20
+        .mockResolvedValueOnce([]) // "X" on 2026-04-20
+        .mockResolvedValueOnce([eventOnAnotherDate]); // "Alice: X", any date
+
+      const parsed: ParsedEvent = {
+        title: 'טיול שנתי',
+        action: 'cancel',
+        date: '2026-04-20',
+        originalTitle: 'טיול שנתי',
+      };
+
+      const match = await service.findMatchingEvent(parsed, 'child-1', 'Alice');
+
+      // Parents routinely misremember the date of the event they are cancelling.
+      expect(match!.localEvent!.date).toBe('2026-04-22');
+      expect(
+        eventRepository.findByTitleSubstringAndChild,
+      ).toHaveBeenCalledWith('Alice: טיול שנתי', 'child-1', undefined);
+      expect(googleCalendarService.searchEvents).not.toHaveBeenCalled();
+    });
+
+    it('should fall through to Google when the Calendar search throws', async () => {
+      googleCalendarService.searchEvents.mockRejectedValue(
+        new Error('Google is down'),
+      );
+
+      const parsed: ParsedEvent = {
+        title: 'טיול שנתי',
+        action: 'cancel',
+        date: '',
+        originalTitle: 'טיול שנתי',
+      };
+
+      // "Not found" is a message the parent can act on; an exception is not.
+      await expect(service.findMatchingEvent(parsed)).resolves.toBeNull();
     });
 
     it('should return null when nothing matches', async () => {

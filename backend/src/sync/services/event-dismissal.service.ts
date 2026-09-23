@@ -29,6 +29,27 @@ interface MatchedEvent {
   calendarId: string;
 }
 
+/**
+ * One attempt at locating the event a parent asked to cancel or reschedule.
+ *
+ * `name` is logged when the strategy fires. That matters more than it looks:
+ * the model gives us `originalTitle` as a free-text hint and nothing else, so
+ * when a dismissal targets the wrong event, *which* strategy matched is the
+ * first thing you need in order to tell a bad hint from a bad search.
+ */
+interface SearchStrategy {
+  name: string;
+  run(): Promise<MatchedEvent | null>;
+}
+
+/** Identifies a match in a log line, including whether it has a local row. */
+function describeMatch(match: MatchedEvent): string {
+  if (match.localEvent) {
+    return `local event "${match.localEvent.title}" (${match.localEvent.date})`;
+  }
+  return `Google-only event "${match.googleResult?.summary}" (${match.googleResult?.date}) — no local row`;
+}
+
 @Injectable()
 export class EventDismissalService {
   private readonly logger = new Logger(EventDismissalService.name);
@@ -83,6 +104,13 @@ export class EventDismissalService {
     }
   }
 
+  /**
+   * Locate the event a `cancel`/`delay` message refers to.
+   *
+   * Strategies run narrowest-first and the first hit wins, so a date-constrained
+   * title match always beats a Google-wide text search. Nothing here writes —
+   * the caller decides what to do with the match.
+   */
   async findMatchingEvent(
     parsed: ParsedEvent,
     childId?: string,
@@ -91,87 +119,95 @@ export class EventDismissalService {
     const calendarId = await this.getCalendarId();
     const searchTitle = parsed.originalTitle || parsed.title;
 
-    // Try with child-prefixed title first if childName is set
-    const searchVariants = childName
+    // The child-prefixed form comes first because that is what is actually
+    // stored: persistEvents writes titles as "Name: Title". The bare form still
+    // gets a turn, for events created before a child was assigned.
+    const titles = childName
       ? [`${childName}: ${searchTitle}`, searchTitle]
       : [searchTitle];
 
-    // Search local DB
-    for (const title of searchVariants) {
-      const localResults =
-        await this.eventRepository.findByTitleSubstringAndChild(
-          title,
-          childId,
-          parsed.date || undefined,
-        );
+    const strategies: SearchStrategy[] = [
+      ...titles.map((title) => ({
+        name: `local DB "${title}"${parsed.date ? ` on ${parsed.date}` : ''}`,
+        run: () =>
+          this.searchLocal(title, childId, parsed.date || undefined, calendarId),
+      })),
+      // Worth a second, date-free pass only when the first was constrained by a
+      // date — without one, the pass above already was the unconstrained search.
+      // Parents routinely misremember the date of the event they are cancelling.
+      ...(parsed.date
+        ? titles.map((title) => ({
+            name: `local DB "${title}" (any date)`,
+            run: () => this.searchLocal(title, childId, undefined, calendarId),
+          }))
+        : []),
+      {
+        name: `Google Calendar "${searchTitle}"`,
+        run: () => this.searchGoogle(searchTitle, calendarId),
+      },
+    ];
 
-      if (localResults.length > 0) {
-        // If date was provided, prefer exact date match
-        const bestMatch = parsed.date
-          ? localResults.find((e) => e.date === parsed.date) ||
-            localResults[0]
-          : localResults[0];
-
+    for (const strategy of strategies) {
+      const match = await strategy.run();
+      if (match) {
         this.logger.log(
-          `Found local DB match for "${searchTitle}": "${bestMatch.title}" (${bestMatch.date})`,
+          `Dismissal target matched by ${strategy.name}: ${describeMatch(match)}`,
         );
-        return { localEvent: bestMatch, calendarId };
+        return match;
       }
     }
 
-    // If no date constraint was given, try local DB without date
-    if (parsed.date) {
-      for (const title of searchVariants) {
-        const localResults =
-          await this.eventRepository.findByTitleSubstringAndChild(
-            title,
-            childId,
-          );
-
-        if (localResults.length > 0) {
-          this.logger.log(
-            `Found local DB match (without date) for "${searchTitle}": "${localResults[0].title}"`,
-          );
-          return { localEvent: localResults[0], calendarId };
-        }
-      }
-    }
-
-    // Fall back to Google Calendar search
-    try {
-      const googleResults = await this.googleCalendarService.searchEvents(
-        calendarId,
-        searchTitle,
-      );
-
-      if (googleResults.length > 0) {
-        // Try to match Google result with local DB by googleEventId
-        for (const gResult of googleResults) {
-          const allEvents = await this.eventRepository.findAll();
-          const localMatch = allEvents.find(
-            (e) => e.googleEventId === gResult.googleEventId,
-          );
-          if (localMatch) {
-            this.logger.log(
-              `Found Google Calendar match linked to local event: "${localMatch.title}"`,
-            );
-            return { localEvent: localMatch, calendarId };
-          }
-        }
-
-        // Return Google-only match
-        this.logger.log(
-          `Found Google Calendar match (no local link): "${googleResults[0].summary}"`,
-        );
-        return { googleResult: googleResults[0], calendarId };
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Google Calendar search failed for "${searchTitle}": ${error.message}`,
-      );
-    }
-
+    this.logger.log(
+      `No dismissal target found for "${searchTitle}" after ${strategies.length} strategies`,
+    );
     return null;
+  }
+
+  private async searchLocal(
+    title: string,
+    childId: string | undefined,
+    date: string | undefined,
+    calendarId: string,
+  ): Promise<MatchedEvent | null> {
+    const results = await this.eventRepository.findByTitleSubstringAndChild(
+      title,
+      childId,
+      date,
+    );
+    if (results.length === 0) return null;
+
+    // The substring search orders by date DESC, so without this preference a
+    // newer event with a similar title outranks the one actually being cancelled.
+    const best = (date && results.find((e) => e.date === date)) || results[0];
+    return { localEvent: best, calendarId };
+  }
+
+  private async searchGoogle(
+    title: string,
+    calendarId: string,
+  ): Promise<MatchedEvent | null> {
+    let results: GoogleCalendarEventResult[];
+    try {
+      results = await this.googleCalendarService.searchEvents(calendarId, title);
+    } catch (error) {
+      // A Google outage must not throw into the caller's failure path: "not
+      // found" is a message the parent can act on, an exception is not.
+      this.logger.warn(
+        `Google Calendar search failed for "${title}": ${error.message}`,
+      );
+      return null;
+    }
+
+    // Prefer a hit this app created, so approving the dismissal updates our copy
+    // too rather than leaving an orphaned local row behind.
+    for (const result of results) {
+      const local = result.googleEventId
+        ? await this.eventRepository.findByGoogleEventId(result.googleEventId)
+        : null;
+      if (local) return { localEvent: local, calendarId };
+    }
+
+    return results.length > 0 ? { googleResult: results[0], calendarId } : null;
   }
 
   async approveDismissal(dismissal: PendingDismissalEntity): Promise<void> {
