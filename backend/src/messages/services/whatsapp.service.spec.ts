@@ -1002,6 +1002,147 @@ describe('WhatsAppService', () => {
     });
   });
 
+  /**
+   * Every approval card is sent with an .ics attachment, so a break in the
+   * media path takes out approvals entirely while plain-text sends keep
+   * working — which is exactly how this surfaced in production.
+   */
+  describe('MediaPrep __x_id leak', () => {
+    const realWindow = (global as any).window;
+    afterEach(() => {
+      (global as any).window = realWindow;
+    });
+
+    async function capturePatches() {
+      await service.initialize();
+      const { Client } = require('whatsapp-web.js');
+      const mockClient = new Client();
+      const evaluate = jest.fn().mockResolvedValue([]);
+      mockClient.pupPage = { evaluate };
+      mockClient.getChats.mockResolvedValue([
+        { name: 'class', id: { _serialized: 'class@g.us' } },
+      ]);
+      await service.getChannelMessages('class');
+      return evaluate.mock.calls
+        .filter((args) => args.length === 1)
+        .map((a) => a[0]);
+    }
+
+    /**
+     * Stands in for WhatsApp Web's MediaPrep: field values live in private
+     * `__x_<name>` properties, and `__x_id` holds the "unset" sentinel until
+     * something reads `.id`.
+     */
+    function fakeMediaPrep() {
+      return {
+        __x_id: { sentinel: true },
+        __x_mimetype: 'text/calendar',
+        __x_filename: 'event.ics',
+      };
+    }
+
+    function windowWith(processMediaData: unknown) {
+      const win: any = { WWebJS: { processMediaData } };
+      (global as any).window = win;
+      return win;
+    }
+
+    /**
+     * WhatsApp Web's model constructor takes the private `__x_id` backing
+     * field in preference to the public `id` — that precedence is the whole
+     * bug, so the test has to reproduce it rather than assert on the spread.
+     */
+    function idSeenByMsgModel(data: any): unknown {
+      return '__x_id' in data ? data.__x_id : data.id;
+    }
+
+    it("keeps the message id whatsapp-web.js set, instead of MediaPrep's", async () => {
+      const patches = await capturePatches();
+      const win = windowWith(jest.fn().mockResolvedValue(fakeMediaPrep()));
+      const msgKey = { _serialized: 'true_class@g.us_3EB0_me@lid' };
+
+      // Unpatched: the spread carries __x_id in, and the model reads that.
+      const before = { id: msgKey, ...(await win.WWebJS.processMediaData()) };
+      expect(idSeenByMsgModel(before)).toEqual({ sentinel: true });
+
+      patches.forEach((patch) => patch());
+
+      const after = { id: msgKey, ...(await win.WWebJS.processMediaData()) };
+      expect(idSeenByMsgModel(after)).toBe(msgKey);
+    });
+
+    it('still carries the media metadata into the message', async () => {
+      const patches = await capturePatches();
+      const win = windowWith(jest.fn().mockResolvedValue(fakeMediaPrep()));
+
+      patches.forEach((patch) => patch());
+      const spread: any = { ...(await win.WWebJS.processMediaData()) };
+
+      // Only __x_id collides with the message; the rest is how the attachment
+      // reaches WhatsApp at all.
+      expect(spread.__x_mimetype).toBe('text/calendar');
+      expect(spread.__x_filename).toBe('event.ics');
+    });
+
+    it('leaves the field readable on the prep itself', async () => {
+      const patches = await capturePatches();
+      const win = windowWith(jest.fn().mockResolvedValue(fakeMediaPrep()));
+
+      patches.forEach((patch) => patch());
+      const result: any = await win.WWebJS.processMediaData();
+
+      // Hidden from enumeration, not removed — MediaPrep reads it back through
+      // its own `id` accessor.
+      expect(result.__x_id).toEqual({ sentinel: true });
+      expect(Object.keys(result)).not.toContain('__x_id');
+    });
+
+    it('passes the caller arguments through untouched', async () => {
+      const patches = await capturePatches();
+      const processMediaData = jest.fn().mockResolvedValue(fakeMediaPrep());
+      const win = windowWith(processMediaData);
+
+      patches.forEach((patch) => patch());
+      await win.WWebJS.processMediaData(
+        { mimetype: 'text/calendar' },
+        { forceDocument: true },
+      );
+
+      expect(processMediaData).toHaveBeenCalledWith(
+        { mimetype: 'text/calendar' },
+        { forceDocument: true },
+      );
+    });
+
+    it('is a no-op on a build that never leaked the field', async () => {
+      const patches = await capturePatches();
+      const prep: any = { __x_mimetype: 'image/png' };
+      const win = windowWith(jest.fn().mockResolvedValue(prep));
+
+      patches.forEach((patch) => patch());
+
+      await expect(win.WWebJS.processMediaData()).resolves.toBe(prep);
+    });
+
+    it('wraps processMediaData only once', async () => {
+      const patches = await capturePatches();
+      const win = windowWith(jest.fn().mockResolvedValue(fakeMediaPrep()));
+
+      patches.forEach((patch) => patch());
+      const wrapped = win.WWebJS.processMediaData;
+      patches.forEach((patch) => patch());
+
+      expect(win.WWebJS.processMediaData).toBe(wrapped);
+    });
+
+    it('does not throw when WWebJS is not injected yet', async () => {
+      const patches = await capturePatches();
+      (global as any).window = {};
+
+      expect(() => patches.forEach((patch) => patch())).not.toThrow();
+    });
+  });
+
   describe('send result lost by whatsapp-web.js', () => {
     async function connectedClient(sendResult: unknown) {
       await service.initialize();
