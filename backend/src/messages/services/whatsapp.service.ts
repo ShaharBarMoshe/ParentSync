@@ -454,11 +454,16 @@ export class WhatsAppService
    * with an empty id. Patching the prototype fixes every `_serialized` read at
    * once, including the ones inside whatsapp-web.js itself.
    *
-   * The last patch does for `window.onReaction` what the second does for
+   * The fourth patch does for `window.onReaction` what the second does for
    * `getMessageModel`: reaction payloads carry raw MsgKey instances across the
    * exposeFunction bridge, so their id needs to be stamped on as an own
    * property before JSON serialization strips the prototype getter. Without
    * it every approval reaction arrived as "[object Object]".
+   *
+   * The last patch stops MediaPrep's private `__x_id` from leaking into the
+   * outgoing message, which broke every send that carries an attachment — so
+   * every approval card, since each one ships an .ics. See the patch itself
+   * for the mechanism.
    */
   private async ensureBrowserPatches(): Promise<void> {
     const page = (this.client as any)?.pupPage;
@@ -579,6 +584,46 @@ export class WhatsAppService
             return this.toString();
           },
         });
+      });
+
+      await page.evaluate(() => {
+        const win = window as any;
+        const wwebjs = win.WWebJS;
+        if (
+          !wwebjs?.processMediaData ||
+          wwebjs.processMediaData.__parentSyncPatched
+        ) {
+          return;
+        }
+
+        // WhatsApp Web models keep each field in a private `__x_<name>` backing
+        // property, and its MediaPrep now exposes `__x_id` as *own and
+        // enumerable*. whatsapp-web.js builds the outgoing message with
+        // `{ id: newMsgKey, ..., ...mediaOptions }` — so that spread copies
+        // `__x_id` in after `id`, and `new Msg(...)` reads the backing field in
+        // preference to `id`. The message's own MsgKey is silently replaced by
+        // MediaPrep's unset-id sentinel, and the first memoized getter to touch
+        // it throws "Data passed to getter must include an id property".
+        //
+        // Only `__x_id` collides: every other `__x_*` (mimetype, filename,
+        // size…) is exactly how the media metadata is meant to reach the
+        // message. So hide that one field from enumeration rather than delete
+        // it — MediaPrep keeps working, and the spread stops clobbering the id.
+        const original = wwebjs.processMediaData;
+        const patched = async (...args: any[]) => {
+          const prep = await original(...args);
+          const descriptor =
+            prep && Object.getOwnPropertyDescriptor(prep, '__x_id');
+          if (descriptor?.enumerable && descriptor.configurable) {
+            Object.defineProperty(prep, '__x_id', {
+              ...descriptor,
+              enumerable: false,
+            });
+          }
+          return prep;
+        };
+        patched.__parentSyncPatched = true;
+        wwebjs.processMediaData = patched;
       });
     } catch (error) {
       // Never block the lookup on this — a WhatsApp Web build without the bug

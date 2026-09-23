@@ -153,6 +153,61 @@ Note the event named in the second line is *not* the one the user reacted to.
 `approval_message_id_repair_v1_done` setting. Affected events keep their status;
 any left pending have to be re-sent for approval.
 
+### `MediaPrep.__x_id` leaking into the message (fixed in `ensureBrowserPatches`)
+
+**Symptom** — every approval card fails to send while plain-text sends keep
+working, so the app looks half-alive: messages are still scraped and events
+still created, but nothing ever reaches the approval channel.
+
+```
+WARN  [AppErrorEmitterService] app.error emitted: source=whatsapp
+      code=WHATSAPP_SEND_FAILED — WhatsApp message could not be sent.
+      Data passed to getter must include an id property (it's how we memoize)
+      but got undefined
+ERROR [ApprovalService] Failed to send event a4a05848-… for approval: …
+```
+
+The split is not a coincidence: every approval card ships an `.ics`
+attachment, so approvals are the only path that carries media.
+
+**Cause** — WhatsApp Web models keep each field in a private `__x_<name>`
+backing property, and its `MediaPrep` model now exposes `__x_id` as an **own
+enumerable** property. `whatsapp-web.js` builds the outgoing message by
+spreading the prep in *after* the key it just generated:
+
+```js
+const message = { ...options, id: newMsgKey, /* … */, ...mediaOptions };
+```
+
+so the message comes out carrying `__x_id`. `new Msg(message)` then reads the
+private backing field in preference to the public `id`, and the real `MsgKey`
+is silently replaced by `MediaPrep`'s unset-id sentinel. The first memoized
+getter to touch the model throws — that getter keys its cache on `data.id`, and
+refuses `undefined`:
+
+```js
+function L(e){
+  if (e == null) throw err("Getter was called with " + String(e) + " data.");
+  var t = e.id;
+  if (t == null) throw err("Data passed to getter must include an id property …");
+  return t.toString();
+}
+```
+
+The throw comes from inside the page, so what surfaces in Node is a bare
+message with a one-frame stack pointing at minified WhatsApp Web code.
+
+**Fix** — `ensureBrowserPatches()` wraps `WWebJS.processMediaData` and makes
+`__x_id` **non-enumerable** on the prep it returns. Object spread skips it, so
+the message keeps the `MsgKey` whatsapp-web.js generated, while `MediaPrep`
+itself still reads and writes the field through its own `id` accessor.
+
+Only `__x_id` collides. Every other `__x_*` the spread carries
+(`__x_mimetype`, `__x_filename`, `__x_size`, …) is exactly how the attachment's
+metadata is meant to reach the message, which is why the patch hides one field
+rather than filtering the prefix. It is skipped when the field is already
+non-enumerable, so it becomes a no-op on a build that does not leak it.
+
 ### `window.Store` removal (fixed in `fetchMessagesDirectly`)
 
 `whatsapp-web.js` dropped its `window.Store` bridge in 1.34 — there is no
@@ -312,9 +367,9 @@ than compared wrongly — no migration or backfill is needed.
 ## Tests
 
 - `backend/src/messages/services/whatsapp.service.spec.ts` —
-  `WhatsApp Web compatibility patch`, `dead browser session recovery`,
-  `serializeMsgKey`, `message_reaction handling` and
-  `resolving a channel by contact name`
+  `WhatsApp Web compatibility patch`, `MsgKey._serialized restoration`,
+  `MediaPrep __x_id leak`, `dead browser session recovery`, `serializeMsgKey`,
+  `message_reaction handling` and `resolving a channel by contact name`
 - `backend/src/shared/utils/approval-message-id.spec.ts` and
   `approval-message-id-lookup.spec.ts` — the unusable-id guard, and that neither
   repository queries with one
