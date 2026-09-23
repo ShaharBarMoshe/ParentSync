@@ -63,6 +63,7 @@ describe('CalendarController', () => {
       findByApprovalMessageId: jest.fn(),
       findDueForReminder: jest.fn(),
       findByTitleSubstringAndChild: jest.fn(),
+      findByGoogleEventId: jest.fn(),
     };
 
     const mockGoogleService: jest.Mocked<IGoogleCalendarService> = {

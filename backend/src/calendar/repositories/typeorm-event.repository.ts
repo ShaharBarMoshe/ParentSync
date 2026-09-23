@@ -118,6 +118,14 @@ export class TypeOrmEventRepository implements IEventRepository {
     return this.repo.findOneBy({ approvalMessageId: messageId });
   }
 
+  findByGoogleEventId(
+    googleEventId: string,
+  ): Promise<CalendarEventEntity | null> {
+    // An empty id would match every row whose sync never produced one.
+    if (!googleEventId) return Promise.resolve(null);
+    return this.repo.findOneBy({ googleEventId });
+  }
+
   async findByTitleSubstringAndChild(
     titleSubstring: string,
     childId?: string,

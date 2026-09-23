@@ -48,4 +48,14 @@ export interface IEventRepository {
     childId?: string,
     date?: string,
   ): Promise<CalendarEventEntity[]>;
+  /**
+   * The local row backing a Google Calendar event, or null if that event was
+   * created outside this app.
+   *
+   * Exists so the dismissal search can link a Google search hit back to its
+   * local row without scanning the whole table.
+   */
+  findByGoogleEventId(
+    googleEventId: string,
+  ): Promise<CalendarEventEntity | null>;
 }

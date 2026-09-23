@@ -333,11 +333,45 @@ So nobody re-litigates these from scratch:
 |---|---|
 | `interrupt()` for approval | Resume needs a durable checkpointer and a thread held open for as long as a parent takes to reply — hours, or never. LangGraph re-runs a resumed node **from the top**, and `requestApproval` has already written to SQLite: a resume would send every card twice. The `PENDING` row is the durable interrupt, and it survives a restart. |
 | any checkpointer | Unparsed message rows are already the durable work queue; a crash mid-pass is recovered by the next sync reading the same rows. `MemorySaver` would cost memory per thread for no recovery benefit. |
-| `create_agent` / tool loop | The pipeline is fixed. An agent loop would add nondeterminism to a path that writes to a family's calendar. |
+| `create_agent` / tool loop | The pipeline is fixed. An agent loop would add nondeterminism to a path that writes to a family's calendar. The objection is to a loop **replacing the graph** — see "If you still want a tool" below for what a narrower proposal would have to prove. |
+| `bindTools` on any chain | Call count per group stops being 1 and becomes 1..N against **one** shared rate limiter and **one** retry ladder — on a free-tier quota that already has an exhaustion path (`LlmQuotaExhaustedError`). The `msg-parse:<promptVersion>:<sha256(content+images)>` cache also stops hitting, because a conversation that grows per round-trip has no stable key. And `withStructuredOutput` already occupies Gemini's function-declaration slot. |
+| `AgentMiddleware` / middleware hooks | Not in `@langchain/core` or `@langchain/langgraph` at all — middleware ships in the `langchain` meta-package bound to `createAgent`, which is not a dependency here. Taking middleware means taking the agent loop. `ChainRunner.run()` already **is** this stack (rate limit → retry → tracing → invoke) and owns policy LangChain's generic version cannot express; see its class comment. |
+| `HumanInTheLoopMiddleware` | The same trap as `interrupt()` above, for the same reason: resume re-runs the node from the top and `requestApproval` has already written to SQLite, so every approval card would go out twice. The `PENDING` row is the durable interrupt. |
 | `Send` fan-out for screening | Would give per-event traces, but every branch contends on the same rate limiter, so no throughput win — and it muddies the transaction story. |
 | `StateSchema` + zod | Half these channels hold TypeORM entities and a `Map`; they would be `z.custom<T>()` — zod validating nothing. Pays off only with a serializing checkpointer, which this graph has none. Stays on `Annotation.Root`. |
 | node `retryPolicy` on `syncToGoogle` | A node retry re-runs from the top, and this node iterates every unsynced event — it would re-push the ones that already succeeded. |
 | `ChatPromptTemplate` | Its templating treats `{`/`}` as variable delimiters, and the input is arbitrary parent-written text. Chains build `BaseMessage[]` directly. |
+
+### If you still want a tool
+
+Nothing above says "tools are impossible". `tool()` is in
+`@langchain/core/tools`, `bindTools` is on `ChatGoogleGenerativeAI`, and
+`ToolNode` is in `@langchain/langgraph/prebuilt` — all already installed, no new
+dependency. What the table rejects is an **unbounded loop replacing the graph**.
+
+A bounded, read-only tool bound to one node's chain, with every write still owned
+by the graph, is a different proposal. It has to clear four bars:
+
+1. **A port in `ports/ai-ports.ts`** with an explicit failure *direction*. "The
+   model called the tool three times and gave up" is neither a hard failure nor a
+   usable answer, so the port has to say which one it becomes.
+2. **A hard call-count ceiling**, enforced in the adapter — not left to the model.
+   `ChainRunner` budgets one rate-limiter slot per `run()`; a loop that can spin
+   is a loop that can starve extraction.
+3. **Schema in `PROVIDER_SCHEMAS`.** Tool parameters go through the same
+   `toJsonSchema` path as `responseSchema`, so the Gemini proto subset applies:
+   no `.nullable()`, no unions, no `z.record()`. Register it or
+   `schema-compat.spec.ts` will not cover it.
+4. **Read-only.** Writes stay in nodes, where the transaction boundary and the
+   error boundary already live.
+
+The case that keeps coming up is `EventDismissalService.findMatchingEvent` — the
+only place the model emits a blind hint (`originalTitle`) and imperative code
+guesses what it meant. It was considered and declined: it would add an LLM call
+to a path that currently makes **zero**, to fix a failure that is already visible
+and safe (it sends "⚠️ No matching event found" rather than cancelling the wrong
+event). Trading a free deterministic miss for a paid nondeterministic guess on a
+delete path is the wrong trade.
 
 ---
 
