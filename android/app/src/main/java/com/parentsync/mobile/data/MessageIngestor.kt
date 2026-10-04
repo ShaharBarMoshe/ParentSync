@@ -7,6 +7,7 @@ import com.parentsync.mobile.data.db.MessageSource
 import com.parentsync.mobile.data.settings.SettingsStore
 import com.parentsync.mobile.ingest.NotificationPayload
 import com.parentsync.mobile.ingest.WhatsAppNotificationParser
+import com.parentsync.mobile.sync.Notifications
 import com.parentsync.mobile.sync.SyncScheduler
 import java.util.UUID
 
@@ -28,6 +29,18 @@ class MessageIngestor(
     data class Result(val stored: Int, val skipped: Int, val reason: String? = null)
 
     suspend fun onNotification(payload: NotificationPayload): Result {
+        // Checked before the source test, and not overridable by configuration.
+        //
+        // The app's own notifications are notifications too, and reading them
+        // feeds the app its own output: the "N messages cannot be parsed" alert
+        // becomes a message, which raises N, which re-posts the alert. On the
+        // emulator one real message turned into 100 rows this way, and with a
+        // key configured each one would have cost an LLM call.
+        if (payload.channelId in Notifications.OWN_CHANNELS) {
+            Log.d(TAG, "ignoring our own notification on channel ${payload.channelId}")
+            return Result(0, 0, OWN_NOTIFICATION)
+        }
+
         if (!WhatsAppNotificationParser.isWhatsApp(payload, settings.extraSourcePackages)) {
             // Not logged at all: this runs for every notification on the device,
             // so a line here would bury everything else.
@@ -101,6 +114,9 @@ class MessageIngestor(
          * every other notification on the device.
          */
         const val NOT_A_SOURCE = "not a WhatsApp source"
+
+        /** Reason returned for a notification this app posted itself. */
+        const val OWN_NOTIFICATION = "our own notification"
 
         /**
          * Appended to a body WhatsApp had already cut short.

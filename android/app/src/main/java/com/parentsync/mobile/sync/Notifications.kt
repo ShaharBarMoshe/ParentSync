@@ -21,6 +21,23 @@ object Notifications {
     const val CHANNEL_SYNC = "sync"
     const val CHANNEL_ALERTS = "alerts"
 
+    /**
+     * Every channel this app posts on.
+     *
+     * The ingest path drops any notification on one of these, whatever the
+     * source configuration says. Without it the app can read its own output:
+     * an alert saying "N messages cannot be parsed" is itself a notification, so
+     * ingesting it creates another message, which raises N, which posts the
+     * alert again. Observed on the emulator reaching 100 rows from one real
+     * message, and it would have burned LLM quota on the app's own text.
+     */
+    val OWN_CHANNELS: Set<String> = setOf(
+        CHANNEL_APPROVALS,
+        CHANNEL_REMINDERS,
+        CHANNEL_SYNC,
+        CHANNEL_ALERTS,
+    )
+
     /** Foreground-service notification for a sync pass. */
     const val ID_SYNC_FOREGROUND = 1000
     const val ID_ALERT = 1001

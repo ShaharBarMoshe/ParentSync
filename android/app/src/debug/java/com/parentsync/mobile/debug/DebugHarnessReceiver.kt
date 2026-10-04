@@ -96,6 +96,13 @@ class DebugHarnessReceiver : BroadcastReceiver() {
         val body = intent.getStringExtra(EXTRA_BODY) ?: "Trip on Sunday at 09:00"
         val truncate = intent.getBooleanExtra(EXTRA_TRUNCATE, false)
         val isGroup = intent.getBooleanExtra(EXTRA_IS_GROUP, true)
+        // Fixed timestamp, so re-delivery of the *same* message can be
+        // exercised: WhatsApp re-posts a conversation every time it grows and
+        // keeps each message's original timestamp, which is what makes the
+        // sourceKey stable. With now() the key differs every post and the
+        // duplicate path can never be reached on a device.
+        val whenMs = intent.getLongExtra(EXTRA_WHEN_MS, 0L)
+            .takeIf { it > 0 } ?: System.currentTimeMillis()
 
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
@@ -105,7 +112,7 @@ class DebugHarnessReceiver : BroadcastReceiver() {
         val person = Person.Builder().setName(sender).build()
         val text = if (truncate) body + "…" else body
         var style = NotificationCompat.MessagingStyle(Person.Builder().setName("Me").build())
-            .addMessage(text, System.currentTimeMillis(), person)
+            .addMessage(text, whenMs, person)
         if (isGroup) {
             // Both are needed: the title is what the parser reads as the channel,
             // and the group flag is what tells it the sender is separate from it.
@@ -117,7 +124,7 @@ class DebugHarnessReceiver : BroadcastReceiver() {
             .setContentTitle(if (isGroup) group else sender)
             .setContentText(text)
             .setStyle(style)
-            .setWhen(System.currentTimeMillis())
+            .setWhen(whenMs)
             .setAutoCancel(true)
             .build()
 
@@ -270,6 +277,7 @@ class DebugHarnessReceiver : BroadcastReceiver() {
         private const val EXTRA_BODY = "body"
         private const val EXTRA_TRUNCATE = "truncate"
         private const val EXTRA_IS_GROUP = "isGroup"
+        private const val EXTRA_WHEN_MS = "whenMs"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_DATE = "date"
         private const val EXTRA_TIME = "time"

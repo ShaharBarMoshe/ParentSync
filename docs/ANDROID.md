@@ -125,6 +125,22 @@ worth knowing:
 | `WorkManagerInitializer` removed via `tools:node="remove"` | `ParentSyncApp` provides the `Configuration` so workers can be constructed with dependencies; the default initialiser would race it and win |
 | `allowBackup="false"` + backup rules | The message database must not leave the device in a cloud backup |
 
+### The app must never read its own notifications
+
+`MessageIngestor` drops any notification posted on one of
+`Notifications.OWN_CHANNELS`, before it even checks whether the source is
+configured, and this is deliberately not overridable.
+
+The app's own notifications are notifications. Without the guard, the alert that
+says "N captured messages cannot be read until an API key is set" is itself
+ingested as a message — which raises N, which re-posts the alert. Found on the
+emulator: **one real message became 100 rows**, and with a key configured each
+one would have cost an LLM call. Approval cards fed the same loop, arriving as
+messages whose "channel" was the event title.
+
+The debug harness posts on its own `debug-whatsapp-mock` channel, which is
+deliberately *not* in the excluded set, so on-device testing still works.
+
 ---
 
 ## Setup
@@ -200,30 +216,54 @@ calendar-write paths can be exercised without a Gemini key.
 
 ### Verified on the emulator (Android 16, API 36)
 
-Listener binds and receives; messages stored with the truncation marker applied;
-real system group-summary notifications correctly dropped; settings persisted;
-approval notification posted with two actions; in-app Approve settles the event;
-the sync pass writes to the real `CalendarContract` provider at **09:00
-Asia/Jerusalem** for a 09:00 event with a 60-minute reminder attached; and with
-no API key the worker reports "no Gemini key is configured" and leaves messages
-queued rather than discarding them. 28 unit tests pass.
+Through the real listener and the unmodified production path:
+
+- listener binds to the OS and `onNotificationPosted` fires;
+- a group message, a 1:1 chat and a truncated message are all stored, with the
+  truncation marker applied;
+- a bare `Photo` media placeholder and the system's own **group-summary**
+  notifications are dropped;
+- **re-delivery is deduped**: the same message posted three times with its
+  original timestamp stores once, then skips twice — the unique `sourceKey`
+  index doing its job against a real re-posted notification;
+- the app **ignores its own** approval and alert notifications, so the message
+  count stays flat instead of looping;
+- the approval notification is posted with two actions, and tapping **Approve in
+  the notification shade** settles the event (`ApprovalActionReceiver`);
+- the in-app Approve button settles it too, and the next pass writes to the real
+  `CalendarContract` provider — a 16:00 event landing at
+  **2027-05-20 16:00 Asia/Jerusalem**, `allDay=0`, with a 60-minute reminder;
+- the ~45-second coalesce window is observable: the write lands ~40 s after
+  approval;
+- with no API key the worker reports "no Gemini key is configured" and leaves
+  messages queued rather than discarding them.
+
+30 unit tests pass.
 
 ### Not yet verified
 
 - **The Gemini extraction call** — no API key was available, so the request and
-  response shape are unexercised against the live service.
+  response shape are unexercised against the live service. This is the only part
+  of the pipeline with no on-device coverage.
 - **Real WhatsApp notification shapes.** The harness reproduces the documented
-  MessagingStyle structure, not a specific WhatsApp build's actual output. This
-  is the first thing to check on a real phone: enable `PSListener` verbose and
-  confirm the parsed channel and sender match the chat.
-- **The notification action buttons.** Approve was driven through the in-app
-  button, which shares `ApprovalManager.settle`; `ApprovalActionReceiver`'s
-  `goAsync` wrapper is untested.
+  MessagingStyle structure, not a specific WhatsApp build's actual output. First
+  thing to check on a real phone: `adb shell setprop log.tag.PSListener VERBOSE`
+  and confirm the parsed channel and sender match the chat.
 - **Gmail.** `play-services-auth` and the Gmail REST client are wired as
   dependencies, but sign-in and fetching are not implemented yet — it needs an
   OAuth client id and a Google account on the device.
 - **Release build / R8.** Only debug has been built. `proguard-rules.pro` keeps
   the Gmail model classes, which reflect over their fields.
+- **Retention and image cleanup** have unit-level logic but no on-device run.
+
+### Emulator notes
+
+Beyond the 4 GB: the Pixel Launcher ANR'd mid-run after a stray tap and covered
+the screen with its "isn't responding" dialog, which silently breaks any
+UI-driven step. `adb shell am force-stop com.google.android.apps.nexuslauncher`
+clears it. And `pm clear` wipes app data but **not** the calendar provider, so
+delete leftover events through `content delete` or a stale row will look like a
+successful write.
 
 ---
 

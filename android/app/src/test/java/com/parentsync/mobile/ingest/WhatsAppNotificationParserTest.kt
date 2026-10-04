@@ -294,3 +294,33 @@ class WhatsAppNotificationParserTest {
         ).isTrue()
     }
 }
+
+/**
+ * The app's own notifications must never be ingested.
+ *
+ * Found on the emulator: the "N messages cannot be parsed" alert is itself a
+ * notification, so reading it created a message, which raised N, which re-posted
+ * the alert — one real message became 100 rows. The guard lives in
+ * [com.parentsync.mobile.data.MessageIngestor] because it must hold whatever the
+ * source configuration says, so these assert on the channel set it consults.
+ */
+class OwnNotificationGuardTest {
+
+    @org.junit.Test
+    fun `every channel the app posts on is in the exclusion set`() {
+        val own = com.parentsync.mobile.sync.Notifications.OWN_CHANNELS
+        com.google.common.truth.Truth.assertThat(own).containsExactly(
+            com.parentsync.mobile.sync.Notifications.CHANNEL_APPROVALS,
+            com.parentsync.mobile.sync.Notifications.CHANNEL_REMINDERS,
+            com.parentsync.mobile.sync.Notifications.CHANNEL_SYNC,
+            com.parentsync.mobile.sync.Notifications.CHANNEL_ALERTS,
+        )
+    }
+
+    @org.junit.Test
+    fun `the harness channel is not excluded, or on-device testing breaks`() {
+        com.google.common.truth.Truth
+            .assertThat(com.parentsync.mobile.sync.Notifications.OWN_CHANNELS)
+            .doesNotContain("debug-whatsapp-mock")
+    }
+}

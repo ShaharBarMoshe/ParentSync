@@ -26,6 +26,8 @@ data class NotificationPayload(
     val textLines: List<String> = emptyList(),
     /** MessagingStyle messages, oldest first. The richest source when present. */
     val messages: List<StyleMessage> = emptyList(),
+    /** The posting app's channel id. Used to recognise our own notifications. */
+    val channelId: String? = null,
     val whenMs: Long = 0L,
     val isGroupConversation: Boolean = false,
     /** True for WhatsApp's own "checking for new messages"-style placeholders. */

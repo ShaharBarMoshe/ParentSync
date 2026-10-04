@@ -105,6 +105,7 @@ class ParentSyncNotificationListener : NotificationListenerService() {
                 ?.mapNotNull { it?.toString() }
                 .orEmpty(),
             messages = readStyleMessages(extras),
+            channelId = n.channelId,
             whenMs = if (n.`when` > 0) n.`when` else sbn.postTime,
             isGroupConversation = extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false),
             isOngoing = (n.flags and Notification.FLAG_ONGOING_EVENT) != 0,
