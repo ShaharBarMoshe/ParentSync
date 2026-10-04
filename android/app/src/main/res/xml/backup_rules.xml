@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  allowBackup is off in the manifest, so these rules are belt and braces: if
+  backup is ever enabled, the OAuth token cache and the message database must
+  not leave the device in a cloud backup.
+-->
+<full-backup-content>
+    <exclude domain="database" path="parentsync.db" />
+    <exclude domain="sharedpref" path="parentsync_settings.xml" />
+    <exclude domain="file" path="message-images" />
+</full-backup-content>

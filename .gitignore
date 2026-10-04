@@ -45,3 +45,15 @@ skills-lock.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/secrets.properties
+android/.kotlin/
+android/app/release/
+*.apk
+*.aab
+.cxx/

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Compose draws the UI, so this theme only has to cover the window before the
+      first frame. `Theme.DeviceDefault.DayNight` is the one framework theme that
+      follows the system light/dark setting without pulling in AppCompat, so the
+      pre-first-frame window does not flash white on a dark phone.
+
+      It has no NoActionBar variant (the framework only ships those for
+      Material and DeviceDefault.Light), so the bar is turned off by hand rather
+      than inherited.
+    -->
+    <style name="Theme.ParentSync" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

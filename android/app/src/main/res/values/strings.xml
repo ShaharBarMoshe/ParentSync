@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ParentSync</string>
+    <string name="notification_listener_label">ParentSync WhatsApp reader</string>
+
+    <string name="channel_approvals_name">Event approvals</string>
+    <string name="channel_approvals_desc">Asks you to confirm an event found in a WhatsApp message or email.</string>
+    <string name="channel_reminders_name">Event reminders</string>
+    <string name="channel_reminders_desc">Reminds you before an event starts.</string>
+    <string name="channel_sync_name">Background sync</string>
+    <string name="channel_sync_desc">Shown while ParentSync is reading messages and writing the calendar.</string>
+    <string name="channel_alerts_name">Problems</string>
+    <string name="channel_alerts_desc">Tells you when sync is broken and needs attention.</string>
+
+    <string name="action_approve">Approve</string>
+    <string name="action_reject">Reject</string>
+    <string name="action_open">Open</string>
+
+    <string name="sync_running">Reading new messages…</string>
+</resources>

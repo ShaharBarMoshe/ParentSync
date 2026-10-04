@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ===================== Permissions ===================== -->
+
+    <!-- Gemini + Gmail REST. Nothing else leaves the device. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!--
+      The already-signed-in Google calendar is reached through
+      CalendarContract, not the Calendar REST API, so these two replace the
+      whole OAuth dance the desktop build needs for calendar writes.
+    -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+
+    <!-- Approval cards are local notifications now, so we must be able to post. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Needed to resolve which Google account is already on the device for the
+      Gmail sign-in hint. GET_ACCOUNTS is only consulted up to API 33 era
+      pickers; newer flows use the credential picker and need no permission.
+    -->
+    <uses-permission
+        android:name="android.permission.GET_ACCOUNTS"
+        android:maxSdkVersion="33" />
+
+    <!--
+      A sync pass runs LLM calls and calendar writes, which must survive the
+      screen turning off. WorkManager drives it as an expedited foreground
+      worker, hence the dataSync type.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Re-arm the periodic sync and the listener after a reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
+      Reminders must fire at a wall-clock time even in Doze. We ask for the
+      inexact variant first; exact alarms are requested at runtime only if the
+      user turns on precise reminders.
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
+      WhatsApp is queried for its launch intent (to deep-link a chat) and to
+      confirm it is installed. Android 11+ hides other packages unless they are
+      declared here.
+    -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" android:host="wa.me" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".ParentSyncApp"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
+        android:theme="@style/Theme.ParentSync"
+        tools:targetApi="36">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.ParentSync">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          ===================== WhatsApp ingestion =====================
+
+          This is the whole WhatsApp read path. BIND_NOTIFICATION_LISTENER_SERVICE
+          is a signature permission the OS holds, so `exported` must be true and
+          the OS is the only caller. The user still has to switch the app on
+          under Settings > Notifications > Device & app notifications; nothing
+          arrives before they do, which is why onboarding links straight there.
+
+          Forward-only by nature: a notification exists only for messages that
+          arrive while the listener runs. There is no history to backfill.
+        -->
+        <service
+            android:name=".ingest.ParentSyncNotificationListener"
+            android:exported="true"
+            android:label="@string/notification_listener_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:foregroundServiceType="dataSync">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+            <!--
+              Deliberately no `default_filter_types` meta-data. Declaring it
+              narrows what the OS delivers, and a WhatsApp notification is not
+              reliably classified as a "conversation" — it needs a shortcut id to
+              qualify, which WhatsApp does not always set. With the filter in
+              place the service binds and then receives nothing at all, which is
+              indistinguishable from the user not having granted access.
+              Filtering by package in onNotificationPosted costs nothing and
+              cannot silently drop the one notification we exist to read.
+            -->
+        </service>
+
+        <!--
+          WorkManager's own foreground service, redeclared so the dataSync type
+          is attached. Without the type, a sync started while the app is in the
+          background is killed on API 34+.
+        -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
+        <receiver
+            android:name=".sync.ApprovalActionReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".sync.ReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".sync.BootCompletedReceiver"
+            android:exported="false"
+            android:directBootAware="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+          WorkManager is initialised from ParentSyncApp so the Gemini client and
+          DAOs can be injected into workers. Removing the default initialiser is
+          required, or it races ours and wins.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+    </application>
+</manifest>

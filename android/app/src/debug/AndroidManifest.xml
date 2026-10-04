@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!--
+          Debug-only adb test harness. Merged into debug builds only, so it
+          cannot reach a release APK.
+
+          `exported` is true because `adb shell am broadcast` is an external
+          caller, and it carries no permission because a debug build on an
+          emulator or a developer's own device is the only place it exists.
+        -->
+        <receiver
+            android:name="com.parentsync.mobile.debug.DebugHarnessReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.parentsync.mobile.debug.CONFIGURE" />
+                <action android:name="com.parentsync.mobile.debug.POST_WHATSAPP" />
+                <action android:name="com.parentsync.mobile.debug.SEED_EVENT" />
+                <action android:name="com.parentsync.mobile.debug.CREATE_LOCAL_CALENDAR" />
+                <action android:name="com.parentsync.mobile.debug.DUMP" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
