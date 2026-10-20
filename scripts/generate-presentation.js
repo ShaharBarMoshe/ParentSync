@@ -31,16 +31,29 @@ function buildHTML() {
   // Version-specific download URLs. Read from package.json so a `npm version`
   // bump propagates everywhere on the next presentation regenerate. Pattern
   // matches what electron-builder produces and what action-gh-release uploads.
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  const VERSION = pkg.version;
-  const RELEASE_BASE = `https://github.com/ShaharBarMoshe/ParentSync/releases/download/v${VERSION}`;
+  /**
+   * The version the download links point at — NOT `package.json`'s version.
+   *
+   * Those are different things, and conflating them silently produces five
+   * dead links: `package.json` tracks the build in development (1.5.5 at the
+   * time of writing), while GitHub Releases only has up to v1.1.2. A link to a
+   * release that was never published 404s, and nothing in the build catches it
+   * because the URL is well-formed.
+   *
+   * So this is pinned, and bumped when a release is actually published:
+   *     gh release list --limit 1
+   * Override for a dry run with DOWNLOAD_VERSION=1.2.0 node scripts/…
+   */
+  const DOWNLOAD_VERSION = process.env.DOWNLOAD_VERSION || '1.1.2';
+  const RELEASE_BASE =
+    `https://github.com/ShaharBarMoshe/ParentSync/releases/download/v${DOWNLOAD_VERSION}`;
   const DL = {
-    appImage: `${RELEASE_BASE}/ParentSync-${VERSION}.AppImage`,
-    deb:      `${RELEASE_BASE}/parentsync_${VERSION}_amd64.deb`,
-    dmgArm:   `${RELEASE_BASE}/ParentSync-${VERSION}-arm64.dmg`,
-    dmgIntel: `${RELEASE_BASE}/ParentSync-${VERSION}.dmg`,
-    exe:      `${RELEASE_BASE}/ParentSync-Setup-${VERSION}.exe`,
-    page:     `https://github.com/ShaharBarMoshe/ParentSync/releases/tag/v${VERSION}`,
+    appImage: `${RELEASE_BASE}/ParentSync-${DOWNLOAD_VERSION}.AppImage`,
+    deb:      `${RELEASE_BASE}/parentsync_${DOWNLOAD_VERSION}_amd64.deb`,
+    dmgArm:   `${RELEASE_BASE}/ParentSync-${DOWNLOAD_VERSION}-arm64.dmg`,
+    dmgIntel: `${RELEASE_BASE}/ParentSync-${DOWNLOAD_VERSION}.dmg`,
+    exe:      `${RELEASE_BASE}/ParentSync-Setup-${DOWNLOAD_VERSION}.exe`,
+    page:     `https://github.com/ShaharBarMoshe/ParentSync/releases/tag/v${DOWNLOAD_VERSION}`,
   };
   const logo = (name) => {
     // Try png first, then ico
@@ -280,7 +293,7 @@ function buildHTML() {
   <img class="logo" src="${icon}" alt="ParentSync">
   <h1>ParentSync</h1>
   <p>Your family's WhatsApp and email messages, automatically organized into calendar events</p>
-  <span class="version">v${VERSION} · Desktop App for Linux, Windows & macOS</span>
+  <span class="version">v${DOWNLOAD_VERSION} · Desktop for Linux, Windows &amp; macOS · plus a native Android client</span>
   <span class="credit">Created by <a href="https://github.com/ShaharBarMoshe">Shahar Bar-Moshe</a></span>
 </div>
 
@@ -288,13 +301,13 @@ function buildHTML() {
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>What is ParentSync?</h2>
-  <p>A desktop app that reads your children's school WhatsApp groups and teacher emails, uses AI to find events, and puts them on your Google Calendar.</p>
+  <p>An app that reads your children's school WhatsApp groups and teacher emails, uses AI to find events, and puts them on your Google Calendar. Runs as a desktop app on Linux, Windows and macOS — and as a native Android app on your phone.</p>
   <ul>
     <li>Monitors WhatsApp parent groups and Gmail automatically</li>
     <li>AI-powered parsing extracts dates, times, and event details</li>
     <li>Events sync directly to your family Google Calendar</li>
     <li>Optional approval workflow via WhatsApp reactions (👍 approve / 😢 reject)</li>
-    <li>All data stored locally on your machine — no cloud, no sign-up</li>
+    <li>All data stored locally on your own device — no cloud, no sign-up</li>
   </ul>
   <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
@@ -303,7 +316,7 @@ function buildHTML() {
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Get the App</h2>
-  <p>Click your platform for a direct download from GitHub Releases v${VERSION}. Per-platform run instructions later in the deck (Quick Start section).</p>
+  <p>Click your platform for a direct download from GitHub Releases v${DOWNLOAD_VERSION}. Per-platform run instructions later in the deck (Quick Start section).</p>
   <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
     <div class="info-box" style="text-align: center;">
       <p style="font-size: 36px; margin: 0;">🍎</p>
@@ -314,7 +327,7 @@ function buildHTML() {
     <div class="info-box" style="text-align: center;">
       <p style="font-size: 36px; margin: 0;">🪟</p>
       <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">Windows 10/11</p>
-      <a class="download-btn" href="${DL.exe}" style="margin: 8px 0;">⬇️ Installer <small>Setup-${VERSION}.exe</small></a>
+      <a class="download-btn" href="${DL.exe}" style="margin: 8px 0;">⬇️ Installer <small>Setup-${DOWNLOAD_VERSION}.exe</small></a>
     </div>
     <div class="info-box" style="text-align: center;">
       <p style="font-size: 36px; margin: 0;">🐧</p>
@@ -323,7 +336,7 @@ function buildHTML() {
       <a class="download-btn" href="${DL.deb}" style="margin: 4px 0; font-size: 14px;">⬇️ Debian/Ubuntu <small>.deb</small></a>
     </div>
   </div>
-  <p style="margin-top: 16px; font-size: 14px; color: #64748b; text-align: center;">No account needed. All assets: <a href="${DL.page}">github.com/ShaharBarMoshe/ParentSync/releases/tag/v${VERSION}</a></p>
+  <p style="margin-top: 16px; font-size: 14px; color: #64748b; text-align: center;">No account needed. All assets: <a href="${DL.page}">github.com/ShaharBarMoshe/ParentSync/releases/tag/v${DOWNLOAD_VERSION}</a></p>
   <div class="slide-footer"><span>ParentSync — Get the App</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
@@ -455,7 +468,7 @@ function buildHTML() {
       <ol class="steps">
         <li>Make sure <strong>WhatsApp is connected</strong> (Settings → WhatsApp → "Connected")</li>
         <li>Add at least one <strong>child with WhatsApp channels</strong> (Settings → Children)</li>
-        <li>Set your <strong>Gemini API key</strong> (Settings → Gemini AI), or use OpenRouter as alternative</li>
+        <li>Set your <strong>Gemini API key</strong> (Settings → Gemini AI)</li>
         <li>Click <strong>"Sync Now"</strong> on the Dashboard</li>
         <li>Wait 15-30 seconds — messages and events appear</li>
       </ol>
@@ -520,7 +533,7 @@ function buildHTML() {
         <p>💡 The default model <code>gemini-2.5-flash-lite</code> is fast and cheap — typical extraction costs are negligible. A free tier is available too.</p>
       </div>
       <div class="info-box">
-        <p>🔁 Don't want Gemini? <strong>OpenRouter</strong> is supported as an alternative provider — see next slide.</p>
+        <p>📱 Prefer your phone? There is a native <strong>Android</strong> client too — see the next slide.</p>
       </div>
     </div>
     <div class="howto-col">
@@ -539,38 +552,36 @@ function buildHTML() {
   <div class="slide-footer"><span>ParentSync — How-To</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
-<!-- Slide 15b: How-To — OpenRouter (alternative) -->
+<!-- Slide 15b: ParentSync on Android -->
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <div class="howto-header">
     <div class="howto-title">
-      <h2>Alternative: OpenRouter</h2>
-      <p>One-stop shop for many LLM providers behind a single API key</p>
+      <h2>ParentSync on Android 🤖</h2>
+      <p>The same job on the phone that already has WhatsApp and your Google account on it</p>
     </div>
   </div>
 
   <div class="howto-cols">
     <div class="howto-col">
-      <h3>What is OpenRouter?</h3>
-      <p>A gateway to many AI models (GPT, Claude, Llama, Qwen, etc.) through a single API key. Useful if you already have credits there, or if you want to A/B test models without changing keys.</p>
+      <h3>How it reads WhatsApp</h3>
+      <p>Android has no WhatsApp Web to drive, so the app reads <strong>notifications</strong> instead (<code>NotificationListenerService</code>). You grant it once under Settings &rarr; Notifications, pick which group chats to watch, and new messages are captured as they arrive.</p>
       <div class="info-box">
-        <p>💡 Free models are available — typically labelled <code>:free</code>. They have rate limits but cost nothing.</p>
+        <p>🔒 Nothing is sent to WhatsApp and no message history is read — only notifications that arrive while the app is running.</p>
       </div>
     </div>
     <div class="howto-col">
-      <h3>How to get your API key</h3>
-      <ol class="steps">
-        <li>Go to <a href="https://openrouter.ai/keys"><strong>openrouter.ai/keys</strong></a></li>
-        <li>Sign up or log in (Google/GitHub)</li>
-        <li>Click <strong>"Create Key"</strong></li>
-        <li>Copy the key (starts with <code>sk-or-</code>)</li>
-        <li>Paste in ParentSync → Settings → OpenRouter → API Key</li>
-      </ol>
-      <a class="video-link" href="https://www.youtube.com/watch?v=JYw6yFzVi44" target="_blank" rel="noopener">📺 <strong>Video walkthrough</strong> — Get your OpenRouter API Key (YouTube)</a>
-      <p style="margin-top: 12px; font-size: 15px; color: #64748b;">You can fill both keys; the active provider is whichever the build is wired to (Gemini by default).</p>
+      <h3>What gets simpler</h3>
+      <p>The calendar needs <strong>no Google sign-in at all</strong>. The app writes through Android&rsquo;s own calendar provider, to the account already on the phone — so there is no OAuth, no consent screen, and no token to expire.</p>
+      <h3 style="margin-top: 18px;">Approving an event</h3>
+      <p>Instead of a WhatsApp card with a 👍, you get a <strong>notification with Approve / Reject buttons</strong> — one tap, and the event goes to the calendar.</p>
     </div>
   </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
+
+  <div class="info-box" style="margin-top: 18px;">
+    <p><strong>Worth knowing before you switch.</strong> Reading notifications means the phone only sees messages that arrive <em>while it is running</em> — there is no history to catch up on, long announcements may arrive shortened, and a <strong>muted</strong> group never notifies at all. Approving happens on this phone, not from any device signed into WhatsApp. Run the phone <em>instead of</em> the desktop app, not alongside it, or both will add the same event.</p>
+  </div>
+  <div class="slide-footer"><span>ParentSync — Android</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
 <!-- Slide 16: How-To — Google OAuth -->
@@ -695,11 +706,15 @@ function buildHTML() {
       <div class="arch-item"><div class="arch-label">Database</div><div class="arch-value">SQLite (local, no server)</div></div>
     </div>
     <div class="arch-row">
-      <div class="arch-item"><div class="arch-label">AI</div><div class="arch-value">Gemini (default) · OpenRouter swap-in</div></div>
+      <div class="arch-item"><div class="arch-label">AI</div><div class="arch-value">Google Gemini (text + image)</div></div>
       <div class="arch-item"><div class="arch-label">WhatsApp</div><div class="arch-value">whatsapp-web.js (Chromium)</div></div>
     </div>
+    <div class="arch-row">
+      <div class="arch-item"><div class="arch-label">Android Client</div><div class="arch-value">Kotlin + Compose, Room, WorkManager</div></div>
+      <div class="arch-item"><div class="arch-label">On Android</div><div class="arch-value">Notifications in · device calendar out</div></div>
+    </div>
   </div>
-  <p style="margin-top: 24px; font-size: 18px;">All data stored locally on your machine. No cloud servers, no accounts to create. Just download, configure, and run.</p>
+  <p style="margin-top: 24px; font-size: 18px;">All data stored locally on your own device. No cloud servers, no accounts to create. The two clients share a design, not a codebase — each uses what its platform actually offers.</p>
   <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
@@ -708,8 +723,8 @@ function buildHTML() {
   <div class="accent-bar"></div>
   <h2>Run on macOS 🍎</h2>
   <div class="download-row">
-    <a class="download-btn" href="${DL.dmgArm}">⬇️ Download — Apple Silicon <small>ParentSync-${VERSION}-arm64.dmg</small></a>
-    <a class="download-btn" href="${DL.dmgIntel}">⬇️ Download — Intel <small>ParentSync-${VERSION}.dmg</small></a>
+    <a class="download-btn" href="${DL.dmgArm}">⬇️ Download — Apple Silicon <small>ParentSync-${DOWNLOAD_VERSION}-arm64.dmg</small></a>
+    <a class="download-btn" href="${DL.dmgIntel}">⬇️ Download — Intel <small>ParentSync-${DOWNLOAD_VERSION}.dmg</small></a>
   </div>
   <div class="howto-cols">
     <div class="howto-col">
@@ -742,7 +757,7 @@ function buildHTML() {
   <div class="accent-bar"></div>
   <h2>Run on Windows 🪟</h2>
   <div class="download-row">
-    <a class="download-btn" href="${DL.exe}">⬇️ Download Installer <small>ParentSync-Setup-${VERSION}.exe</small></a>
+    <a class="download-btn" href="${DL.exe}">⬇️ Download Installer <small>ParentSync-Setup-${DOWNLOAD_VERSION}.exe</small></a>
   </div>
   <div class="howto-cols">
     <div class="howto-col">
@@ -776,8 +791,8 @@ function buildHTML() {
   <div class="accent-bar"></div>
   <h2>Run on Linux 🐧</h2>
   <div class="download-row">
-    <a class="download-btn" href="${DL.appImage}">⬇️ AppImage (any distro) <small>ParentSync-${VERSION}.AppImage</small></a>
-    <a class="download-btn" href="${DL.deb}">⬇️ .deb (Debian/Ubuntu) <small>parentsync_${VERSION}_amd64.deb</small></a>
+    <a class="download-btn" href="${DL.appImage}">⬇️ AppImage (any distro) <small>ParentSync-${DOWNLOAD_VERSION}.AppImage</small></a>
+    <a class="download-btn" href="${DL.deb}">⬇️ .deb (Debian/Ubuntu) <small>parentsync_${DOWNLOAD_VERSION}_amd64.deb</small></a>
   </div>
   <div class="howto-cols">
     <div class="howto-col">
@@ -785,8 +800,8 @@ function buildHTML() {
       <ol class="steps">
         <li>Click the AppImage download above</li>
         <li>Files need to be marked runnable first. Two ways:
-          <div class="step-detail"><strong>Mouse:</strong> Right-click → <strong>Properties</strong> → <strong>Permissions</strong> → check <strong>"Allow executing as a program"</strong>.<br><strong>Terminal:</strong> <code>chmod +x ParentSync-${VERSION}.AppImage</code></div></li>
-        <li><strong>Double-click</strong> it (or <code>./ParentSync-${VERSION}.AppImage</code>)</li>
+          <div class="step-detail"><strong>Mouse:</strong> Right-click → <strong>Properties</strong> → <strong>Permissions</strong> → check <strong>"Allow executing as a program"</strong>.<br><strong>Terminal:</strong> <code>chmod +x ParentSync-${DOWNLOAD_VERSION}.AppImage</code></div></li>
+        <li><strong>Double-click</strong> it (or <code>./ParentSync-${DOWNLOAD_VERSION}.AppImage</code>)</li>
       </ol>
     </div>
     <div class="howto-col">
@@ -794,7 +809,7 @@ function buildHTML() {
       <ol class="steps">
         <li>Click the .deb download above</li>
         <li>Double-click → opens in Software Center → <strong>Install</strong></li>
-        <li>Or terminal: <code>sudo dpkg -i parentsync_${VERSION}_amd64.deb</code></li>
+        <li>Or terminal: <code>sudo dpkg -i parentsync_${DOWNLOAD_VERSION}_amd64.deb</code></li>
         <li>Launch from your application menu</li>
       </ol>
       <h3 style="margin-top: 12px;">Auto-start on login (optional)</h3>
@@ -814,15 +829,17 @@ function buildHTML() {
     <tr><td><strong>Linux</strong></td><td>.deb (Debian/Ubuntu)</td><td>dpkg -i, run from app menu</td></tr>
     <tr><td>Windows</td><td>.exe (NSIS installer)</td><td>Double-click installer</td></tr>
     <tr><td>macOS</td><td>.dmg</td><td>Drag to Applications</td></tr>
+    <tr><td><strong>Android</strong></td><td>.apk (built from source)</td><td>Install, then grant notification access + calendar permission</td></tr>
   </table>
   <div class="code-block">
     # Build it yourself (any platform)<br>
     git clone <a href="https://github.com/ShaharBarMoshe/ParentSync.git" style="color:#7dd3fc;">https://github.com/ShaharBarMoshe/ParentSync.git</a><br>
     cd ParentSync &amp;&amp; ./setup.sh<br>
-    npm run package:linux # or :mac / :win
+    npm run package:linux # or :mac / :win<br>
+    cd android &amp;&amp; ./gradlew :app:assembleDebug # Android
   </div>
   <p style="margin-top: 20px; text-align: center; font-size: 18px; color: #64748b;">
-    Built with Electron | All data stored locally | Private use
+    Electron on the desktop · Kotlin + Compose on Android | All data stored locally | Private use
   </p>
   <div class="slide-footer"><span>ParentSync</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
@@ -1038,7 +1055,7 @@ function buildHTML() {
   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px;">
     <div class="warning-box">
       <p>⚠️ <strong>"Sync failed"</strong><br><br>
-      WhatsApp may be disconnected, or the LLM API key is missing/expired. Check Settings → WhatsApp status and Gemini / OpenRouter API key.</p>
+      WhatsApp may be disconnected, or the LLM API key is missing/expired. Check Settings → WhatsApp status and the Gemini API key.</p>
     </div>
     <div class="warning-box">
       <p>⚠️ <strong>"0 Events Created" after sync</strong><br><br>

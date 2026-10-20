@@ -273,12 +273,14 @@ svg text { font-family: var(--font-sans); }
   <p class="subtitle">
     End-to-end walkthrough — from raw WhatsApp / Gmail message to Google Calendar event,
     covering storage, semantic deduplication, LLM parsing, approval routing,
-    and reaction-driven feedback loops.
+    and the approval state machine.
+    <br><span style="opacity:.8;font-size:.92em">Describes the <strong>desktop</strong> pipeline. The Android client runs the same
+    shape on different primitives — see <a href="ANDROID.md" style="color:inherit">ANDROID.md</a>.</span>
   </p>
   <div class="meta">
-    <div class="meta-item"><div class="dot-sm"></div> Phase 20 — Semantic Dedup</div>
+    <div class="meta-item"><div class="dot-sm"></div> Written at Phase 20 — see ARCHITECTURE.md for current</div>
     <div class="meta-item"><div class="dot-sm"></div> NestJS + SQLite + Gemini embeddings</div>
-    <div class="meta-item"><div class="dot-sm"></div> Electron desktop app</div>
+    <div class="meta-item"><div class="dot-sm"></div> Electron desktop app (Android: ANDROID.md)</div>
     <div class="meta-item"><div class="dot-sm" style="background:var(--yellow)"></div> 8 Architectural concerns flagged</div>
   </div>
 </div>
@@ -710,6 +712,15 @@ svg text { font-family: var(--font-sans); }
 <div class="slide">
   <div class="slide-tag">Stage 5 — Event Creation</div>
   <h2>Event Creation &amp; 3-Layer Deduplication</h2>
+  <div class="warn" style="margin-bottom:12px">
+    <div class="icon">ℹ️</div>
+    <div>Written at Phase 20. Since then a <strong>calendar-overlap layer</strong> (Phase 23) was added
+    ahead of the Google write, and the sync orchestration moved into a <strong>LangGraph</strong>
+    (Phase 26) — the stages below still run, but no longer as a straight-line service call.
+    Current layering: <a href="ARCHITECTURE.md">ARCHITECTURE.md</a> ·
+    <a href="semantic-dedup.md">semantic-dedup.md</a> ·
+    <a href="LANGCHAIN-LANGGRAPH.md">LANGCHAIN-LANGGRAPH.md</a>.</div>
+  </div>
   <div class="cols">
     <div class="col" style="flex:1.1">
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Three independent dedup mechanisms prevent the same real-world event from appearing twice.</p>
@@ -1015,7 +1026,7 @@ svg text { font-family: var(--font-sans); }
 ══════════════════════════════════════════════════════════════════ -->
 <div class="slide">
   <div class="slide-tag">Feedback Loop</div>
-  <h2>NegativeExample Feedback Loop</h2>
+  <h2>NegativeExample Capture <span style="font-size:13px;font-weight:400;opacity:.75">(feedback loop retired in v1.4.0)</span></h2>
   <div class="cols">
     <div class="col" style="flex:1.2">
       <svg viewBox="0 0 480 300" width="100%" style="max-height:275px">
@@ -1053,7 +1064,7 @@ svg text { font-family: var(--font-sans); }
 
         <!-- Next sync -->
         <rect x="80" y="234" width="360" height="36" rx="6" fill="#1a3a1f" stroke="#3fb950" stroke-width="1.5"/>
-        <text x="260" y="250" text-anchor="middle" font-size="11" fill="#3fb950" font-weight="600">Next LLM call includes NegativeExamples in prompt</text>
+        <text x="260" y="250" text-anchor="middle" font-size="11" fill="#8b949e" font-weight="600">Stored for the user's reference — NOT sent to the LLM</text>
         <text x="260" y="264" text-anchor="middle" font-size="10" fill="#8b949e">LLM is told: "do NOT extract events like these"</text>
 
         <!-- Curved arrow back to top -->
@@ -1064,11 +1075,11 @@ svg text { font-family: var(--font-sans); }
     <div class="col" style="flex:0.9; gap:10px;">
       <div class="card blue">
         <h3>Purpose</h3>
-        <p>When the user rejects an event (😢), it means the LLM extracted something it shouldn't have. The NegativeExample captures what was in the message and feeds it back as a "do not do this" example in subsequent prompts — improving precision over time.</p>
+        <p>When the user rejects an event (😢), it means the LLM extracted something it shouldn't have, and the NegativeExample captures what was in the message. <strong>It is no longer fed back into the prompt.</strong> That loop was retired in v1.4.0: the model largely ignored the appended block, it broke the parse cache's hit rate (every new rejection changed the prompt, invalidating every cached entry), and it grew every single parse request. Rejections are still recorded and visible to the user; precision is steered instead through the editable classifier and extractor prompts — see <a href="PROMPT-CUSTOMIZATION.md">Prompt Customization</a>.</p>
       </div>
       <div class="card yellow">
         <h3>⚠ Silent truncation at 50</h3>
-        <p>The pool is capped at 50 entries. When the cap is reached, the oldest entry is dropped silently. There is no UI indicator that older negative examples have been discarded — the user can't know that the LLM has "forgotten" a rejection.</p>
+        <p>The pool is capped at 50 entries and the oldest is dropped when it fills. With the loop retired this no longer affects extraction at all — nothing is "forgotten" by the LLM, because nothing was being told to it.</p>
       </div>
       <div class="card">
         <h3>Undo-reaction cleans up</h3>
