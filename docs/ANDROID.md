@@ -91,6 +91,31 @@ causes, all of which matter more on a phone:
 exact cosine, so the size win costs nothing that could move a score across the
 dedup threshold.
 
+### Duplicate suppression
+
+Two layers, and the first is the one that pays for itself. The same school flyer
+forwarded into three class groups arrives as three separate notifications with
+three different `sourceKey`s, so without a pre-LLM check each copy is its own
+paid extraction.
+
+| Layer | Where | Catches |
+|---|---|---|
+| `sourceKey` unique index | ingest | The same message **re-delivered**. WhatsApp re-posts a whole conversation each time it grows, so this fires constantly |
+| SHA-256 of the content | `MessageDeduplicationService`, before the LLM | A byte-identical forward. **No network call at all** |
+| Embedding similarity | same, before the LLM | A forward that gained a "FYI 👆" line. One embedding call, scored against a bounded pool |
+| `dedupeKey` (title+date+child) | event creation | The LLM producing the same event twice across passes |
+
+`MessageDeduplicationService` **never throws**. If the embedding call fails the
+message is treated as fresh and goes to the LLM — an occasional duplicate event
+is a nuisance, a dropped event is a missed school trip. Same fail-open contract
+as the desktop service.
+
+Embeddings are requested at **768 dimensions**, not the desktop's 3072. The model
+is Matryoshka-trained so a truncated vector is still usable, and on a phone it is
+4× less to store and 4× less to score per candidate. `EmbeddingCodec` refuses to
+score vectors of differing length, so changing this can never silently compare
+across dimensionalities.
+
 Other things done for the sake of a phone, rather than ported:
 
 - **Bounded queries.** The dedup candidate pool is limited by both a time window
@@ -238,13 +263,19 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-30 unit tests pass.
+**94 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
+the dedup service (15), the embedding codec (8), and the own-notification guard
+(2).
 
 ### Not yet verified
 
-- **The Gemini extraction call** — no API key was available, so the request and
-  response shape are unexercised against the live service. This is the only part
-  of the pipeline with no on-device coverage.
+- **The Gemini extraction call** — the request and response shape are pinned by
+  `GeminiClientTest` against a local HTTP server, but no call has been made to
+  the live service for want of an API key.
+- **Dedup on a device.** 15 unit tests cover the rules, but the on-device path is
+  unreached without a key: the worker returns early when the LLM is
+  unconfigured, before the dedup check. Add a key and it runs.
 - **Real WhatsApp notification shapes.** The harness reproduces the documented
   MessagingStyle structure, not a specific WhatsApp build's actual output. First
   thing to check on a real phone: `adb shell setprop log.tag.PSListener VERBOSE`

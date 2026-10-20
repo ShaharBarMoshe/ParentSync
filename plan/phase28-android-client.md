@@ -113,8 +113,10 @@ Verified on an Android 16 (API 36) emulator through the real listener:
 - [x] Approval notification posted with two actions; tapping Approve in the shade settles the event
 - [x] Approved event written to the real `CalendarContract` provider at the right local time, with a reminder
 - [x] No API key → "no Gemini key configured", messages left queued, nothing discarded
-- [x] 30 JVM unit tests green
-- [ ] **Live Gemini extraction call** — needs an API key; the only pipeline step with no on-device coverage
+- [x] **Semantic dedup before the LLM** — SHA-256 fast path, embedding fallback, fail-open
+- [x] 94 JVM unit tests green (parser, ingest, DAOs on real SQLite, Gemini contract, dedup, codec)
+- [ ] **Live Gemini extraction call** — shape is pinned against a MockWebServer, but no call to the real service yet (needs a key)
+- [ ] **Dedup exercised on a device** — unit-tested, but the worker returns early before it when no API key is configured
 - [ ] **Real WhatsApp notification shapes** on a physical phone
 - [ ] **Gmail** — `play-services-auth` + Gmail REST are wired as dependencies; sign-in and fetch not implemented, needs an OAuth client id
 - [ ] **Release build / R8** — debug only so far

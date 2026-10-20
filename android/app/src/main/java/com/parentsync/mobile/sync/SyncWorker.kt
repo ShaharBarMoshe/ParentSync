@@ -143,6 +143,30 @@ class SyncWorker(
         var createdCount = 0
 
         for (message in pending) {
+            // Dedup *before* the LLM — that is the whole point. The same flyer
+            // forwarded into three class groups arrives as three messages, and
+            // without this each one is its own paid extraction producing its own
+            // event, caught only later at event level.
+            val decision = container.dedup.check(message.content, System.currentTimeMillis())
+            // Store the hash and vector either way, so this message becomes a
+            // candidate for the next one even when it was itself a duplicate.
+            runCatching {
+                container.db.messages()
+                    .setEmbedding(message.id, decision.embedding, decision.contentHash)
+            }.onFailure { Log.w(TAG, "could not store embedding for ${message.id}", it) }
+
+            if (decision.isDuplicate) {
+                Log.i(
+                    TAG,
+                    "skipping message ${message.id}: ${decision.reason} " +
+                        "(duplicate of ${decision.duplicateOfId})",
+                )
+                // Marked parsed so it is not reconsidered every pass. No event
+                // is created — the original already produced one.
+                settled += message.id
+                continue
+            }
+
             val extracted = try {
                 container.gemini.extractEvents(
                     messageText = message.content,

@@ -16,6 +16,18 @@ import kotlinx.coroutines.flow.map
 import java.util.concurrent.TimeUnit
 
 /**
+ * The one thing the ingest path needs from the scheduler.
+ *
+ * Narrow on purpose: `MessageIngestor` runs on the notification callback and
+ * only ever asks for a pass soon. Depending on the whole WorkManager-backed
+ * scheduler would drag an Android service into a class whose logic — watch
+ * lists, truncation, duplicate rejection — is plain Kotlin.
+ */
+fun interface SyncTrigger {
+    fun requestSoon()
+}
+
+/**
  * Decides when a sync pass runs.
  *
  * The desktop build syncs hourly on a cron between 09:00 and 21:00, because it
@@ -30,7 +42,7 @@ import java.util.concurrent.TimeUnit
  * short initial delay means the first message schedules the pass and the rest
  * ride along.
  */
-class SyncScheduler(private val context: Context) {
+class SyncScheduler(private val context: Context) : SyncTrigger {
 
     private val workManager: WorkManager get() = WorkManager.getInstance(context)
 
@@ -40,7 +52,7 @@ class SyncScheduler(private val context: Context) {
      * KEEP, not REPLACE: REPLACE would push the run further out on every new
      * message, so a busy group could starve the pass indefinitely.
      */
-    fun requestSoon() {
+    override fun requestSoon() {
         val request = OneTimeWorkRequestBuilder<SyncWorker>()
             .setInitialDelay(COALESCE_WINDOW_SECONDS, TimeUnit.SECONDS)
             .setConstraints(networkConstraints())

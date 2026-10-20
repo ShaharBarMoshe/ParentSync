@@ -9,6 +9,7 @@ import com.parentsync.mobile.ingest.NotificationPayload
 import com.parentsync.mobile.ingest.WhatsAppNotificationParser
 import com.parentsync.mobile.sync.Notifications
 import com.parentsync.mobile.sync.SyncScheduler
+import com.parentsync.mobile.sync.SyncTrigger
 import java.util.UUID
 
 /**
@@ -22,7 +23,7 @@ import java.util.UUID
 class MessageIngestor(
     private val messages: MessageDao,
     private val settings: SettingsStore,
-    private val scheduler: SyncScheduler,
+    private val scheduler: SyncTrigger,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
 

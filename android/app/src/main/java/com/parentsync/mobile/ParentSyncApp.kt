@@ -14,7 +14,9 @@ import com.parentsync.mobile.data.db.ParentSyncDatabase
 import com.parentsync.mobile.data.media.ImageStore
 import com.parentsync.mobile.data.settings.SettingsStore
 import com.parentsync.mobile.llm.GeminiClient
+import com.parentsync.mobile.llm.GeminiEmbeddingClient
 import com.parentsync.mobile.sync.ApprovalManager
+import com.parentsync.mobile.sync.MessageDeduplicationService
 import com.parentsync.mobile.sync.Notifications
 import com.parentsync.mobile.sync.SyncScheduler
 import com.parentsync.mobile.sync.SyncWorker
@@ -55,6 +57,14 @@ class AppContainer(private val context: Context) {
 
     val messageIngestor: MessageIngestor by lazy {
         MessageIngestor(db.messages(), settings, scheduler)
+    }
+
+    val embeddings: GeminiEmbeddingClient by lazy {
+        GeminiEmbeddingClient(apiKey = BuildConfig.GEMINI_API_KEY)
+    }
+
+    val dedup: MessageDeduplicationService by lazy {
+        MessageDeduplicationService(db.messages(), embeddings, settings)
     }
 }
 
