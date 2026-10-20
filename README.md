@@ -1,6 +1,8 @@
 # ParentSync
 
-> A cross-platform desktop app that watches your WhatsApp parent groups and Gmail, uses an LLM to pull out the actual events (field trips, deadlines, doctor visits), routes each one through a WhatsApp approval channel, and syncs the survivors to a family Google Calendar.
+> Watches your WhatsApp parent groups and Gmail, uses an LLM to pull out the actual events (field trips, deadlines, doctor visits), routes each one through an approval step, and syncs the survivors to a family Google Calendar.
+>
+> Two clients: a cross-platform **Electron desktop app** (primary), and a native **Android app** that reads WhatsApp through `NotificationListenerService` and writes the calendar already signed in on the phone.
 
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)](https://claude.com/claude-code)
 [![Docs site](https://img.shields.io/badge/docs-shaharbarmoshe.github.io%2FParentSync-2563eb)](https://shaharbarmoshe.github.io/ParentSync/)
@@ -9,12 +11,14 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-TypeORM-003B57?logo=sqlite&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.2-7F52FF?logo=kotlin&logoColor=white)
+![Android](https://img.shields.io/badge/Android-16%20(API%2036)-3DDC84?logo=android&logoColor=white)
 
 📊 **[View the interactive presentation →](https://shaharbarmoshe.github.io/ParentSync/presentation.html)** · [PDF](https://shaharbarmoshe.github.io/ParentSync/ParentSync-Presentation.pdf) · [Message pipeline →](https://shaharbarmoshe.github.io/ParentSync/message-pipeline.html) · [Docs site](https://shaharbarmoshe.github.io/ParentSync/)
 
-### Download v1.0.2
+### Download v1.1.2
 
-| 🍎 macOS — [Apple Silicon](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2-arm64.dmg) · [Intel](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.dmg) | 🪟 [Windows](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-Setup-1.0.2.exe) | 🐧 Linux — [AppImage](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.AppImage) · [.deb](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/parentsync_1.0.2_amd64.deb) |
+| 🍎 macOS — [Apple Silicon](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2-arm64.dmg) · [Intel](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.dmg) | 🪟 [Windows](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-Setup-1.1.2.exe) | 🐧 Linux — [AppImage](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.AppImage) · [.deb](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/parentsync_1.1.2_amd64.deb) |
 |---|---|---|
 
 Run instructions per platform: see the [User Guide](docs/USER-GUIDE.md#download) or the [Quick Start slides](https://shaharbarmoshe.github.io/ParentSync/presentation.html#21). Mac/Win builds are unsigned — first launch needs right-click → Open (Mac) / "Run anyway" (SmartScreen).
@@ -42,6 +46,7 @@ It's also a deliberately end-to-end engineering exercise: a real Electron app wi
 - **Multi-layer duplicate suppression** — (1) **semantic message dedup** with Gemini embeddings catches forwarded flyers before the LLM ever sees them (SHA-256 hash fast-path; cosine-similarity fallback, default threshold 0.92); (2) **exact event dedup** skips creating rows that already exist; (3) **LLM event dedup** asks the LLM whether two same-slot events refer to the same gathering — catches "same gathering, different framing." ([docs](docs/semantic-dedup.md))
 - **OAuth 2.0 done properly** — PKCE, CSRF state, encrypted token storage at rest, refresh-on-expiry. ([writeup](docs/ARCHITECTURE.md))
 - **80%+ test coverage** — unit tests via NestJS `Test.createTestingModule()`, Supertest e2e, Vitest on the frontend, real Puppeteer browser tests for the desktop UI.
+- **Native Android client** — the same pipeline on a phone, where the platform forbids half of it: no WhatsApp message history (notifications are forward-only and truncate long messages), no way to send to an arbitrary chat, and so no approval card — replaced by a local notification with Approve/Reject. The calendar, conversely, gets *simpler*: `CalendarContract` writes to the account already on the device, deleting the entire OAuth path. Storage was rebuilt for a phone after measuring the desktop DB at 40 MB for 100 messages — embeddings went from ~39 KB of JSON per row to a 3 KB quantised blob. ([docs](docs/ANDROID.md))
 - **Built with [Claude Code](https://claude.com/claude-code)** — this repo is also a case study in agentic development: see the phased implementation plan under [`plan/`](plan/) and the reusable skills/rules in [`.agents/skills/`](.agents/skills/).
 
 ## Architecture at a glance
@@ -69,7 +74,19 @@ It's also a deliberately end-to-end engineering exercise: a real Electron app wi
 
 Each NestJS feature module owns its domain (entities, repositories, services, controllers). External services are accessed only through interfaces — `IGmailService`, `IGoogleCalendarService`, `ILLMService`, `IMessageRepository`, `ISettingsRepository` — wired via DI tokens, so tests swap in mocks with `Test.createTestingModule().overrideProvider()`.
 
-Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
+The Android client is the same pipeline against different primitives:
+
+```
+NotificationListenerService ─> MessageIngestor ─> Room ─> SyncWorker ─> CalendarContract
+   (WhatsApp, read-only)                         (+files   (WorkManager,   (on-device
+                                                 for images) 45s coalesce)  Google account)
+                                                                 │
+                                                                 └─> ApprovalManager
+                                                                     (local notification)
+```
+
+Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**; the Android
+differences and their reasons: **[`docs/ANDROID.md`](docs/ANDROID.md)**.
 
 ## Tech Stack
 
@@ -83,18 +100,26 @@ Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 | WhatsApp | `whatsapp-web.js` with in-app QR onboarding, persisted session |
 | Email & Calendar | Gmail API & Google Calendar API (OAuth 2.0 + PKCE) |
 | Testing | Jest, Supertest, Vitest, Puppeteer |
+| Android | Kotlin 2.2 + Jetpack Compose (Material 3), Room, WorkManager, Gradle 8.14 / AGP 8.13, `compileSdk` 36 / `minSdk` 29 |
 
 ## Documentation
 
 | Doc | What's inside |
 |---|---|
-| [Architecture](docs/ARCHITECTURE.md) | Module boundaries, ports & adapters, sync orchestration |
+| [Architecture](docs/ARCHITECTURE.md) | Module boundaries, ports & adapters, sync orchestration, and how the two clients relate |
+| [Android client](docs/ANDROID.md) | The native port: notification ingestion, no-OAuth calendar, storage rebuilt for a phone, and what the platform makes impossible |
 | [User Guide](docs/USER-GUIDE.md) | What the app actually does, end-user perspective |
 | [Onboarding](docs/ONBOARDING.md) | First-run flow: OAuth, WhatsApp QR, settings |
 | [Prompt Customization](docs/PROMPT-CUSTOMIZATION.md) | Editing the LLM prompt, the 😢-feedback loop, cache behavior |
 | [Event Dismissal](docs/EVENT-DISMISSAL.md) | Cancel / delay detection design |
 | [Event Reminders](docs/EVENT-REMINDERS.md) | The 24h-before-event reminder pipeline |
 | [Google Tasks](docs/GOOGLE-TASKS.md) | Timed events vs. date-only tasks |
+| [Semantic dedup](docs/semantic-dedup.md) | Embedding pre-filter and the five duplicate-suppression layers |
+| [WhatsApp resilience](docs/WHATSAPP-RESILIENCE.md) | Every WhatsApp Web breakage so far and the page-level patch for each |
+| [Google auth](docs/GOOGLE-AUTH.md) | Two accounts, the 7-day refresh expiry, connection states |
+| [LangChain & LangGraph](docs/LANGCHAIN-LANGGRAPH.md) | The AI ports, the chains behind them, and the event-sync graph |
+| [Observability](docs/OBSERVABILITY.md) | Reading a sync trace, and what leaves the machine with tracing on |
+| [Production smoke test](docs/PRODUCTION-SMOKE-TEST.md) | The end-to-end self-test that runs on deploy and daily |
 | [Message pipeline](https://shaharbarmoshe.github.io/ParentSync/message-pipeline.html) | End-to-end sync flow: ingest → dedup → LLM parse → approval → calendar |
 | [Implementation plan](plan/README.md) | The phased plan that drove development |
 
@@ -134,6 +159,10 @@ cd frontend && npm run dev         # → :5173
 npm run package:linux    # AppImage + .deb
 npm run package:win      # NSIS .exe
 npm run package:mac      # .dmg
+
+# Android
+cp android/secrets.properties.example android/secrets.properties   # add geminiApiKey
+cd android && ./gradlew :app:assembleDebug
 ```
 
 ### Test
@@ -143,7 +172,13 @@ npm test                      # backend unit + e2e + frontend
 cd backend  && npm test       # backend unit tests
 cd backend  && npm run test:e2e
 cd frontend && npm test       # vitest
+
+cd android && ./gradlew :app:testDebugUnitTest   # Android JVM unit tests
 ```
+
+Verifying Android on an emulator needs `-memory 4096` and a debug harness to
+stand in for WhatsApp (a notification's package cannot be spoofed). Both are
+covered in [`docs/ANDROID.md`](docs/ANDROID.md#testing-on-the-emulator).
 
 ## Project Layout
 
@@ -153,6 +188,8 @@ parentsync/
 ├── backend/          NestJS API — feature modules (settings, messages,
 │                     calendar, llm, sync, auth, monitor, shared)
 ├── frontend/         React + Vite UI (pages, components, services)
+├── android/          Native Android client — Kotlin + Compose, Room,
+│                     WorkManager (independent of backend/ and frontend/)
 ├── assets/           App icons (.ico / .icns / .png)
 ├── docs/             Architecture, user guide, feature designs, screenshots
 ├── plan/             Phased implementation plan (used to drive Claude Code)

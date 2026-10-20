@@ -77,7 +77,7 @@
 <div class="wrap">
   <header>
     <h1>ParentSync</h1>
-    <p class="tagline">A cross-platform desktop app that watches your WhatsApp parent groups and Gmail, uses an LLM to pull out the actual events, routes each one through an optional approval channel, and syncs the survivors to a family Google Calendar.</p>
+    <p class="tagline">Watches your WhatsApp parent groups and Gmail, uses an LLM to pull out the actual events, routes each one through an approval step, and syncs the survivors to a family Google Calendar. A cross-platform Electron desktop app, plus a native Android client that reads WhatsApp through notifications and writes the calendar already signed in on the phone.</p>
     <div class="badges">
       <a href="https://github.com/ShaharBarMoshe/ParentSync"><img src="https://img.shields.io/badge/github-ShaharBarMoshe%2FParentSync-181717?logo=github" alt="GitHub repo"></a>
       <img src="https://img.shields.io/badge/built%20with-Claude%20Code-D97757" alt="Built with Claude Code">
@@ -85,31 +85,31 @@
   </header>
 
   <section style="margin-bottom: 24px;">
-    <h2 style="font-size: 22px; margin: 0 0 12px;">Download v1.0.2</h2>
+    <h2 style="font-size: 22px; margin: 0 0 12px;">Download v1.1.2</h2>
     <div class="grid" style="margin-bottom: 0;">
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2-arm64.dmg">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2-arm64.dmg">
         <div class="label">🍎 macOS — Apple Silicon</div>
-        <h3>ParentSync-1.0.2-arm64.dmg</h3>
+        <h3>ParentSync-1.1.2-arm64.dmg</h3>
         <p>M-series Macs (M1/M2/M3/M4). First launch: right-click → Open.</p>
       </a>
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.dmg">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.dmg">
         <div class="label">🍎 macOS — Intel</div>
-        <h3>ParentSync-1.0.2.dmg</h3>
+        <h3>ParentSync-1.1.2.dmg</h3>
         <p>Older Intel Macs. Same first-launch flow.</p>
       </a>
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-Setup-1.0.2.exe">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-Setup-1.1.2.exe">
         <div class="label">🪟 Windows 10 / 11</div>
-        <h3>ParentSync-Setup-1.0.2.exe</h3>
+        <h3>ParentSync-Setup-1.1.2.exe</h3>
         <p>NSIS installer. SmartScreen → "More info" → "Run anyway."</p>
       </a>
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.AppImage">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.AppImage">
         <div class="label">🐧 Linux — any distro</div>
-        <h3>ParentSync-1.0.2.AppImage</h3>
+        <h3>ParentSync-1.1.2.AppImage</h3>
         <p><code>chmod +x</code> and double-click. Portable; no installer.</p>
       </a>
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/parentsync_1.0.2_amd64.deb">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/parentsync_1.1.2_amd64.deb">
         <div class="label">🐧 Debian / Ubuntu</div>
-        <h3>parentsync_1.0.2_amd64.deb</h3>
+        <h3>parentsync_1.1.2_amd64.deb</h3>
         <p><code>sudo dpkg -i</code> or double-click in your file manager.</p>
       </a>
       <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/latest" style="display:flex; align-items:center; justify-content:center; text-align:center;">
@@ -206,6 +206,18 @@
       <div class="label">Architecture</div>
       <h3>LangChain &amp; LangGraph</h3>
       <p>How the AI layer is built — the four ports, the chains behind them, and the sync graph.</p>
+    </a>
+
+    <a class="card" href="ANDROID.md">
+      <div class="label">Architecture</div>
+      <h3>Android Client</h3>
+      <p>The native port: WhatsApp via notifications, the calendar with no OAuth, and the two desktop features the platform makes impossible.</p>
+    </a>
+
+    <a class="card" href="PRODUCTION-SMOKE-TEST.md">
+      <div class="label">Operations</div>
+      <h3>Production Smoke Test</h3>
+      <p>The end-to-end self-test that runs on deploy and daily — what each step proves, and how it cleans up after itself.</p>
     </a>
   </section>
 

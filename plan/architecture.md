@@ -1,5 +1,10 @@
 # Architecture Overview
 
+> Scope: this document covers the **desktop backend** (NestJS). It predates the
+> Android client, which shares the design but none of the framework — see
+> [`docs/ANDROID.md`](../docs/ANDROID.md) and the "Android Client" section of
+> [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md).
+
 **Architecture Pattern**: Clean Architecture + Hexagonal (Ports & Adapters) on **NestJS**
 
 This project uses **NestJS** as the backend framework, leveraging its built-in support for dependency injection, modules, guards, interceptors, and pipes. The architecture follows Clean Architecture principles organized into **NestJS feature modules** (not technical layers).

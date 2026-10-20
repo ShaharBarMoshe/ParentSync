@@ -1,6 +1,31 @@
 # Architecture
 
-ParentSync is a private-use desktop application built with Electron, wrapping a NestJS backend and React frontend into a single executable.
+ParentSync is a private-use family task manager that reads school WhatsApp groups
+and Gmail, extracts events with an LLM, and syncs approved ones to a Google
+Calendar.
+
+It exists as **two independent clients**:
+
+| | Desktop | Android |
+|---|---|---|
+| Shell | Electron, wrapping a NestJS backend and React frontend in one executable | Native Kotlin + Compose app |
+| Code | `backend/`, `frontend/`, `electron/` | `android/` |
+| WhatsApp | `whatsapp-web.js` driving a headless Chromium against WhatsApp Web | `NotificationListenerService` |
+| Calendar | Google Calendar REST + OAuth 2.0 | `CalendarContract`, against the account already on the phone — no OAuth |
+| Approval | Card with an `.ics` posted to a WhatsApp channel, 👍 reaction approves | Local notification with Approve / Reject, plus an in-app list |
+| Storage | SQLite via TypeORM | SQLite via Room |
+| Status | Primary, in daily use (v1.5.5) | Runnable vertical slice; see [ANDROID.md](ANDROID.md) for what is and is not verified |
+
+They are deliberately **not** a shared codebase. The two platforms disagree on so
+much — how messages arrive, whether OAuth is needed, whether an arbitrary
+WhatsApp message can be sent at all — that the honest shared artefact is the
+*design*, not the code: the same pipeline shape, the same approve-before-publish
+guarantee, the same multi-layer duplicate suppression, each expressed in the
+idioms of its platform.
+
+The rest of this document describes the desktop architecture, which is the
+reference implementation. [ANDROID.md](ANDROID.md) covers the Android client and,
+more usefully, **why it had to differ**.
 
 ## How It Fits Together
 
@@ -68,6 +93,8 @@ ParentSync is a private-use desktop application built with Electron, wrapping a 
 | `SyncModule` | Scheduled sync orchestration, the event-sync **LangGraph** (`sync/graph/`), WhatsApp approval channel, **`MessageDeduplicationService` (semantic pre-filter)** |
 | `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) — see [GOOGLE-AUTH.md](GOOGLE-AUTH.md) |
 | `MonitorModule` | Analytics aggregation, charts data |
+| `HealthModule` | `/api/health` liveness + DB check, resolved app version |
+| `SystemModule` | Uninstall script generation (Linux/macOS/Windows), app-level system actions |
 | `SharedModule` | Common entities, config, utilities, crypto, logging |
 
 ### Ports & Adapters (Dependency Injection)
@@ -212,6 +239,85 @@ The Electron main process (`electron/main.ts`):
   - `.encryption_key` — OAuth token encryption key
   - `app-config.json` — Window bounds, first-run flag
 
+## Android Client
+
+Full detail in [ANDROID.md](ANDROID.md); this is the shape of it and how it maps
+onto the desktop design above.
+
+```
+  ┌──────────────────────────────────────────────────────────────┐
+  │                     ParentSync (Android)                     │
+  │                                                              │
+  │  NotificationListenerService ──> MessageIngestor ──> Room    │
+  │   (bound by the OS, fires for          │                     │
+  │    every notification on the device)   │ requestSoon()       │
+  │                                        v                     │
+  │                                   SyncScheduler              │
+  │                                   (WorkManager,              │
+  │                                    45s coalesce)             │
+  │                                        │                     │
+  │                                        v                     │
+  │   Compose UI  <────────────────>   SyncWorker                │
+  │   (approvals,                      ├─> GeminiClient (REST)   │
+  │    upcoming,                       ├─> ApprovalManager       │
+  │    settings)                       │     (local notification)│
+  │                                    └─> DeviceCalendarRepo    │
+  └──────────────────────────────────────────┬───────────────────┘
+                                             │
+                      ┌──────────────────┬───┴────────────┐
+                      │                  │                │
+                ┌─────┴─────┐     ┌──────┴──────┐  ┌─────┴────┐
+                │  Room     │     │ Calendar    │  │  Gemini  │
+                │  (SQLite) │     │ Contract    │  │  (REST)  │
+                │           │     │ (on-device  │  │          │
+                │ + files   │     │  Google     │  │          │
+                │ for images│     │  account)   │  │          │
+                └───────────┘     └─────────────┘  └──────────┘
+```
+
+### Layer mapping
+
+| Desktop | Android | Note |
+|---|---|---|
+| `SyncService` + cron (hourly, 09:00–21:00) | `SyncWorker` + `SyncScheduler` | Inverted: messages arrive by push, so a pass runs ~45 s after one lands. The periodic pass (6 h) is only a safety net |
+| `WhatsAppService` (Puppeteer) | `ParentSyncNotificationListener` + `WhatsAppNotificationParser` | The parser is pure Kotlin and unit-tested; only the thin `StatusBarNotification` → `NotificationPayload` lift touches Android |
+| `GoogleCalendarService` + `AuthModule` | `DeviceCalendarRepository` | The whole OAuth path disappears |
+| `ApprovalService` (WhatsApp channel + reactions) | `ApprovalManager` + `ApprovalActionReceiver` | Had to be replaced, not ported — there is no way to send to an arbitrary chat |
+| `LlmModule` (LangChain chains, `ChainRunner`) | `GeminiClient` (plain REST) | WorkManager already supplies the retry/backoff ladder `ChainRunner` exists to give a long-lived process |
+| NestJS DI | `AppContainer` (lazy singletons) | A dozen singletons, no scopes — Hilt would add codegen to express `by lazy` |
+| TypeORM entities | Room entities | Schema differs where storage had to change; see below |
+
+### Storage differences, and why
+
+Measured on the live desktop database — **40 MB holding 100 messages** — three
+things that are acceptable on a laptop and not on a phone:
+
+| | Desktop | Android |
+|---|---|---|
+| Embeddings | 3072-dim as JSON text, **~39 KB/row**; a dedup pass parses up to 1000 of them | Quantised int8 blob, **3 076 bytes**, compared without allocating (`EmbeddingCodec`) |
+| Images | base64 JSON inline in `messages` — **10.6 MB for 22 rows** | Files under `filesDir/message-images`; the row keeps a filename |
+| `sync_logs` | **2934 rows**, unbounded | Capped at 200, pruned every pass |
+| Messages | kept forever | 45-day retention; **events are kept** — the calendar entry is the product, the message only the evidence |
+
+A test pins the quantised similarity within **0.001** of exact cosine, so the
+12.7× size win cannot move a score across the dedup threshold.
+
+### What the platform took away
+
+Worth stating plainly, because these are capability losses rather than design
+choices:
+
+- **No message history.** A notification exists only for a message that arrived
+  while the listener was running. There is no backfill.
+- **Long messages arrive truncated** — and the long ones are exactly the ones
+  carrying events. The marker `[…truncated by WhatsApp]` is appended and the
+  extractor is instructed to return an empty date rather than guess.
+- **Muted chats never notify**, so they are never captured.
+- **Approval is phone-local.** No approving from another device signed into
+  WhatsApp.
+- **Calendar writes are unacknowledged.** The provider returns a local row id;
+  whether Google accepted it is never reported back.
+
 ## Key Design Decisions
 
 | Decision | Why |
@@ -229,3 +335,6 @@ The Electron main process (`electron/main.ts`):
 | Event sync coalesces concurrent passes | `syncAll()` emits `sync.completed`, whose `@OnEvent` handler runs `syncEvents()` without being awaited, and the Dashboard calls `POST /api/sync/events` immediately after `POST /api/sync/manual`. Two passes started ~90ms apart, both called `findUnparsed()` before either marked anything parsed, and both created events — near-identical duplicates from a single source message that no dedup layer catches, because they are built concurrently from the same input. `syncEvents()` now returns the in-flight pass to any second caller instead of starting a rival one. `syncAll()`'s `SyncLockService` never covered this path. |
 | Centralised AppErrorEmitterService with per-code dedupe | One source of truth for what bubbles up to the frontend ErrorModal; retry loops can't flood the modal |
 | Inline SVG icon system | Zero dependencies, type-safe, no icon font overhead |
+| Two native clients rather than one shared codebase (or a webview wrapping the desktop UI) | A webview would need the backend reachable from the phone, and `whatsapp-web.js` cannot run on Android at all — so the "shared" core would have been everything except the two parts that actually differ. The platforms disagree on how messages arrive, whether OAuth is needed, and whether a WhatsApp message can be sent at all; sharing code across that would mean an abstraction whose two implementations have nothing in common. What is shared is the design: same pipeline shape, same approve-before-publish guarantee, same dedup layering. See [ANDROID.md](ANDROID.md) |
+| Android never ingests its own notifications | The app's own notifications are notifications. Without a guard, the alert saying "N captured messages cannot be read" is itself read as a message, which raises N, which re-posts the alert. Observed on the emulator: one real message became 100 rows, and with a key configured each would have cost an LLM call. `MessageIngestor` drops anything on `Notifications.OWN_CHANNELS` *before* the source check, and deliberately not overridable — a watch list is the user's business, reading our own output never is |
+| Android ships no `default_filter_types` on the listener | Declaring it narrows what the OS delivers, and a WhatsApp notification is not reliably classified as a "conversation" (that needs a shortcut id). With the filter present the service binds, reports connected, and then receives **nothing** — indistinguishable from the user never having granted access. Filtering by package in `onNotificationPosted` costs nothing and cannot silently drop the one notification the app exists to read |

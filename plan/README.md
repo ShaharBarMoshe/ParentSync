@@ -52,6 +52,7 @@
 | [Phase 25](phase25-production-smoke-test.md) | Production Smoke Test — end-to-end self-test on deploy + daily | Done |
 | [Phase 26](phase26-langchain-langgraph.md) | Task-shaped AI ports on LangChain, event-sync as a LangGraph, opt-in LangSmith tracing | Done |
 | [Phase 27](phase27-auth-resilience.md) | Auth resilience — Google 7-day refresh expiry, WhatsApp self-heal, one-click reconnect | Proposed |
+| [Phase 28](phase28-android-client.md) | Native Android client — WhatsApp via NotificationListenerService, no-OAuth calendar, storage rebuilt for a phone | Slice done |
 
 ## Architecture
 
