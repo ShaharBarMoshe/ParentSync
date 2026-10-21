@@ -1,7 +1,7 @@
 /**
  * Gate for e2e specs that talk to real, external things — a running dev
  * backend and frontend, a real Chrome profile logged into WhatsApp Web, live
- * OpenRouter/Gemini credentials, live Google OAuth, or the user's own
+ * Gemini credentials, live Google OAuth, or the user's own
  * populated database.
  *
  * These cannot pass in an ordinary `npm run test:e2e` run: they depend on

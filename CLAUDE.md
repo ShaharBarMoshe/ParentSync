@@ -115,6 +115,10 @@ Electron's ABI, which makes every DB-backed suite fail under plain `jest`).
 
 ### Test conventions
 
+Full detail — the three suites, the live-e2e gate, what each layer is for, and
+how to add tests for a new port — is in `docs/TESTING.md`. The rules that bite
+most often:
+
 - **Never hard-code a fixture date.** Events dated today or earlier are dropped
   at creation, and fetches only look back a fixed scan window, so a literal date
   quietly stops exercising the code once it ages out — the test then fails, or

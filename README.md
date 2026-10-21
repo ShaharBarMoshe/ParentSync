@@ -102,6 +102,7 @@ Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 | [Observability](docs/OBSERVABILITY.md) | Reading a sync trace, and what leaves the machine with tracing on |
 | [Production smoke test](docs/PRODUCTION-SMOKE-TEST.md) | The end-to-end self-test that runs on deploy and daily |
 | [Message pipeline](https://shaharbarmoshe.github.io/ParentSync/message-pipeline.html) | End-to-end sync flow: ingest → dedup → LLM parse → approval → calendar |
+| [Testing](docs/TESTING.md) | The three suites, the live-e2e gate, and the conventions that stop a test passing vacuously |
 | [Implementation plan](plan/README.md) | The phased plan that drove development |
 
 ## Getting Started
