@@ -31,16 +31,29 @@ function buildHTML() {
   // Version-specific download URLs. Read from package.json so a `npm version`
   // bump propagates everywhere on the next presentation regenerate. Pattern
   // matches what electron-builder produces and what action-gh-release uploads.
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  const VERSION = pkg.version;
-  const RELEASE_BASE = `https://github.com/ShaharBarMoshe/ParentSync/releases/download/v${VERSION}`;
+  /**
+   * The version the download links point at — NOT `package.json`'s version.
+   *
+   * Those are different things, and conflating them silently produces five dead
+   * links: `package.json` tracks the build in development (1.5.5 at the time of
+   * writing), while GitHub Releases only has up to v1.1.2. A link to a release
+   * that was never published 404s, and nothing in the build catches it because
+   * the URL is well-formed.
+   *
+   * So this is pinned, and bumped when a release is actually published:
+   *     gh release list --limit 1
+   * Override for a dry run with DOWNLOAD_VERSION=1.2.0 node scripts/…
+   */
+  const DOWNLOAD_VERSION = process.env.DOWNLOAD_VERSION || '1.1.2';
+  const RELEASE_BASE =
+    `https://github.com/ShaharBarMoshe/ParentSync/releases/download/v${DOWNLOAD_VERSION}`;
   const DL = {
-    appImage: `${RELEASE_BASE}/ParentSync-${VERSION}.AppImage`,
-    deb:      `${RELEASE_BASE}/parentsync_${VERSION}_amd64.deb`,
-    dmgArm:   `${RELEASE_BASE}/ParentSync-${VERSION}-arm64.dmg`,
-    dmgIntel: `${RELEASE_BASE}/ParentSync-${VERSION}.dmg`,
-    exe:      `${RELEASE_BASE}/ParentSync-Setup-${VERSION}.exe`,
-    page:     `https://github.com/ShaharBarMoshe/ParentSync/releases/tag/v${VERSION}`,
+    appImage: `${RELEASE_BASE}/ParentSync-${DOWNLOAD_VERSION}.AppImage`,
+    deb:      `${RELEASE_BASE}/parentsync_${DOWNLOAD_VERSION}_amd64.deb`,
+    dmgArm:   `${RELEASE_BASE}/ParentSync-${DOWNLOAD_VERSION}-arm64.dmg`,
+    dmgIntel: `${RELEASE_BASE}/ParentSync-${DOWNLOAD_VERSION}.dmg`,
+    exe:      `${RELEASE_BASE}/ParentSync-Setup-${DOWNLOAD_VERSION}.exe`,
+    page:     `https://github.com/ShaharBarMoshe/ParentSync/releases/tag/v${DOWNLOAD_VERSION}`,
   };
   const logo = (name) => {
     // Try png first, then ico
@@ -280,7 +293,7 @@ function buildHTML() {
   <img class="logo" src="${icon}" alt="ParentSync">
   <h1>ParentSync</h1>
   <p>Your family's WhatsApp and email messages, automatically organized into calendar events</p>
-  <span class="version">v${VERSION} · Desktop App for Linux, Windows & macOS</span>
+  <span class="version">v${DOWNLOAD_VERSION} · Desktop App for Linux, Windows & macOS</span>
   <span class="credit">Created by <a href="https://github.com/ShaharBarMoshe">Shahar Bar-Moshe</a></span>
 </div>
 
@@ -303,7 +316,7 @@ function buildHTML() {
 <div class="slide slide-content">
   <div class="accent-bar"></div>
   <h2>Get the App</h2>
-  <p>Click your platform for a direct download from GitHub Releases v${VERSION}. Per-platform run instructions later in the deck (Quick Start section).</p>
+  <p>Click your platform for a direct download from GitHub Releases v${DOWNLOAD_VERSION}. Per-platform run instructions later in the deck (Quick Start section).</p>
   <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
     <div class="info-box" style="text-align: center;">
       <p style="font-size: 36px; margin: 0;">🍎</p>
@@ -314,7 +327,7 @@ function buildHTML() {
     <div class="info-box" style="text-align: center;">
       <p style="font-size: 36px; margin: 0;">🪟</p>
       <p style="font-weight: 700; font-size: 18px; margin: 4px 0;">Windows 10/11</p>
-      <a class="download-btn" href="${DL.exe}" style="margin: 8px 0;">⬇️ Installer <small>Setup-${VERSION}.exe</small></a>
+      <a class="download-btn" href="${DL.exe}" style="margin: 8px 0;">⬇️ Installer <small>Setup-${DOWNLOAD_VERSION}.exe</small></a>
     </div>
     <div class="info-box" style="text-align: center;">
       <p style="font-size: 36px; margin: 0;">🐧</p>
@@ -323,7 +336,7 @@ function buildHTML() {
       <a class="download-btn" href="${DL.deb}" style="margin: 4px 0; font-size: 14px;">⬇️ Debian/Ubuntu <small>.deb</small></a>
     </div>
   </div>
-  <p style="margin-top: 16px; font-size: 14px; color: #64748b; text-align: center;">No account needed. All assets: <a href="${DL.page}">github.com/ShaharBarMoshe/ParentSync/releases/tag/v${VERSION}</a></p>
+  <p style="margin-top: 16px; font-size: 14px; color: #64748b; text-align: center;">No account needed. All assets: <a href="${DL.page}">github.com/ShaharBarMoshe/ParentSync/releases/tag/v${DOWNLOAD_VERSION}</a></p>
   <div class="slide-footer"><span>ParentSync — Get the App</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
 </div>
 
@@ -455,7 +468,7 @@ function buildHTML() {
       <ol class="steps">
         <li>Make sure <strong>WhatsApp is connected</strong> (Settings → WhatsApp → "Connected")</li>
         <li>Add at least one <strong>child with WhatsApp channels</strong> (Settings → Children)</li>
-        <li>Set your <strong>Gemini API key</strong> (Settings → Gemini AI), or use OpenRouter as alternative</li>
+        <li>Set your <strong>Gemini API key</strong> (Settings → Gemini AI)</li>
         <li>Click <strong>"Sync Now"</strong> on the Dashboard</li>
         <li>Wait 15-30 seconds — messages and events appear</li>
       </ol>
@@ -520,7 +533,7 @@ function buildHTML() {
         <p>💡 The default model <code>gemini-2.5-flash-lite</code> is fast and cheap — typical extraction costs are negligible. A free tier is available too.</p>
       </div>
       <div class="info-box">
-        <p>🔁 Don't want Gemini? <strong>OpenRouter</strong> is supported as an alternative provider — see next slide.</p>
+        <p>🔑 One key is all the setup the AI needs — the same key covers event extraction and the duplicate pre-filter.</p>
       </div>
     </div>
     <div class="howto-col">
@@ -534,40 +547,6 @@ function buildHTML() {
         <li>Optionally pick a different model in the same section</li>
       </ol>
       <a class="video-link" href="https://www.youtube.com/watch?v=GHzAxsXn24I" target="_blank" rel="noopener">📺 <strong>Video walkthrough</strong> — Gemini API Key in Google AI Studio (YouTube)</a>
-    </div>
-  </div>
-  <div class="slide-footer"><span>ParentSync — How-To</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
-</div>
-
-<!-- Slide 15b: How-To — OpenRouter (alternative) -->
-<div class="slide slide-content">
-  <div class="accent-bar"></div>
-  <div class="howto-header">
-    <div class="howto-title">
-      <h2>Alternative: OpenRouter</h2>
-      <p>One-stop shop for many LLM providers behind a single API key</p>
-    </div>
-  </div>
-
-  <div class="howto-cols">
-    <div class="howto-col">
-      <h3>What is OpenRouter?</h3>
-      <p>A gateway to many AI models (GPT, Claude, Llama, Qwen, etc.) through a single API key. Useful if you already have credits there, or if you want to A/B test models without changing keys.</p>
-      <div class="info-box">
-        <p>💡 Free models are available — typically labelled <code>:free</code>. They have rate limits but cost nothing.</p>
-      </div>
-    </div>
-    <div class="howto-col">
-      <h3>How to get your API key</h3>
-      <ol class="steps">
-        <li>Go to <a href="https://openrouter.ai/keys"><strong>openrouter.ai/keys</strong></a></li>
-        <li>Sign up or log in (Google/GitHub)</li>
-        <li>Click <strong>"Create Key"</strong></li>
-        <li>Copy the key (starts with <code>sk-or-</code>)</li>
-        <li>Paste in ParentSync → Settings → OpenRouter → API Key</li>
-      </ol>
-      <a class="video-link" href="https://www.youtube.com/watch?v=JYw6yFzVi44" target="_blank" rel="noopener">📺 <strong>Video walkthrough</strong> — Get your OpenRouter API Key (YouTube)</a>
-      <p style="margin-top: 12px; font-size: 15px; color: #64748b;">You can fill both keys; the active provider is whichever the build is wired to (Gemini by default).</p>
     </div>
   </div>
   <div class="slide-footer"><span>ParentSync — How-To</span><span>__SLIDE_NUM__ / __TOTAL_SLIDES__</span></div>
@@ -695,7 +674,7 @@ function buildHTML() {
       <div class="arch-item"><div class="arch-label">Database</div><div class="arch-value">SQLite (local, no server)</div></div>
     </div>
     <div class="arch-row">
-      <div class="arch-item"><div class="arch-label">AI</div><div class="arch-value">Gemini (default) · OpenRouter swap-in</div></div>
+      <div class="arch-item"><div class="arch-label">AI</div><div class="arch-value">Google Gemini via LangChain chains</div></div>
       <div class="arch-item"><div class="arch-label">WhatsApp</div><div class="arch-value">whatsapp-web.js (Chromium)</div></div>
     </div>
   </div>
@@ -708,8 +687,8 @@ function buildHTML() {
   <div class="accent-bar"></div>
   <h2>Run on macOS 🍎</h2>
   <div class="download-row">
-    <a class="download-btn" href="${DL.dmgArm}">⬇️ Download — Apple Silicon <small>ParentSync-${VERSION}-arm64.dmg</small></a>
-    <a class="download-btn" href="${DL.dmgIntel}">⬇️ Download — Intel <small>ParentSync-${VERSION}.dmg</small></a>
+    <a class="download-btn" href="${DL.dmgArm}">⬇️ Download — Apple Silicon <small>ParentSync-${DOWNLOAD_VERSION}-arm64.dmg</small></a>
+    <a class="download-btn" href="${DL.dmgIntel}">⬇️ Download — Intel <small>ParentSync-${DOWNLOAD_VERSION}.dmg</small></a>
   </div>
   <div class="howto-cols">
     <div class="howto-col">
@@ -742,7 +721,7 @@ function buildHTML() {
   <div class="accent-bar"></div>
   <h2>Run on Windows 🪟</h2>
   <div class="download-row">
-    <a class="download-btn" href="${DL.exe}">⬇️ Download Installer <small>ParentSync-Setup-${VERSION}.exe</small></a>
+    <a class="download-btn" href="${DL.exe}">⬇️ Download Installer <small>ParentSync-Setup-${DOWNLOAD_VERSION}.exe</small></a>
   </div>
   <div class="howto-cols">
     <div class="howto-col">
@@ -776,8 +755,8 @@ function buildHTML() {
   <div class="accent-bar"></div>
   <h2>Run on Linux 🐧</h2>
   <div class="download-row">
-    <a class="download-btn" href="${DL.appImage}">⬇️ AppImage (any distro) <small>ParentSync-${VERSION}.AppImage</small></a>
-    <a class="download-btn" href="${DL.deb}">⬇️ .deb (Debian/Ubuntu) <small>parentsync_${VERSION}_amd64.deb</small></a>
+    <a class="download-btn" href="${DL.appImage}">⬇️ AppImage (any distro) <small>ParentSync-${DOWNLOAD_VERSION}.AppImage</small></a>
+    <a class="download-btn" href="${DL.deb}">⬇️ .deb (Debian/Ubuntu) <small>parentsync_${DOWNLOAD_VERSION}_amd64.deb</small></a>
   </div>
   <div class="howto-cols">
     <div class="howto-col">
@@ -785,8 +764,8 @@ function buildHTML() {
       <ol class="steps">
         <li>Click the AppImage download above</li>
         <li>Files need to be marked runnable first. Two ways:
-          <div class="step-detail"><strong>Mouse:</strong> Right-click → <strong>Properties</strong> → <strong>Permissions</strong> → check <strong>"Allow executing as a program"</strong>.<br><strong>Terminal:</strong> <code>chmod +x ParentSync-${VERSION}.AppImage</code></div></li>
-        <li><strong>Double-click</strong> it (or <code>./ParentSync-${VERSION}.AppImage</code>)</li>
+          <div class="step-detail"><strong>Mouse:</strong> Right-click → <strong>Properties</strong> → <strong>Permissions</strong> → check <strong>"Allow executing as a program"</strong>.<br><strong>Terminal:</strong> <code>chmod +x ParentSync-${DOWNLOAD_VERSION}.AppImage</code></div></li>
+        <li><strong>Double-click</strong> it (or <code>./ParentSync-${DOWNLOAD_VERSION}.AppImage</code>)</li>
       </ol>
     </div>
     <div class="howto-col">
@@ -794,7 +773,7 @@ function buildHTML() {
       <ol class="steps">
         <li>Click the .deb download above</li>
         <li>Double-click → opens in Software Center → <strong>Install</strong></li>
-        <li>Or terminal: <code>sudo dpkg -i parentsync_${VERSION}_amd64.deb</code></li>
+        <li>Or terminal: <code>sudo dpkg -i parentsync_${DOWNLOAD_VERSION}_amd64.deb</code></li>
         <li>Launch from your application menu</li>
       </ol>
       <h3 style="margin-top: 12px;">Auto-start on login (optional)</h3>
@@ -1038,7 +1017,7 @@ function buildHTML() {
   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px;">
     <div class="warning-box">
       <p>⚠️ <strong>"Sync failed"</strong><br><br>
-      WhatsApp may be disconnected, or the LLM API key is missing/expired. Check Settings → WhatsApp status and Gemini / OpenRouter API key.</p>
+      WhatsApp may be disconnected, or the LLM API key is missing/expired. Check Settings → WhatsApp status and the Gemini API key.</p>
     </div>
     <div class="warning-box">
       <p>⚠️ <strong>"0 Events Created" after sync</strong><br><br>

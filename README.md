@@ -12,12 +12,12 @@
 
 📊 **[View the interactive presentation →](https://shaharbarmoshe.github.io/ParentSync/presentation.html)** · [PDF](https://shaharbarmoshe.github.io/ParentSync/ParentSync-Presentation.pdf) · [Message pipeline →](https://shaharbarmoshe.github.io/ParentSync/message-pipeline.html) · [Docs site](https://shaharbarmoshe.github.io/ParentSync/)
 
-### Download v1.0.2
+### Download v1.1.2
 
-| 🍎 macOS — [Apple Silicon](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2-arm64.dmg) · [Intel](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.dmg) | 🪟 [Windows](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-Setup-1.0.2.exe) | 🐧 Linux — [AppImage](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.AppImage) · [.deb](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/parentsync_1.0.2_amd64.deb) |
+| 🍎 macOS — [Apple Silicon](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2-arm64.dmg) · [Intel](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.dmg) | 🪟 [Windows](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-Setup-1.1.2.exe) | 🐧 Linux — [AppImage](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.AppImage) · [.deb](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/parentsync_1.1.2_amd64.deb) |
 |---|---|---|
 
-Run instructions per platform: see the [User Guide](docs/USER-GUIDE.md#download) or the [Quick Start slides](https://shaharbarmoshe.github.io/ParentSync/presentation.html#21). Mac/Win builds are unsigned — first launch needs right-click → Open (Mac) / "Run anyway" (SmartScreen).
+Run instructions per platform: see the [User Guide](docs/USER-GUIDE.md#download) or the [Quick Start slides](https://shaharbarmoshe.github.io/ParentSync/presentation.html#17). Mac/Win builds are unsigned — first launch needs right-click → Open (Mac) / "Run anyway" (SmartScreen).
 
 | Dashboard | Calendar | Settings |
 |---|---|---|
@@ -95,6 +95,12 @@ Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 | [Event Dismissal](docs/EVENT-DISMISSAL.md) | Cancel / delay detection design |
 | [Event Reminders](docs/EVENT-REMINDERS.md) | The 24h-before-event reminder pipeline |
 | [Google Tasks](docs/GOOGLE-TASKS.md) | Timed events vs. date-only tasks |
+| [Semantic dedup](docs/semantic-dedup.md) | Embedding pre-filter and the duplicate-suppression layers |
+| [LangChain & LangGraph](docs/LANGCHAIN-LANGGRAPH.md) | The task-shaped AI ports, the chains behind them, and the event-sync graph |
+| [WhatsApp resilience](docs/WHATSAPP-RESILIENCE.md) | Every WhatsApp Web breakage so far and the page-level patch for each |
+| [Google auth](docs/GOOGLE-AUTH.md) | Two accounts, the 7-day refresh expiry, connection states |
+| [Observability](docs/OBSERVABILITY.md) | Reading a sync trace, and what leaves the machine with tracing on |
+| [Production smoke test](docs/PRODUCTION-SMOKE-TEST.md) | The end-to-end self-test that runs on deploy and daily |
 | [Message pipeline](https://shaharbarmoshe.github.io/ParentSync/message-pipeline.html) | End-to-end sync flow: ingest → dedup → LLM parse → approval → calendar |
 | [Implementation plan](plan/README.md) | The phased plan that drove development |
 

@@ -1,8 +1,18 @@
 # Phase 27: Auth Resilience (Google + WhatsApp)
 
-**Status**: Proposed
+**Status**: Partly done — four of the six code steps have shipped.
 **Trigger**: Google and WhatsApp connectivity break repeatedly; each break
 currently needs a few manual clicks to clear.
+
+| Step | State |
+|---|---|
+| 3.1 Tell the truth about connection state | **Done** — `lastRefreshOk` / `lastRefreshError` on the token row, and the status endpoint reports from them rather than from the mere presence of a token |
+| 3.6 Fix the shared-client race | **Done** — each purpose gets its own client (`fix(auth): report real connection health, and give each purpose its own client`), with `test(auth)` proving the isolation against the real googleapis library |
+| 3.3 One click, from where the failure finds you | **Done** — `POST /api/whatsapp/reconnect` |
+| 3.4 WhatsApp: close the gap between "authenticated" and "usable" | **Done** — `withSessionRecovery` re-initialises once per sync cycle on a dead-session error |
+| 3.2 Proactive refresh | **Not done.** Refresh is still lazy: `TOKEN_EXPIRY_BUFFER_MS` renews on demand when a token is about to expire, so a failure is still discovered during a sync rather than ahead of it. No scheduled job exists in `auth/` |
+| 3.0 Publish the OAuth app | Outside the code; not verifiable from the repo |
+| 3.5 Where Playwright does belong | Not started |
 
 ---
 

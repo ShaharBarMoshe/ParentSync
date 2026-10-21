@@ -185,5 +185,5 @@ window; retire Layer 3 if the rate stays below 5 %.
 ## Follow-up TODOs
 
 - **Phase 21.6** — After 3 releases that include Phase 21's boot-time OpenRouter key purge, remove the `purgeStaleOpenRouterKeys()` block from `SettingsService.onModuleInit()`. Tag the commit referencing phase21-openrouter-removal.md.
-- **presentation.html / PDF** — Regenerate the presentation slides (currently reference OpenRouter). Do this the next time the presentation is updated for unrelated reasons.
+- ~~**presentation.html / PDF** — Regenerate the presentation slides (currently reference OpenRouter).~~ **Done.** The OpenRouter how-to slide was removed along with every remaining mention, and both outputs were regenerated from `scripts/generate-presentation.js` (29 slides).
 - ~~**Embedding retention** — NULLing embeddings older than the 30-day lookback window to bound DB size.~~ **Done in Phase 22** (`DbHygieneService` daily sweep + `clearStaleEmbeddings`). See `plan/phase22-db-storage-hygiene.md`.

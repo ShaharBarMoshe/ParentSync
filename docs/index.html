@@ -85,31 +85,31 @@
   </header>
 
   <section style="margin-bottom: 24px;">
-    <h2 style="font-size: 22px; margin: 0 0 12px;">Download v1.0.2</h2>
+    <h2 style="font-size: 22px; margin: 0 0 12px;">Download v1.1.2</h2>
     <div class="grid" style="margin-bottom: 0;">
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2-arm64.dmg">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2-arm64.dmg">
         <div class="label">🍎 macOS — Apple Silicon</div>
-        <h3>ParentSync-1.0.2-arm64.dmg</h3>
+        <h3>ParentSync-1.1.2-arm64.dmg</h3>
         <p>M-series Macs (M1/M2/M3/M4). First launch: right-click → Open.</p>
       </a>
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.dmg">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.dmg">
         <div class="label">🍎 macOS — Intel</div>
-        <h3>ParentSync-1.0.2.dmg</h3>
+        <h3>ParentSync-1.1.2.dmg</h3>
         <p>Older Intel Macs. Same first-launch flow.</p>
       </a>
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-Setup-1.0.2.exe">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-Setup-1.1.2.exe">
         <div class="label">🪟 Windows 10 / 11</div>
-        <h3>ParentSync-Setup-1.0.2.exe</h3>
+        <h3>ParentSync-Setup-1.1.2.exe</h3>
         <p>NSIS installer. SmartScreen → "More info" → "Run anyway."</p>
       </a>
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/ParentSync-1.0.2.AppImage">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.AppImage">
         <div class="label">🐧 Linux — any distro</div>
-        <h3>ParentSync-1.0.2.AppImage</h3>
+        <h3>ParentSync-1.1.2.AppImage</h3>
         <p><code>chmod +x</code> and double-click. Portable; no installer.</p>
       </a>
-      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.0.2/parentsync_1.0.2_amd64.deb">
+      <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/parentsync_1.1.2_amd64.deb">
         <div class="label">🐧 Debian / Ubuntu</div>
-        <h3>parentsync_1.0.2_amd64.deb</h3>
+        <h3>parentsync_1.1.2_amd64.deb</h3>
         <p><code>sudo dpkg -i</code> or double-click in your file manager.</p>
       </a>
       <a class="card" href="https://github.com/ShaharBarMoshe/ParentSync/releases/latest" style="display:flex; align-items:center; justify-content:center; text-align:center;">
@@ -120,14 +120,14 @@
         </div>
       </a>
     </div>
-    <p style="font-size: 13px; color: var(--muted); margin-top: 8px;">Mac and Windows builds are unsigned (no Apple Developer / Authenticode certificate). The first-launch gate is one click; per-platform run instructions are on slides 22-24 of the deck below.</p>
+    <p style="font-size: 13px; color: var(--muted); margin-top: 8px;">Mac and Windows builds are unsigned (no Apple Developer / Authenticode certificate). The first-launch gate is one click; per-platform run instructions are on slides 17-19 of the deck below.</p>
   </section>
 
   <section class="grid">
     <a class="card featured" href="presentation.html">
       <div class="label">Walkthrough</div>
       <h3>Interactive Presentation →</h3>
-      <p>30 slides covering features, setup, architecture, and the AI feedback loop. Renders in your browser.</p>
+      <p>29 slides covering features, setup, architecture, and the duplicate-suppression pipeline. Renders in your browser.</p>
     </a>
 
     <a class="card" href="ParentSync-Presentation.pdf">
@@ -200,6 +200,12 @@
       <div class="label">Operations</div>
       <h3>Google Authentication</h3>
       <p>Two accounts, the 7-day refresh-token expiry, and what each connection state means.</p>
+    </a>
+
+    <a class="card" href="PRODUCTION-SMOKE-TEST.md">
+      <div class="label">Operations</div>
+      <h3>Production Smoke Test</h3>
+      <p>The end-to-end self-test that runs on deploy and daily — what each step proves, and how it cleans up after itself.</p>
     </a>
 
     <a class="card" href="LANGCHAIN-LANGGRAPH.md">

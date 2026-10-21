@@ -68,6 +68,8 @@ ParentSync is a private-use desktop application built with Electron, wrapping a 
 | `SyncModule` | Scheduled sync orchestration, the event-sync **LangGraph** (`sync/graph/`), WhatsApp approval channel, **`MessageDeduplicationService` (semantic pre-filter)** |
 | `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) — see [GOOGLE-AUTH.md](GOOGLE-AUTH.md) |
 | `MonitorModule` | Analytics aggregation, charts data |
+| `HealthModule` | `/api/health` liveness + DB check, resolved app version |
+| `SystemModule` | Uninstall script generation (Linux/macOS/Windows), app-level system actions |
 | `SharedModule` | Common entities, config, utilities, crypto, logging |
 
 ### Ports & Adapters (Dependency Injection)
