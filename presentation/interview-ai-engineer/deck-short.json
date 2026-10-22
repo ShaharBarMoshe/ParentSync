@@ -1,0 +1,40 @@
+{
+  "v": 4,
+  "createdOnFiles": { "v": 1, "at": "2026-10-23T12:00:00Z" },
+  "lists": "css",
+  "title": "ParentSync — Interview Deck (Short)",
+  "order": [
+    "cover",
+    "premise",
+    "graph",
+    "rejected",
+    "dedup",
+    "failopen",
+    "vectors",
+    "judge",
+    "retry",
+    "audit",
+    "incident",
+    "standards",
+    "gaps",
+    "close"
+  ],
+  "sections": {
+    "s1": { "description": "The premise: a model writing into something people act on.", "start": "cover" },
+    "s2": { "description": "Agentic orchestration, and the framework features deliberately refused.", "start": "graph" },
+    "s3": { "description": "Making non-deterministic output safe: layers, failure modes, vectors, a judge.", "start": "dedup" },
+    "s4": { "description": "Operating it: retries, auditability, a silent incident, enforced standards.", "start": "retry" },
+    "s5": { "description": "Honest limits, and where to dig.", "start": "gaps" }
+  },
+  "faces": {
+    "ibm-plex-sans": {
+      "family": "IBM Plex Sans",
+      "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    },
+    "jetbrains-mono": {
+      "family": "JetBrains Mono",
+      "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+    }
+  },
+  "designSystems": []
+}

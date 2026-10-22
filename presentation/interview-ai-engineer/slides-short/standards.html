@@ -1,0 +1,17 @@
+<section id="standards" data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">AI SDLC</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">Standards the build enforces, not standards a wiki describes.</h2>
+<p style="font-size:36px;line-height:1.4;color:#4A5568;width:1540px">Import the AI framework outside its two layers and the build fails.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">11 / 13</p>
+<aside>This is the internal-tooling argument in one line, and it is a line from the job description.
+
+There is a test that walks the source tree and fails the build if anything outside the adapter and graph layers imports the AI framework. The framework cannot leak into the domain because somebody forgot at review time. An executable standard beats a documented one.
+
+Three supporting facts if they want them.
+
+The end-to-end suite compiles and bundles both applications, because a mocked unit test cannot catch a missing import in a module it mocks. I had those timeouts set too tight at one point and the suite failed about half the time — which teaches everyone to ignore a red build, so I fixed the timeouts rather than living with it.
+
+There is a production smoke test: six steps that drive a real message end to end through the live system on every deploy and daily, and eight more that clean up after it — the calendar event, the rows, and the test message itself. A self-test that leaves artefacts behind is one you stop running.
+
+And tracing is framed as a data-egress decision rather than a debug flag: it is opt-in, and the documentation states what leaves the machine when you turn it on. In a bank that framing matters more than the tracing.</aside>
+</section>

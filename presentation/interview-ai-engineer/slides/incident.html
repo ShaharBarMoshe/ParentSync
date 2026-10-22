@@ -1,0 +1,40 @@
+<section id="incident" data-transition="fade" style="background:#2A1C0E;color:#F9F3E8;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#E0B457;letter-spacing:2px;text-transform:uppercase">Incident · the one I would tell you about unprompted</p>
+<h2 style="font-size:68px;font-weight:600;line-height:1.1">The app read its own output and fed itself</h2>
+<div style="display:flex;gap:44px;align-items:center">
+<div style="flex:1.1;display:flex;flex-direction:column;gap:18px">
+<p style="font-size:29px;line-height:1.45;color:#EADBC4">The mobile client alerts you when messages are waiting but no API key is configured. That alert is itself a notification — and the client reads notifications.</p>
+<p style="font-size:29px;line-height:1.45;color:#EADBC4">So it ingested its own alert as a message. Which raised the count. Which re-posted the alert. <b>One real message became 100 rows.</b></p>
+<p style="font-size:29px;line-height:1.45;color:#EADBC4">With a key configured, <b>every one of those would have been a paid model call</b> on the app's own text.</p>
+</div>
+<div style="flex:0.9;display:flex;flex-direction:column;gap:20px">
+<div style="background:#3A2814;padding:32px;border:1px solid #6B4F24;border-radius:16px;display:flex;flex-direction:column;gap:10px">
+<h3 style="font-size:28px;font-weight:600;color:#E0B457">Why it was dangerous</h3>
+<p style="font-size:25px;line-height:1.45;color:#EADBC4">Nothing crashed. No error, no alert, no failing test. It would have surfaced as a bill.</p>
+</div>
+<div style="background:#3A2814;padding:32px;border:1px solid #6B4F24;border-radius:16px;display:flex;flex-direction:column;gap:10px">
+<h3 style="font-size:28px;font-weight:600;color:#E0B457">How I found it</h3>
+<p style="font-size:25px;line-height:1.45;color:#EADBC4">Dumping actual state on an emulator rather than trusting that a green test run meant a healthy system.</p>
+</div>
+<div style="background:#3A2814;padding:32px;border:1px solid #6B4F24;border-radius:16px;display:flex;flex-direction:column;gap:10px">
+<h3 style="font-size:28px;font-weight:600;color:#E0B457">The fix</h3>
+<p style="font-size:25px;line-height:1.45;color:#EADBC4">Drop anything on the app's own channels — checked <b>before</b> the source test and deliberately <b>not configurable</b>. A watch list is the user's business; reading our own output never is.</p>
+</div>
+</div>
+</div>
+<p style="font-size:28px;line-height:1.45;color:#C9B592;width:1560px">The generalisation I took from it: an agentic system that both emits and consumes needs an explicit identity boundary, or it will eventually consume itself. That failure is silent, and in a metered system it is expensive.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#A08E6E;font-family:'JetBrains Mono', 'Courier New', monospace">Found and fixed on the same day · regression test asserts the guard cannot be configured away</p>
+<aside>I would volunteer this one. It is the most transferable thing in the deck.
+
+The setup is almost funny. The app warns you when it cannot parse messages. The warning is a notification. The app reads notifications. So it read its own warning, counted it as a message, which raised the number of waiting messages, which re-posted the warning.
+
+One real message became a hundred rows.
+
+Here is the part that matters for a bank: nothing crashed. No exception, no failed test, no alert — the system looked healthy. With an API key configured, the first symptom would have been the invoice.
+
+I found it by dumping actual database state on an emulator instead of trusting that green tests meant a healthy system. That instinct is the thing I would bring.
+
+The fix is a guard that cannot be turned off by configuration, and a test asserting that. Because a watch list is a user preference, but "do not eat your own output" is an invariant.
+
+The general lesson: any agentic system that both emits and consumes needs an explicit identity boundary. Otherwise it will eventually consume itself, quietly, and bill you for it.</aside>
+</section>

@@ -1,0 +1,56 @@
+<section id="architecture" data-section="The agentic pipeline: a LangGraph, task-shaped AI ports, and the choices deliberately not made." data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:44px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Architecture</p>
+<h2 style="font-size:68px;font-weight:600;line-height:1.1">Eight stages, each with its own failure contract</h2>
+<div style="display:flex;gap:10px;align-items:stretch">
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;background:#FFFFFF;padding:24px 16px;border:1px solid #DDE3E1;border-radius:12px;align-items:center">
+<p style="font-size:24px;font-weight:600;text-align:center">Ingest</p>
+<p style="font-size:24px;color:#6B7A86;text-align:center">push</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;background:#FFFFFF;padding:24px 16px;border:1px solid #DDE3E1;border-radius:12px;align-items:center">
+<p style="font-size:24px;font-weight:600;text-align:center">Group</p>
+<p style="font-size:24px;color:#6B7A86;text-align:center">2h</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;background:#E8F0F7;padding:24px 16px;border:1px solid #9FC2DC;border-radius:12px;align-items:center">
+<p style="font-size:24px;font-weight:600;text-align:center;color:#1E4E78">Dedup</p>
+<p style="font-size:24px;color:#2E6FA7;text-align:center">L1</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;background:#E8F0F7;padding:24px 16px;border:1px solid #9FC2DC;border-radius:12px;align-items:center">
+<p style="font-size:24px;font-weight:600;text-align:center;color:#1E4E78">Extract</p>
+<p style="font-size:24px;color:#2E6FA7;text-align:center">LLM</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;background:#FFFFFF;padding:24px 16px;border:1px solid #DDE3E1;border-radius:12px;align-items:center">
+<p style="font-size:24px;font-weight:600;text-align:center">Persist</p>
+<p style="font-size:24px;color:#6B7A86;text-align:center">L2 · txn</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;background:#E8F0F7;padding:24px 16px;border:1px solid #9FC2DC;border-radius:12px;align-items:center">
+<p style="font-size:24px;font-weight:600;text-align:center;color:#1E4E78">Screen</p>
+<p style="font-size:24px;color:#2E6FA7;text-align:center">L3 · L4</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;background:#FDF3E0;padding:24px 16px;border:1px solid #DDBB77;border-radius:12px;align-items:center">
+<p style="font-size:24px;font-weight:600;text-align:center;color:#7A5208">Approve</p>
+<p style="font-size:24px;color:#A8700B;text-align:center">human</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:6px;background:#FFFFFF;padding:24px 16px;border:1px solid #DDE3E1;border-radius:12px;align-items:center">
+<p style="font-size:24px;font-weight:600;text-align:center">Sync</p>
+<p style="font-size:24px;color:#6B7A86;text-align:center">calendar</p>
+</div>
+</div>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px">
+<h3 style="font-size:30px;font-weight:600">Ports, not clients</h3>
+<p style="font-size:27px;line-height:1.45;color:#4A5568">The AI layer is four task-shaped ports — <span style="color:#2E6FA7">extract events</span>, <span style="color:#2E6FA7">classify relevance</span>, <span style="color:#2E6FA7">judge duplicates</span>, <span style="color:#2E6FA7">embed</span> — not one <i>callLLM(string)</i>. A port that returns text forces every caller to re-derive meaning from it; that is where 180 lines of JSON repair had grown.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px">
+<h3 style="font-size:30px;font-weight:600">The boundary is enforced, not agreed</h3>
+<p style="font-size:27px;line-height:1.45;color:#4A5568">An architecture test fails the build if anything outside the adapter and graph layers imports <i>@langchain/*</i>. The framework cannot leak into the domain because a human forgot at review time.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">L1–L4 = the four duplicate-suppression layers · covered next</p>
+<aside>Walk the band left to right, briefly. The point of the colouring: blue stages are where the model is involved, amber is where a human is.
+
+Two things worth pausing on.
+
+Ports, not clients: the three AI ports name a capability, not a mechanism. Before that it was one callLLM returning a string, and about 180 lines of markdown-fence stripping and brace matching had accumulated in the parser to turn text back into meaning. Typed ports leave nowhere for that code to live.
+
+And the boundary is a test, not a convention. If somebody imports LangChain into a domain service, the build fails. In a bank that is the difference between a standard and a wiki page.</aside>
+</section>

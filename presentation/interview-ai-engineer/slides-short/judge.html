@@ -1,0 +1,19 @@
+<section id="judge" data-transition="fade" style="background:#111A24;color:#F7F8F6;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#5FA8D8;letter-spacing:2px;text-transform:uppercase">LLM-as-a-judge</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">A model judging a model — with a deterministic floor underneath it.</h2>
+<p style="font-size:36px;line-height:1.4;color:#C2D2DE;width:1500px">Instrumented, fail-open, and last in the order because it is the most expensive.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#8AA0B2;font-family:'JetBrains Mono', 'Courier New', monospace">7 / 13</p>
+<aside>A real LLM-as-a-judge in production, not a benchmark exercise.
+
+It is its own port — one question only: do these two events describe the same gathering? It runs against same-slot and same-day siblings for that child.
+
+Three things I would stress, because they are what make a judge usable rather than decorative.
+
+It is treated as fallible. It fails open, and the deterministic collapse runs in front of it so the judge only ever sees genuinely ambiguous pairs — the "same gathering at two times" case never reaches it.
+
+It is instrumented. Every firing increments a counter, so I can tell you the judge's rate rather than assume it.
+
+And it is last, because it is the only layer that costs a call per sibling. An event landing on a busy day costs several.
+
+If there is time, the structured-output point is worth adding: Gemini rejects parts of JSON Schema at call time, not build time. You can write a schema that is valid, type-checks, passes every mocked test, and is refused in production. So the test runs the real conversion — mocking it would hide the exact failure the test exists for.</aside>
+</section>

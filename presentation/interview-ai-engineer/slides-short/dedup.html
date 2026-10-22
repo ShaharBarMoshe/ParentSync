@@ -1,0 +1,19 @@
+<section id="dedup" data-section="Making non-deterministic output safe: layers, failure modes, vectors, a judge." data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Non-determinism</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">One flyer reaches three class groups. Five mechanisms make it one event.</h2>
+<p style="font-size:36px;line-height:1.4;color:#4A5568;width:1500px">Hash → collapse → exact → judge → calendar. <b>Cheapest first.</b></p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">4 / 13</p>
+<aside>Walk the five in order, naming the cost of each — the ordering is the argument.
+
+SHA-256 of the message. Costs nothing, no network, catches the most common case: someone forwarding the identical flyer.
+
+Deterministic collapse. Several events sharing title, date and location but differing only in time are one gathering described twice — "arrive at 17:00, party 17:30". No model involved.
+
+Exact match. Title, date, time and child already in the database, one indexed query.
+
+The LLM judge. Same gathering, different framing. One call per sibling event, so it runs late.
+
+Calendar overlap. A semantically matching entry already on the Google calendar within sixty minutes — usually one a parent added by hand. The app binds to that entry instead of creating a second.
+
+If they ask why five: each catches something the others structurally cannot. Hashing cannot see paraphrase. Embeddings cannot see "the same gathering described differently". Neither can see an entry a human typed into Google Calendar last week.</aside>
+</section>

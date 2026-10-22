@@ -1,0 +1,19 @@
+<section id="gaps" data-section="Honest limits, and where to dig." data-transition="fade" style="background:#111A24;color:#F7F8F6;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#E0B457;letter-spacing:2px;text-transform:uppercase">What this does not prove</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">No Python. No AWS. No MCP shipped. You should hear that from me.</h2>
+<p style="font-size:36px;line-height:1.4;color:#C2D2DE;width:1540px">Patterns demonstrated at single-user scale. Throughput not.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#8AA0B2;font-family:'JetBrains Mono', 'Courier New', monospace">12 / 13</p>
+<aside>I keep this slide in on purpose. It is true, they will find out anyway, and a candidate who can scope their own experience is easier to trust on what they do claim.
+
+The honest ranking.
+
+AWS is the biggest gap. This is a desktop app and a phone. I have designed for failure, backpressure and idempotency — but on in-process primitives, not on EKS, SQS or Lambda. The patterns are here; the managed platforms are not.
+
+Python is second. This is TypeScript and Kotlin. The concepts map closely — Pydantic is recognisably the same job as the schema validation I am doing, structured concurrency is the same discipline — but I have not shipped production Python and I would be ramping.
+
+MCP I would frame as interesting rather than embarrassing. I have not implemented it. But the port boundary I already have is the right shape to expose, and I can argue why a tool loop was wrong for this particular write path — which is a more useful conversation than claiming I have built one.
+
+Also true: a modular monolith behind REST, not microservices and not GraphQL. Module boundaries enforced by tests rather than network calls. Deliberate at this size, not the same as having split one.
+
+What I would rather be judged on is whether I can tell you why each control exists, what it cost before it existed, and which failure mode I chose on purpose. That transfers. The cloud surface area is learnable, and I will not pretend it is already learned.</aside>
+</section>

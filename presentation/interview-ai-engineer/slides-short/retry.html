@@ -1,0 +1,19 @@
+<section id="retry" data-section="Operating it: retries, auditability, a silent incident, enforced standards." data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Load and limits</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">Not every 429 means the same thing. Treating them alike cost hours.</h2>
+<p style="font-size:36px;line-height:1.4;color:#4A5568;width:1540px">Rate limited clears by waiting. A depleted account never does.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">8 / 13</p>
+<aside>This is the "high load and failure scenarios" slide.
+
+Google returns 429 for two completely different conditions: you are going too fast, and you have no credit left. The first clears if you wait. The second never does.
+
+Before I separated them, one expired key meant eight retries per message plus a per-message fallback — hours of traffic guaranteed to fail. And the worse half: the swallowed error marked those messages parsed-with-no-events, which lost them permanently. The retries were just money; that part lost data.
+
+Now the policy is explicit and tested: a non-429 4xx is never retried, because a revoked key or a wrong model name fails identically five times. A depleted account fails on the first attempt and aborts the pass, leaving messages unparsed for next time. Everything else gets exponential backoff. All of it behind one runner — rate limiter, then retry ladder, then tracing, then invoke — so a burst cannot starve extraction.
+
+Two more if asked. A concurrency bug no dedup layer could catch: two passes ninety milliseconds apart both read the unparsed rows before either marked anything, and both created events. Identical input, built concurrently — not a content problem, a locking problem. A second caller now joins the running pass.
+
+And on mobile, work coalesces in a 45-second window under KEEP rather than REPLACE, because REPLACE would let a chatty group push the run out forever.
+
+In your environment this shape is a queue with a visibility timeout and a DLQ. Same policy, managed mechanism.</aside>
+</section>

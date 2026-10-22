@@ -1,0 +1,36 @@
+<section id="governance" data-transition="fade" style="background:#111A24;color:#F7F8F6;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:38px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#5FA8D8;letter-spacing:2px;text-transform:uppercase">Governance · identity · data</p>
+<h2 style="font-size:68px;font-weight:600;line-height:1.1">Controls a bank would recognise, built because the output is acted on</h2>
+<div style="display:flex;gap:28px">
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#1A2733;padding:36px;border:1px solid #2E4254;border-radius:16px">
+<h3 style="font-size:29px;font-weight:600;color:#5FA8D8">Human in the loop</h3>
+<p style="font-size:25px;line-height:1.45;color:#C2D2DE">Nothing reaches the calendar unapproved. The <b>PENDING row is the durable record</b> — the notification is only a view onto it, so dismissing it decides nothing and a restart loses nothing.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#1A2733;padding:36px;border:1px solid #2E4254;border-radius:16px">
+<h3 style="font-size:29px;font-weight:600;color:#5FA8D8">Auditable suppression</h3>
+<p style="font-size:25px;line-height:1.45;color:#C2D2DE">Layers 3 and 4 run <b>after</b> the write and mark the row REJECTED. A suppressed duplicate is <b>a row you can audit, not an absence you cannot</b> — and the dedup counters reconcile against the table.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#1A2733;padding:36px;border:1px solid #2E4254;border-radius:16px">
+<h3 style="font-size:29px;font-weight:600;color:#5FA8D8">Identity</h3>
+<p style="font-size:25px;line-height:1.45;color:#C2D2DE">OAuth 2.0 with <b>PKCE</b>, CSRF state, refresh tokens <b>encrypted at rest</b>, and a <b>separate client per purpose</b> — a shared client was a latent race that only the real library exposed.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#1A2733;padding:36px;border:1px solid #2E4254;border-radius:16px">
+<h3 style="font-size:29px;font-weight:600;color:#E0B457">Data boundary</h3>
+<p style="font-size:25px;line-height:1.45;color:#C2D2DE">Everything local. Tracing is <b>opt-in</b>, and the docs state exactly what leaves the machine when you turn it on. Backups exclude the message database outright.</p>
+</div>
+</div>
+<div style="display:flex;gap:32px;align-items:center;background:#1E3448;padding:36px 44px;border:1px solid #3A5771;border-radius:16px">
+<x-icon name="Warning" style="color:#E0B457;width:64px;height:64px"></x-icon>
+<p style="font-size:28px;line-height:1.45;color:#D6E3EE;width:1420px"><b>An alert never travels over the channel that is broken.</b> WhatsApp failures are reported by email; Google failures are reported over WhatsApp. It sounds obvious written down — it was not obvious when the only alerting path was the thing that had just died.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#8AA0B2;font-family:'JetBrains Mono', 'Courier New', monospace">Connection state reports real health, not the mere presence of a token</p>
+<aside>Four controls, then the one I am proudest of.
+
+Human in the loop: the durable record is a database row, not a UI state. That is what makes it survive a crash, and it is why I could not use LangGraph's interrupt.
+
+Auditable suppression is the one I would push in a banking interview. When the system decides not to act, that decision is itself a row — status REJECTED, with the reason and the counter that reconciles against it. Compare that to a pipeline where a suppressed item simply never appears: you cannot audit an absence.
+
+Identity is ordinary OAuth done properly, with one detail worth telling: the per-purpose client came from a real race that only showed up against the actual googleapis library. Mocking the library hid it. So the test uses the real one.
+
+The amber box is the lesson I would hand someone on day one. For a while, the only way the system told me WhatsApp was broken was a WhatsApp message. Now the alert routes out over a different channel than the one that failed. Obvious in hindsight; it took an outage.</aside>
+</section>

@@ -1,0 +1,40 @@
+{
+  "v": 4,
+  "createdOnFiles": { "v": 1, "at": "2026-10-23T10:00:00Z" },
+  "lists": "css",
+  "title": "ParentSync — Senior AI Engineer Interview Deck",
+  "order": [
+    "cover",
+    "premise",
+    "architecture",
+    "graph",
+    "nondeterminism",
+    "embeddings",
+    "judge",
+    "failure",
+    "governance",
+    "observability",
+    "incident",
+    "twoclients",
+    "gaps",
+    "close"
+  ],
+  "sections": {
+    "s1": { "description": "What the system is and why an LLM writing to a system of record is the hard part.", "start": "cover" },
+    "s2": { "description": "The agentic pipeline: a LangGraph, task-shaped AI ports, and the choices deliberately not made.", "start": "architecture" },
+    "s3": { "description": "Handling non-deterministic output: a dedup ladder, embeddings at two scales, and an LLM judge.", "start": "nondeterminism" },
+    "s4": { "description": "Operating it: failure engineering, governance, security and AI SDLC.", "start": "failure" },
+    "s5": { "description": "What this project proves, what it does not, and what I would bring.", "start": "twoclients" }
+  },
+  "faces": {
+    "ibm-plex-sans": {
+      "family": "IBM Plex Sans",
+      "href": "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+    },
+    "jetbrains-mono": {
+      "family": "JetBrains Mono",
+      "href": "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"
+    }
+  },
+  "designSystems": []
+}
