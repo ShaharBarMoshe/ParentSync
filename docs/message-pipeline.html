@@ -276,7 +276,7 @@ svg text { font-family: var(--font-sans); }
     and the approval state machine.
   </p>
   <div class="meta">
-    <div class="meta-item"><div class="dot-sm"></div> Written at Phase 20 — see ARCHITECTURE.md for current</div>
+    <div class="meta-item"><div class="dot-sm"></div> Desktop pipeline — see ARCHITECTURE.md</div>
     <div class="meta-item"><div class="dot-sm"></div> NestJS + SQLite + Gemini embeddings</div>
     <div class="meta-item"><div class="dot-sm"></div> Electron desktop app</div>
     <div class="meta-item"><div class="dot-sm" style="background:var(--yellow)"></div> 8 Architectural concerns flagged</div>
@@ -709,37 +709,34 @@ svg text { font-family: var(--font-sans); }
 ══════════════════════════════════════════════════════════════════ -->
 <div class="slide">
   <div class="slide-tag">Stage 5 — Event Creation</div>
-  <h2>Event Creation &amp; 3-Layer Deduplication</h2>
-  <div class="warn" style="margin-bottom:12px">
-    <div class="icon">ℹ️</div>
-    <div>Written at Phase 20. Since then a <strong>calendar-overlap layer</strong> (Phase 23) was added
-    ahead of the Google write, and the sync orchestration moved into a <strong>LangGraph</strong>
-    (Phase 26) — the stages below still run, but no longer as a straight-line service call.
-    Current layering: <a href="ARCHITECTURE.md">ARCHITECTURE.md</a> ·
-    <a href="semantic-dedup.md">semantic-dedup.md</a> ·
-    <a href="LANGCHAIN-LANGGRAPH.md">LANGCHAIN-LANGGRAPH.md</a>.</div>
-  </div>
+  <h2>Event Creation &amp; 4-Layer Deduplication</h2>
   <div class="cols">
     <div class="col" style="flex:1.1">
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Three independent dedup mechanisms prevent the same real-world event from appearing twice.</p>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Four independent mechanisms stop one real-world event appearing twice, plus a deterministic collapse before anything is written. Layers&nbsp;1–2 run <strong>before</strong> the row exists and prevent it; layers&nbsp;3–4 run in <code>screenEvents</code> <strong>after</strong> the insert and mark it <code>REJECTED</code> instead — so a suppressed duplicate is a rejected row, not an absent one, which is what makes it auditable.</p>
       <div class="flow" style="flex-direction:column; gap:8px;">
-        <div class="flow-box blue" style="font-size:13px; font-weight:700;">LAYER 1 — Semantic message dedup <span class="badge blue" style="margin-left:8px">Phase 20</span></div>
-        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;">SHA-256 + cosine similarity — skips forwarded flyers before LLM call</div>
-
+        <div class="flow-box blue" style="font-size:13px; font-weight:700;">LAYER 1 — Semantic message dedup <span class="badge blue" style="margin-left:8px">dedupFilter node</span></div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;">SHA-256 fast path, then cosine on Gemini embeddings. A duplicate group skips extract <em>and</em> persist.</div>
         <div style="text-align:center; color:var(--text-muted);">↓ fresh groups only</div>
 
-        <div class="flow-box green" style="font-size:13px; font-weight:700;">LAYER 2 — Exact event dedup (OLD-1)</div>
-        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;">Same <code>title + date + childId</code> already in DB → skip insert</div>
+        <div class="flow-box purple" style="font-size:13px; font-weight:700;">Single-gathering collapse <span class="badge purple" style="margin-left:8px">in memory</span></div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>collapseSingleGathering()</code> — same title/date/location differing only in time is one gathering ("arrive 17:00, party 17:30"). Deterministic, so unlike layer 3 it cannot fail open.</div>
+        <div style="text-align:center; color:var(--text-muted);">↓ one event per gathering</div>
 
+        <div class="flow-box green" style="font-size:13px; font-weight:700;">LAYER 2 — Exact event dedup</div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>findByTitleDateTimeChild(title, date, <strong>time</strong>, childId)</code> → skip the insert. Past/today events are dropped here too.</div>
         <div style="text-align:center; color:var(--text-muted);">↓ no exact match</div>
 
-        <div class="flow-box purple" style="font-size:13px; font-weight:700;">LAYER 3 — LLM same-slot dedup (OLD-2)</div>
-        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>detectDuplicateOfExisting()</code> — LLM decides if new event == existing event in same time slot.<br>Increments <code>metric.event_dedup_llm_fires</code> counter.</div>
-
-        <div style="text-align:center; color:var(--text-muted);">↓ confirmed unique</div>
-
         <div class="flow-box green" style="font-size:13px; font-weight:700;">INSERT <code>calendar_events</code> row</div>
-        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>approvalStatus = 'NONE'</code> or <code>'PENDING'</code> based on approval channel config</div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>approvalStatus</code> = <code>PENDING</code> with an approval channel configured, else <code>NONE</code>.</div>
+        <div style="text-align:center; color:var(--text-muted);">↓ screenEvents — only when approval is on</div>
+
+        <div class="flow-box purple" style="font-size:13px; font-weight:700;">LAYER 3 — LLM sibling dedup</div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>eventsAreIdentical()</code> (<code>IDuplicateJudge</code>) vs same-slot <em>and</em> same-day siblings → <code>REJECTED</code>.</div>
+        <div style="text-align:center; color:var(--text-muted);">↓ not a sibling duplicate</div>
+
+        <div class="flow-box blue" style="font-size:13px; font-weight:700;">LAYER 4 — Calendar overlap</div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;">A matching Google entry within <strong>±60 min</strong> (usually added by hand) → <code>REJECTED</code>, bound to its <code>googleEventId</code>. The app adopts it rather than making a second.</div>
+        <div style="text-align:center; color:var(--text-muted);">↓ survives → approval queue</div>
       </div>
     </div>
     <div class="col" style="flex:0.9; gap:10px;">
@@ -747,18 +744,19 @@ svg text { font-family: var(--font-sans); }
         <h3>createEventsInTransaction()</h3>
         <ul>
           <li>Wraps all inserts + message <code>parsed=true</code> stamps in one DB transaction</li>
-          <li>On any error: entire transaction rolls back, messages stay unparsed (will retry next sync)</li>
-          <li>Stamps <code>embedding</code> + <code>contentHash</code> onto message rows here</li>
+          <li>On any error: the whole transaction rolls back and messages stay unparsed, so the next sync retries them</li>
+          <li>Stamps <code>embedding</code> + <code>contentHash</code> onto every message in the group here, so layer 1 can match it next time</li>
           <li>Increments <code>metric.events_created_total</code></li>
         </ul>
       </div>
       <div class="card yellow">
-        <h3>⚠ LLM dedup retirement</h3>
-        <p>OLD-2 (<code>detectDuplicateOfExisting</code>) was a temporary bridge added in Phase 16. The plan is to remove it once Layer 1 (Phase 20) accumulates enough data. A 4-week review was scheduled by calendar reminder — tracked manually, not in code.</p>
+        <h3>⚠ Layers 3 and 4 fail open</h3>
+        <p>An error in either leaves the event in the approval queue rather than dropping it. A duplicate card the user dismisses is a mild annoyance; an event silently suppressed by a transient LLM or Calendar failure is a missed school trip.</p>
+        <p>Layer 3 also needs LLM quota. The deterministic collapse above exists precisely because this one can fail open.</p>
       </div>
       <div class="card red">
         <h3>⚠ Metrics are point-in-time</h3>
-        <p><code>metric.events_created_total</code> and <code>metric.event_dedup_llm_fires</code> are stored as key-value rows in the <code>settings</code> table. No time series — you can't chart trends over time.</p>
+        <p><code>metric.events_created_total</code>, <code>metric.event_dedup_llm_fires</code> and <code>metric.calendar_dedup_fires</code> are key-value rows in the <code>settings</code> table. No time series — you can't chart trends over time.</p>
       </div>
     </div>
   </div>
@@ -1200,8 +1198,8 @@ svg text { font-family: var(--font-sans); }
     <div class="warn">
       <div class="icon">⚠️</div>
       <div>
-        <strong>8. LLM event-dedup (Layer 3) — no automated retirement</strong><br>
-        <code>detectDuplicateOfExisting()</code> was a temporary Phase 16 bridge. Retirement is tracked only by a personal calendar reminder, not in code. If Phase 20 semantic dedup proves effective, Layer 3 should be removed in a planned Phase 21 cleanup.
+        <strong>8. LLM event-dedup (Layer 3) — costs a call per sibling, and fails open</strong><br>
+        <code>eventsAreIdentical()</code> is asked once per same-slot or same-day sibling, so an event landing on a busy day costs several calls. On a quota error it fails open and the duplicate reaches the approval queue. The deterministic <code>collapseSingleGathering()</code> pass covers the common "same gathering, several times" case without an LLM, but anything it cannot prove identical still depends on layer 3 having quota.
       </div>
     </div>
 
