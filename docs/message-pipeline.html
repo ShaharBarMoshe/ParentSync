@@ -479,7 +479,7 @@ svg text { font-family: var(--font-sans); }
   <div class="cols">
     <div class="col" style="flex:1.2">
       <p style="color:var(--text-muted); margin-bottom:18px; font-size:14px;">
-        Before sending messages to the LLM, <code>EventSyncService</code> merges consecutive unparsed messages
+        Before sending messages to the LLM, the graph's <code>loadMessages</code> node merges consecutive unparsed messages
         from the same channel that are within 2 hours of each other. This reduces API calls and lets the LLM
         see thread context.
       </p>
@@ -624,7 +624,7 @@ svg text { font-family: var(--font-sans); }
       <div class="card">
         <h3>DedupResult shape</h3>
         <p><code>{ match: DedupMatch | null, contentHash: string, embedding: number[] | null }</code></p>
-        <p style="margin-top:6px;">The result is passed back to <code>EventSyncService</code> which stamps both columns onto all messages in the group.</p>
+        <p style="margin-top:6px;">The result travels on the group metadata to <code>persistEvents</code>, which stamps both columns onto every message in the group inside the same transaction as the inserts.</p>
       </div>
       <div class="card blue">
         <h3>Parameters</h3>
@@ -632,7 +632,7 @@ svg text { font-family: var(--font-sans); }
           <li><code>LOOKBACK_DAYS</code> = 30</li>
           <li><code>LOOKBACK_LIMIT</code> = 1000</li>
           <li>Default threshold = <code>0.92</code> (user-configurable)</li>
-          <li>Embedding dim = 768 (Gemini)</li>
+          <li>Embedding dim = model default 3072 (<code>outputDimensionality</code> unset; 768 is the <em>mock</em>)</li>
         </ul>
       </div>
       <div class="card red">
@@ -705,7 +705,7 @@ svg text { font-family: var(--font-sans); }
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════
-  SLIDE 8 — Event Creation + 3-layer Dedup
+  SLIDE 8 — Event Creation + 4-layer Dedup
 ══════════════════════════════════════════════════════════════════ -->
 <div class="slide">
   <div class="slide-tag">Stage 5 — Event Creation</div>
@@ -956,7 +956,7 @@ svg text { font-family: var(--font-sans); }
       </div>
       <div class="card red">
         <h3>On REJECTED</h3>
-        <p>Captures a <code>NegativeExample</code> from <code>sourceContent</code> snapshot. The LLM prompt is enriched with this example on the next sync call.</p>
+        <p>Captures a <code>NegativeExample</code> from <code>sourceContent</code> snapshot. Kept for the user's reference only — it is <strong>not</strong> fed back into the prompt. That loop was retired in v1.4.0.</p>
       </div>
       <div class="card yellow">
         <h3>⚠ Reactions can arrive in any order, any time</h3>
@@ -1110,7 +1110,7 @@ svg text { font-family: var(--font-sans); }
       <div class="card">
         <h3>Retry model</h3>
         <ul>
-          <li>No in-process retry logic for LLM calls — failures propagate to the transaction rollback</li>
+          <li><code>ChainRunner</code> applies <code>LlmRetryPolicy</code>: exponential backoff for transient failures, but <strong>never</strong> for a non-429 4xx (a revoked key or wrong model fails the same way five times) and <strong>never</strong> for an exhausted account, which fails immediately even though it arrives as a 429. What retrying cannot fix still propagates to the transaction rollback</li>
           <li>Natural retry = next cron tick (user-configured interval)</li>
           <li>WhatsApp reaction listener is event-driven (no polling)</li>
         </ul>
@@ -1143,7 +1143,7 @@ svg text { font-family: var(--font-sans); }
       <div class="icon">⚠️</div>
       <div>
         <strong>1. O(n) embedding scan — no ANN index</strong><br>
-        Cosine similarity is computed in JS over up to 1,000 candidates per sync. No HNSW/FAISS index. Will degrade linearly as the message volume grows past the lookback window. Consider <code>sqlite-vss</code> or a separate Chroma/Qdrant sidecar for Phase 21+.
+        Cosine similarity is computed in JS over up to 1,000 candidates per sync. No HNSW/FAISS index. Will degrade linearly as the message volume grows past the lookback window. Consider <code>sqlite-vss</code> or a separate Chroma/Qdrant sidecar if the candidate window has to grow.
       </div>
     </div>
 
@@ -1241,7 +1241,7 @@ svg text { font-family: var(--font-sans); }
       <div class="flow-arrow">→</div>
       <div class="flow-box green" style="flex:1; font-size:11px; text-align:center; padding:10px 6px;">
         <div style="font-weight:700; margin-bottom:4px;">⑥ Events</div>
-        <div style="color:var(--text-muted)">3-layer<br>dedup+insert</div>
+        <div style="color:var(--text-muted)">4-layer<br>dedup+insert</div>
       </div>
       <div class="flow-arrow">→</div>
       <div class="flow-box yellow" style="flex:1; font-size:11px; text-align:center; padding:10px 6px;">
@@ -1272,7 +1272,7 @@ svg text { font-family: var(--font-sans); }
         <li>⚠ O(n) embedding scan — add ANN index</li>
         <li>⚠ WhatsApp session expiry — add health check + PENDING TTL</li>
         <li>⚠ Images in DB — move to filesystem</li>
-        <li>⚠ Retire Layer 3 LLM dedup (Phase 21)</li>
+        <li>⚠ Layer 3 costs one LLM call per sibling</li>
         <li>⚠ Add time-series metrics table</li>
       </ul>
     </div>
@@ -1288,7 +1288,7 @@ svg text { font-family: var(--font-sans); }
     </div>
   </div>
   <p style="margin-top:16px; font-size:12px; color:var(--text-muted); text-align:center;">
-    ParentSync · Phase 20 · Shahar Bar-Moshe · 2026
+    ParentSync · Message Pipeline · Shahar Bar-Moshe · 2026
   </p>
 </div>
 
