@@ -1,0 +1,47 @@
+<section id="gaps" data-transition="fade" style="background:#111A24;color:#F7F8F6;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:36px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#E0B457;letter-spacing:2px;text-transform:uppercase">What this project does not prove</p>
+<h2 style="font-size:64px;font-weight:600;line-height:1.1;width:1540px">You should hear the gaps from me, not find them in question three</h2>
+<table style="font-family:'IBM Plex Sans', Arial, sans-serif;font-size:25px;color:#C2D2DE;padding:16px 20px">
+<tr>
+<th style="width:26%;text-align:left;font-weight:600;color:#F7F8F6">You asked for</th>
+<th style="width:30%;text-align:left;font-weight:600;color:#F7F8F6">This project shows</th>
+<th style="width:44%;text-align:left;font-weight:600;color:#F7F8F6">The honest distance</th>
+</tr>
+<tr>
+<td style="color:#F7F8F6"><b>Python — asyncio, Pydantic</b></td>
+<td>TypeScript and Kotlin, not Python</td>
+<td>The concepts map closely — schema-validated boundaries, structured concurrency, typed DTOs — but <b>production Python is a real gap I would be ramping on</b>.</td>
+</tr>
+<tr>
+<td style="color:#F7F8F6"><b>AWS — EKS, S3, Lambda</b></td>
+<td>A single-process desktop app and a phone</td>
+<td><b>The largest gap.</b> I have designed for failure and backpressure, but not on managed cloud primitives.</td>
+</tr>
+<tr>
+<td style="color:#F7F8F6"><b>SQS / Kafka, DLQs</b></td>
+<td>In-process coalescing, an in-flight-pass lock, WorkManager</td>
+<td>The <i>patterns</i> are here — idempotency keys, poison-message handling, backpressure. The <b>managed platforms are not</b>.</td>
+</tr>
+<tr>
+<td style="color:#F7F8F6"><b>MCP / A2A protocols</b></td>
+<td>Task-shaped ports and a tool-free graph</td>
+<td>Not implemented. The <b>port boundary is the right shape to expose over MCP</b>, and I can argue why a tool loop was wrong here — but I have not shipped one.</td>
+</tr>
+<tr>
+<td style="color:#F7F8F6"><b>Microservices, GraphQL</b></td>
+<td>A modular monolith behind REST</td>
+<td>Module boundaries are enforced by tests rather than by network calls. Deliberate at this size; <b>not the same as having split one.</b></td>
+</tr>
+</table>
+<p style="font-size:29px;line-height:1.45;color:#C2D2DE;width:1560px">What I would rather be judged on: whether I can tell you <b>why</b> each control exists, what it cost before it existed, and which failure mode I chose on purpose. That transfers across languages and clouds. The AWS surface area does not transfer by itself — it is learnable, and I would not pretend it is already learned.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#8AA0B2;font-family:'JetBrains Mono', 'Courier New', monospace">Single-user scale · patterns demonstrated, throughput not</p>
+<aside>I put this slide in on purpose and I would not skip it.
+
+Three reasons. It is true. You will find out anyway. And a candidate who can scope their own experience is easier to trust on the parts they do claim.
+
+The honest ranking: AWS is the biggest gap. I have thought hard about failure, backpressure and idempotency, but on in-process primitives, not on managed ones. Python is second — the concepts transfer, and Pydantic is recognisably the same job as the schema validation here, but I have not shipped production Python.
+
+MCP is interesting rather than embarrassing: I have not implemented it, but the port boundary I already have is the right shape to expose, and I can argue why a tool loop was the wrong choice for this particular pipeline — which is a more useful conversation than claiming I have built one.
+
+What I would ask to be judged on is the reasoning: why each control exists, what it cost before it existed, and which failure mode I picked deliberately. That is what transfers. The cloud surface area is learnable and I would not pretend it is already learned.</aside>
+</section>

@@ -7,12 +7,11 @@ import {
   WHATSAPP_SERVICE,
   GMAIL_SERVICE,
   GOOGLE_CALENDAR_SERVICE,
-  LLM_SERVICE,
 } from '../src/shared/constants/injection-tokens';
 import type { IWhatsAppService } from '../src/messages/interfaces/whatsapp-service.interface';
 import type { IGmailService } from '../src/messages/interfaces/gmail-service.interface';
 import type { IGoogleCalendarService } from '../src/calendar/interfaces/google-calendar-service.interface';
-import type { ILLMService } from '../src/llm/interfaces/llm-service.interface';
+import { createAiPortMocks, overrideAiPorts } from './helpers/ai-ports';
 
 describe('API Integration (e2e)', () => {
   let app: INestApplication<App>;
@@ -48,23 +47,19 @@ describe('API Integration (e2e)', () => {
     searchEvents: jest.fn().mockResolvedValue([]),
   };
 
-  const mockLlmService: ILLMService = {
-    callLLM: jest.fn().mockResolvedValue('[]'),
-  };
+  const aiPorts = createAiPortMocks();
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    })
-      .overrideProvider(WHATSAPP_SERVICE)
-      .useValue(mockWhatsAppService)
-      .overrideProvider(GMAIL_SERVICE)
-      .useValue(mockGmailService)
-      .overrideProvider(GOOGLE_CALENDAR_SERVICE)
-      .useValue(mockGoogleCalendarService)
-      .overrideProvider(LLM_SERVICE)
-      .useValue(mockLlmService)
-      .compile();
+    const moduleFixture: TestingModule = await overrideAiPorts(
+      Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(WHATSAPP_SERVICE)
+        .useValue(mockWhatsAppService)
+        .overrideProvider(GMAIL_SERVICE)
+        .useValue(mockGmailService)
+        .overrideProvider(GOOGLE_CALENDAR_SERVICE)
+        .useValue(mockGoogleCalendarService),
+      aiPorts,
+    ).compile();
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');

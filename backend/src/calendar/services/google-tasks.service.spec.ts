@@ -42,7 +42,7 @@ describe('GoogleTasksService', () => {
   beforeEach(async () => {
     const mockOAuthService = {
       getValidAccessToken: jest.fn().mockResolvedValue('mock-access-token'),
-      getOAuth2Client: jest.fn().mockReturnValue({
+      getAuthenticatedClient: jest.fn().mockResolvedValue({
         setCredentials: jest.fn(),
       }),
     };
@@ -59,7 +59,7 @@ describe('GoogleTasksService', () => {
 
     jest.clearAllMocks();
     oauthService.getValidAccessToken.mockResolvedValue('mock-access-token');
-    oauthService.getOAuth2Client.mockReturnValue({
+    oauthService.getAuthenticatedClient.mockResolvedValue({
       setCredentials: jest.fn(),
     } as any);
   });

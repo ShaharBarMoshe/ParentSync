@@ -1,0 +1,17 @@
+<section id="failopen" data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Failure modes</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">Every layer fails open — because the two mistakes are not equal.</h2>
+<p style="font-size:36px;line-height:1.4;color:#4A5568;width:1540px">A duplicate card is an annoyance. A silently dropped event is a missed school trip.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">5 / 13</p>
+<aside>Short slide, big idea. This is the one I would want remembered.
+
+Every one of those dedup layers fails open. If the embedding call times out, if the judge runs out of quota, if the calendar lookup throws — the event goes through to the approval queue as though nothing had matched.
+
+That was a decision, not an accident, and it is written in the code comments so the next person does not "fix" it into failing closed.
+
+The reasoning is the asymmetry. A duplicate the parent has to dismiss costs them two seconds. An event silently suppressed by a transient model failure is a missed school trip, with nothing in the interface to show it ever existed. Those are not equal costs, so the failure mode should not be symmetric either.
+
+And the deterministic collapse exists precisely because the layer next to it can fail open — it is the floor underneath the part that can go missing.
+
+If they push: yes, in a payments context the asymmetry inverts and you fail closed. The skill is knowing which direction, per stage, and writing down why.</aside>
+</section>

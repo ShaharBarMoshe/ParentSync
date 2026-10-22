@@ -339,10 +339,8 @@ describeLive('WhatsApp → LLM → Google Calendar (e2e)', () => {
       }
 
       console.log('\nCreating Google Calendar events...');
-      const accessToken = await oauthService.getValidAccessToken('calendar');
-      const oauth2Client = oauthService.getOAuth2Client();
-      oauth2Client.setCredentials({ access_token: accessToken });
-      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+      const auth = await oauthService.getAuthenticatedClient('calendar');
+      const calendar = google.calendar({ version: 'v3', auth });
 
       const PINK_COLOR_ID = '4'; // Flamingo (pink) in Google Calendar
 

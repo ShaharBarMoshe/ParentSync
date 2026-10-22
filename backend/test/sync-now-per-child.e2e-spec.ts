@@ -414,10 +414,8 @@ describeLive('Sync Now — Per-Child WhatsApp → LLM → Google Calendar (e2e)'
 
       console.log('\n\n══ Creating Google Calendar events (per-child) ══\n');
 
-      const accessToken = await oauthService.getValidAccessToken('calendar');
-      const oauth2Client = oauthService.getOAuth2Client();
-      oauth2Client.setCredentials({ access_token: accessToken });
-      const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+      const auth = await oauthService.getAuthenticatedClient('calendar');
+      const calendar = google.calendar({ version: 'v3', auth });
 
       const eventsRepo = dataSource.getRepository(CalendarEventEntity);
 

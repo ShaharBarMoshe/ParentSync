@@ -1,0 +1,28 @@
+<section id="judge" data-transition="fade" style="background:#111A24;color:#F7F8F6;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#5FA8D8;letter-spacing:2px;text-transform:uppercase">LLM-as-a-judge · evaluation</p>
+<h2 style="font-size:68px;font-weight:600;line-height:1.1">A model judging a model, with a deterministic floor underneath it</h2>
+<div style="display:flex;gap:40px">
+<div style="flex:1;display:flex;flex-direction:column;gap:18px">
+<h3 style="font-size:32px;font-weight:600;color:#5FA8D8">The judge</h3>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">Layer 3 is a dedicated port — <i>IDuplicateJudge</i> — asked one question: do these two events describe the same gathering? It runs against same-slot and same-day siblings for that child.</p>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">It is a judge, so it is treated as fallible: one call per sibling, a hard fail-open, and a <b>deterministic collapse running before it</b> that catches the common case without a model at all.</p>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">Every firing increments a counter, so the judge's rate is observable rather than assumed.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:18px;background:#1A2733;padding:40px;border:1px solid #2E4254;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;color:#E0B457">Structured output is a contract, and it bites</h3>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">Gemini rejects parts of JSON Schema at <b>call time, not build time</b>: no nullable, no unions, no <i>additionalProperties</i>. A schema that is valid and type-checks can still be refused in production.</p>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">So a test runs the <b>real</b> zod → JSON-Schema conversion, not a mock of it. Mocking the conversion would hide exactly the failure the test is for.</p>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">Every field is a plain string — including confidence — because the subset has no way to say "integer or absent", and a required integer makes the model invent a number it has no view on.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#8AA0B2;font-family:'JetBrains Mono', 'Courier New', monospace">Eval-first: error analysis before metrics · retrieval and generation measured separately</p>
+<aside>Two halves, both about trusting a model only as far as you have evidence.
+
+The judge is a real LLM-as-a-judge in production, not a benchmark exercise. What I would emphasise is that I treated it as fallible from the start: it fails open, it is the most expensive layer so it runs last, and there is a deterministic collapse in front of it that handles the common case — one gathering described at several times — without any model involvement. The judge only sees the genuinely ambiguous pairs.
+
+And it is instrumented. I can tell you how often it fires, because it increments a counter when it does.
+
+The right half is the one that surprises people. Gemini's structured-output path rejects parts of JSON Schema at call time. You can write a schema that is valid JSON Schema, passes type-check, passes every mocked unit test, and is refused by the API in production. So the test exercises the real conversion. Mocking it would hide the one failure the test exists to catch.
+
+That is the eval instinct generally: test the thing that actually fails, not the thing that is easy to assert.</aside>
+</section>

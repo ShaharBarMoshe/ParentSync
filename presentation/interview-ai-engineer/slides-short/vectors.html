@@ -1,0 +1,15 @@
+<section id="vectors" data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Embedding systems</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">39 KB per vector → 3,076 bytes. I measured before I redesigned.</h2>
+<p style="font-size:36px;line-height:1.4;color:#4A5568;width:1540px">And proved the 12.7× win stays within <b>0.001</b> of exact cosine.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">6 / 13</p>
+<aside>Two numbers, two habits.
+
+The measurement first. The live database was forty megabytes holding one hundred messages. When I looked, almost all of it was embedding JSON — a 3072-dimension vector stored as JSON text is about thirty-nine kilobytes, and a dedup pass reads up to a thousand candidates. So one check parses roughly thirty-nine megabytes of JSON. Fine on a laptop, not on a phone.
+
+The fix: int8 symmetric quantisation, L2-normalised on encode so cosine becomes a plain dot product, read straight out of the database row without allocating an array. Three thousand and seventy-six bytes.
+
+Now the second number, which is the part that makes it safe. A size optimisation sitting on a similarity threshold is a correctness change unless you prove otherwise. So there is a test asserting the quantised score stays within one thousandth of exact cosine — comfortably tighter than the gap between the 0.92 threshold and the scores actually observed. Mismatched dimensionality returns null rather than a score, so a changed embedding model can never silently compare across vector spaces.
+
+Honest scale note if asked: this is a bounded linear scan over a thousand candidates in-process, not an ANN index. Right call at this size. In your environment I would reach for pgvector or OpenSearch — with the same threshold-validation test wrapped around it.</aside>
+</section>

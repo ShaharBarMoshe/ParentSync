@@ -1,0 +1,19 @@
+<section id="incident" data-transition="fade" style="background:#2A1C0E;color:#F9F3E8;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#E0B457;letter-spacing:2px;text-transform:uppercase">Incident</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">It read its own output and fed itself. One message became 100 rows.</h2>
+<p style="font-size:36px;line-height:1.4;color:#EADBC4;width:1540px">Nothing crashed. The first symptom would have been the bill.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#A08E6E;font-family:'JetBrains Mono', 'Courier New', monospace">10 / 13</p>
+<aside>I volunteer this one. It is the most transferable thing I have.
+
+The setup is almost funny. The mobile client warns you when messages are waiting but no API key is set. That warning is a notification. The client reads notifications. So it read its own warning, stored it as a message, which raised the count of waiting messages, which re-posted the warning.
+
+One real message became a hundred rows.
+
+Here is why it matters rather than being a joke: nothing crashed. No exception, no failing test, no alert — the system looked healthy. With an API key configured, every one of those rows would have been a paid model call on the app's own text, and the first thing anyone would have noticed is the invoice.
+
+I found it by dumping actual database state on an emulator instead of trusting that a green test run meant a healthy system. That instinct is the thing I would bring.
+
+The fix is a guard that cannot be turned off by configuration, checked before the source test, with a test asserting it cannot be configured away. A watch list is a user preference; "do not consume your own output" is an invariant.
+
+The generalisation: any agentic system that both emits and consumes needs an explicit identity boundary, or it will eventually consume itself — quietly, and in a metered system, expensively.</aside>
+</section>

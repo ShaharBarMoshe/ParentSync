@@ -190,11 +190,8 @@ export class GmailService implements IGmailService {
   }
 
   private async getGmailClient(): Promise<gmail_v1.Gmail> {
-    const accessToken = await this.oauthService.getValidAccessToken('gmail');
-    const oauth2Client = this.oauthService.getOAuth2Client();
-    oauth2Client.setCredentials({ access_token: accessToken });
-
-    return google.gmail({ version: 'v1', auth: oauth2Client });
+    const auth = await this.oauthService.getAuthenticatedClient('gmail');
+    return google.gmail({ version: 'v1', auth });
   }
 
   private async fetchEmailDetails(

@@ -1,0 +1,35 @@
+<section id="embeddings" data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Embedding systems</p>
+<h2 style="font-size:68px;font-weight:600;line-height:1.1">The same retrieval problem, re-engineered for a 12× tighter budget</h2>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:18px;background:#FFFFFF;padding:44px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;color:#2E6FA7">On the desktop</h3>
+<p style="font-size:27px;line-height:1.45;color:#4A5568">Gemini <i>gemini-embedding-001</i>, 3072 dimensions, cosine over a bounded candidate pool — <b>30-day window, 1000 rows</b>, served by a composite index. Threshold 0.92, user-tunable.</p>
+<p style="font-size:27px;line-height:1.45;color:#4A5568">Vectors stored as JSON. Fine on a laptop.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:18px;background:#FFFFFF;padding:44px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;color:#A8700B">Then I measured it</h3>
+<p style="font-size:27px;line-height:1.45;color:#4A5568">The live database was <b>40 MB holding 100 messages</b>. A 3072-dim vector as JSON text is <b>~39 KB per row</b> — so one dedup pass parses roughly <b>39 MB of JSON</b>.</p>
+<p style="font-size:27px;line-height:1.45;color:#4A5568">Tolerable on a laptop. Not on a phone.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:18px;background:#1A2733;color:#F7F8F6;padding:44px;border:1px solid #2E4254;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;color:#5FA8D8">On the phone</h3>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">Int8 symmetric quantisation, L2-normalised on encode so similarity is a plain dot product. <b>3,076 bytes</b> per vector, compared straight out of the row with no allocation.</p>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">768 dimensions via Matryoshka truncation — 4× less again.</p>
+</div>
+</div>
+<div style="display:flex;gap:32px;align-items:center;background:#E8F0F7;padding:36px 44px;border:1px solid #9FC2DC;border-radius:16px">
+<p style="font-size:72px;font-weight:700;color:#1E4E78;font-family:'JetBrains Mono', 'Courier New', monospace">0.001</p>
+<p style="font-size:29px;line-height:1.45;color:#1E4E78;width:1340px">A test pins quantised similarity to within <b>0.001 of exact cosine</b>, so a 12.7× size win cannot move a score across the 0.92 threshold. Mismatched dimensionality returns <i>null</i> rather than a score — a changed model can never silently compare across vector spaces.</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">Bounded candidate pool · O(n) cosine in-process · no ANN index, and I can tell you when that stops being fine</p>
+<aside>Three panels: the same retrieval problem at two very different budgets.
+
+The middle one is the one I would lead with in a technical conversation, because it is the habit rather than the trick: I measured before I redesigned. Forty megabytes for a hundred messages, and when I looked, it was almost all embedding JSON and base64 images.
+
+The right panel is the fix — int8 quantisation, normalise on encode so cosine becomes a dot product, and read it straight out of the row without allocating an array.
+
+The number at the bottom is the part that makes it safe. A size optimisation on a similarity threshold is a correctness change unless you prove it is not. So there is a test asserting the quantised score stays within a thousandth of exact cosine — comfortably tighter than the gap between the threshold and the scores actually observed.
+
+If asked about scale honestly: this is a bounded linear scan, not an ANN index. At a thousand candidates in-process that is the right call. I know where the line is — and in a bank I would be reaching for pgvector or OpenSearch, with the same threshold-validation test around it.</aside>
+</section>

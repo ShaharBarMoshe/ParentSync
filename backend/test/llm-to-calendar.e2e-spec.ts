@@ -98,10 +98,8 @@ describeLive('LLM to Google Calendar Integration (e2e)', () => {
     console.log(`Event created with Google ID: ${googleEventId}`);
 
     // Step 4: Set event color to pink (colorId "4" = Flamingo/pink in Google Calendar)
-    const accessToken = await oauthService.getValidAccessToken('calendar');
-    const oauth2Client = oauthService.getOAuth2Client();
-    oauth2Client.setCredentials({ access_token: accessToken });
-    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    const auth = await oauthService.getAuthenticatedClient('calendar');
+    const calendar = google.calendar({ version: 'v3', auth });
 
     const PINK_COLOR_ID = '4'; // Google Calendar: 4 = Flamingo (pink)
 

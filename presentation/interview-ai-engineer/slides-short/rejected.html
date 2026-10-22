@@ -1,0 +1,15 @@
+<section id="rejected" data-transition="fade" style="background:#111A24;color:#F7F8F6;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#E0B457;letter-spacing:2px;text-transform:uppercase">The useful part</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">I can tell you which LangGraph features I refused, and what would have broken.</h2>
+<p style="font-size:36px;line-height:1.4;color:#C2D2DE;width:1500px"><i>interrupt()</i> · the checkpointer · a tool loop</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#8AA0B2;font-family:'JetBrains Mono', 'Courier New', monospace">3 / 13</p>
+<aside>This is the slide I most want to be asked about. Spend time here.
+
+interrupt() first, because human-in-the-loop is textbook LangGraph and I did not use it. Resume re-runs the node from the top. By the time a human answers, that node has already written to the database and already sent the approval card. A resume would send every card a second time. So the PENDING database row is the interrupt — and unlike an in-memory thread, it survives the process dying, which for an approval a parent might answer tomorrow morning is the whole requirement.
+
+The checkpointer: unparsed rows are already a durable work queue. A crash is recovered by the next pass reading the same rows. A checkpointer would cost memory per thread for recovery I already have.
+
+A tool loop: the pipeline is fixed. A loop adds non-determinism to a path that writes to a family's calendar. I will happily argue where a tool loop does belong — read-only, bounded, with a hard call ceiling — but not on the write path.
+
+The general point: knowing which framework features not to use is worth more than knowing all of them.</aside>
+</section>

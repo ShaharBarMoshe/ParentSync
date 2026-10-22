@@ -1,0 +1,35 @@
+<section id="graph" data-transition="fade" style="background:#111A24;color:#F7F8F6;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#5FA8D8;letter-spacing:2px;text-transform:uppercase">Agentic orchestration · LangGraph</p>
+<h2 style="font-size:68px;font-weight:600;line-height:1.1">A graph because the branches are real, not because graphs are fashionable</h2>
+<div style="display:flex;gap:40px">
+<div style="flex:1.05;display:flex;flex-direction:column;gap:16px">
+<h3 style="font-size:30px;font-weight:600;color:#5FA8D8">Conditional edges that save money</h3>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">Three branches short-circuit the expensive path:</p>
+<ul style="font-size:27px;line-height:1.55;color:#C2D2DE">
+<li>Every group was a duplicate → skip extract <i>and</i> persist entirely</li>
+<li>Quota exhausted mid-pass → leave messages unparsed for the next run rather than writing "no events found"</li>
+<li>Approval disabled → skip screening, which is itself an LLM and embedding spend</li>
+</ul>
+<p style="font-size:27px;line-height:1.45;color:#C2D2DE">Screening only earns its calls when a human will actually be asked to approve the result.</p>
+</div>
+<div style="flex:0.95;display:flex;flex-direction:column;gap:16px;background:#1A2733;padding:40px;border:1px solid #2E4254;border-radius:16px">
+<h3 style="font-size:30px;font-weight:600;color:#E0B457">What I deliberately did not use</h3>
+<table style="font-family:'IBM Plex Sans', Arial, sans-serif;font-size:25px;color:#C2D2DE">
+<tr><th style="width:34%;text-align:left;font-weight:600;color:#F7F8F6">Feature</th><th style="width:66%;text-align:left;font-weight:600;color:#F7F8F6">Why not</th></tr>
+<tr><td><i>interrupt()</i></td><td>Resume re-runs the node from the top, and approval has already written to SQLite — every card would go out twice. The PENDING row <i>is</i> the durable interrupt, and it survives a restart.</td></tr>
+<tr><td>checkpointer</td><td>Unparsed rows are already the durable work queue. A crash is recovered by the next pass reading the same rows.</td></tr>
+<tr><td>tool loop</td><td>The pipeline is fixed. A loop would add non-determinism to a path that writes to a family's calendar.</td></tr>
+</table>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#8AA0B2;font-family:'JetBrains Mono', 'Courier New', monospace">Eight nodes · three conditional edges · no checkpointer, on purpose</p>
+<aside>This is the slide I would want to be asked about.
+
+The left side is ordinary: conditional edges that let the graph skip work. The interesting number is the third one — screening costs an LLM call and an embedding call per event, so it only runs when approval is actually on and there is something to approve.
+
+The right side matters more. Every one of those three is a LangGraph feature I read about, wanted, and rejected with a reason.
+
+interrupt() is the big one. Human-in-the-loop is textbook LangGraph. But resume re-runs the node from the top, and by then requestApproval has already written to SQLite and sent a WhatsApp card. A resume would send every card a second time. So the PENDING database row is the interrupt — and unlike an in-memory thread, it survives the process dying.
+
+If you take one thing from this deck: I can tell you why I did not use a framework feature, in terms of what would have broken.</aside>
+</section>

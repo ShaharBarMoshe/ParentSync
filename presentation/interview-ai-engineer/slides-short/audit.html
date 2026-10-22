@@ -1,0 +1,19 @@
+<section id="audit" data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Governance</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">A suppressed duplicate is a row you can audit, not an absence you cannot.</h2>
+<p style="font-size:36px;line-height:1.4;color:#4A5568;width:1540px">Layers 3 and 4 run <b>after</b> the write, and mark it rejected.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">9 / 13</p>
+<aside>This is the slide for a banking audience specifically.
+
+The first two dedup layers prevent a row from existing. The last two run after the insert and mark it REJECTED instead. That looks like a quirk and it is deliberate: when the system decides not to act, that decision is itself a record — with a status, and a counter that reconciles against the table.
+
+Compare it to a pipeline where a suppressed item simply never appears. You cannot audit an absence. You cannot answer "why didn't this show up" six weeks later.
+
+Three more controls in the same family, if there is appetite:
+
+Nothing reaches the calendar unapproved, and the durable record is a database row rather than a UI state — so dismissing a notification decides nothing and a restart loses nothing.
+
+OAuth 2.0 with PKCE, CSRF state, refresh tokens encrypted at rest, and a separate client per purpose — that last one came from a real race that only showed up against the actual Google library, which is why the test uses the real one instead of a mock.
+
+And an alert never travels over the channel that is broken. WhatsApp failures are reported by email; Google failures over WhatsApp. Obvious written down. Not obvious when the only alerting path was the thing that had just died.</aside>
+</section>

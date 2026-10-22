@@ -1,0 +1,59 @@
+<section id="nondeterminism" data-section="Handling non-deterministic output: a dedup ladder, embeddings at two scales, and an LLM judge." data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:36px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Non-determinism at scale</p>
+<h2 style="font-size:64px;font-weight:600;line-height:1.1;width:1540px">The same flyer reaches three class groups. Five mechanisms stop it becoming three events.</h2>
+<table style="font-family:'IBM Plex Sans', Arial, sans-serif;font-size:25px;color:#4A5568;padding:16px 18px">
+<tr>
+<th style="width:21%;text-align:left;font-weight:600;color:#111A24">Mechanism</th>
+<th style="width:30%;text-align:left;font-weight:600;color:#111A24">What it catches</th>
+<th style="width:21%;text-align:left;font-weight:600;color:#111A24">Cost</th>
+<th style="width:28%;text-align:left;font-weight:600;color:#111A24">If it fails</th>
+</tr>
+<tr>
+<td style="color:#111A24"><b>L1 · hash</b></td>
+<td>A byte-identical forward</td>
+<td style="color:#1E7A4C"><b>Nothing</b> — no network</td>
+<td>Falls through to L1 embedding</td>
+</tr>
+<tr>
+<td style="color:#111A24"><b>L1 · embedding</b></td>
+<td>A forward that gained "FYI"</td>
+<td>One embedding call</td>
+<td><b>Open</b> — treated as fresh, goes to the model</td>
+</tr>
+<tr>
+<td style="color:#111A24"><b>Collapse</b></td>
+<td>One gathering described at several times</td>
+<td style="color:#1E7A4C"><b>Nothing</b> — deterministic</td>
+<td>Cannot fail; that is why it exists</td>
+</tr>
+<tr>
+<td style="color:#111A24"><b>L2 · exact</b></td>
+<td>Title + date + time + child already stored</td>
+<td style="color:#1E7A4C">One indexed query</td>
+<td>Falls through to L3</td>
+</tr>
+<tr>
+<td style="color:#111A24"><b>L3 · judge</b></td>
+<td>"Same gathering, different framing"</td>
+<td>One LLM call <i>per sibling</i></td>
+<td><b>Open</b> — duplicate reaches the approval queue</td>
+</tr>
+<tr>
+<td style="color:#111A24"><b>L4 · calendar</b></td>
+<td>An entry a parent added by hand, ±60 min</td>
+<td>Embeddings over candidates</td>
+<td><b>Open</b> — duplicate reaches the queue</td>
+</tr>
+</table>
+<p style="font-size:29px;line-height:1.45;color:#4A5568;width:1560px">Cheapest first, and <b>every layer fails open on purpose</b>. A duplicate card the user dismisses is an annoyance; an event silently suppressed by a transient model failure is a missed school trip. The deterministic collapse exists precisely because the layer above it can fail open.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">L1–L2 prevent a row · L3–L4 reject one already written, so the suppression is auditable</p>
+<aside>This is the heart of it, and the slide I would spend the most time on.
+
+Read the Cost column top to bottom: the order is deliberate. SHA-256 costs nothing, so it goes first and catches the most common case — someone forwarding the identical flyer. Embeddings cost one call. The LLM judge costs a call per sibling, so it is last.
+
+Now the "If it fails" column, which is the part I actually care about. Every one of these fails open. That was a decision, not an accident. I wrote it down in the code comments so the next person does not "fix" it.
+
+And the asymmetry is the reason: a duplicate the user has to dismiss is mildly annoying. An event that was silently dropped because an embedding call timed out is a missed school trip, with nothing in the UI to show it ever existed. Those are not equal, so the failure mode is not symmetric either.
+
+Last point, bottom of the slide: layers 3 and 4 run after the row is written and mark it REJECTED rather than preventing the insert. That means a suppressed duplicate is a row you can audit, not an absence you cannot. In a bank that distinction is the whole game.</aside>
+</section>

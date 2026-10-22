@@ -15,7 +15,6 @@ import {
   GMAIL_SERVICE,
   GOOGLE_CALENDAR_SERVICE,
   GOOGLE_TASKS_SERVICE,
-  LLM_SERVICE,
 } from '../src/shared/constants/injection-tokens';
 import type {
   IWhatsAppService,
@@ -24,10 +23,8 @@ import type {
 import type { IGmailService } from '../src/messages/interfaces/gmail-service.interface';
 import type { IGoogleCalendarService } from '../src/calendar/interfaces/google-calendar-service.interface';
 import type { IGoogleTasksService } from '../src/calendar/interfaces/google-tasks-service.interface';
-import type {
-  ILLMService,
-  LlmMessage,
-} from '../src/llm/interfaces/llm-service.interface';
+import type { ExtractionRequest } from '../src/llm/ports/ai-ports';
+import { createAiPortMocks, overrideAiPorts } from './helpers/ai-ports';
 import { MessageSource } from '../src/shared/enums/message-source.enum';
 import { minutesAgo } from './helpers/relative-dates';
 
@@ -44,10 +41,11 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
   let parserCache: Cache;
 
   /**
-   * Captures every LlmMessage[] handed to callLLM so the test can assert
-   * what the parser layer actually sent — content, images, role.
+   * Every extraction request the pipeline produced, flattened across calls, so
+   * the test can assert what actually reached the extractor — which groups,
+   * carrying which images.
    */
-  const capturedCalls: LlmMessage[][] = [];
+  const capturedRequests: ExtractionRequest[] = [];
 
   const imageData = Buffer.from('fake-png-bytes').toString('base64');
   const fakeImage = { mimeType: 'image/png', data: imageData };
@@ -112,37 +110,31 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
     return d.toISOString().split('T')[0];
   })();
 
-  const mockLlm: ILLMService = {
-    callLLM: jest.fn(async (messages: LlmMessage[]) => {
-      // Capture extraction calls only. The relevance classifier shares this
-      // port but runs on text-only groups, so including it would make the
-      // "one call per group, never bundled" assertions count the wrong thing.
-      const systemPrompt =
-        messages.find((m) => m.role === 'system')?.content ?? '';
-      if (systemPrompt.includes('calendar event extractor')) {
-        capturedCalls.push(messages);
-      }
-      return JSON.stringify([
+  const aiPorts = createAiPortMocks();
+  aiPorts.extractor.extract = jest.fn(async (requests: ExtractionRequest[]) => {
+    capturedRequests.push(...requests);
+    return requests.map((request) => ({
+      id: request.id,
+      events: [
         {
           title: 'School play',
           date: futureDate,
           time: '18:00',
           description: 'extracted from flyer image',
         },
-      ]);
-    }),
-  };
+      ] as any,
+    }));
+  });
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    })
-      .overrideProvider(WHATSAPP_SERVICE).useValue(mockWhatsApp)
-      .overrideProvider(GMAIL_SERVICE).useValue(mockGmail)
-      .overrideProvider(GOOGLE_CALENDAR_SERVICE).useValue(mockCalendar)
-      .overrideProvider(GOOGLE_TASKS_SERVICE).useValue(mockTasks)
-      .overrideProvider(LLM_SERVICE).useValue(mockLlm)
-      .compile();
+    const moduleFixture: TestingModule = await overrideAiPorts(
+      Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(WHATSAPP_SERVICE).useValue(mockWhatsApp)
+        .overrideProvider(GMAIL_SERVICE).useValue(mockGmail)
+        .overrideProvider(GOOGLE_CALENDAR_SERVICE).useValue(mockCalendar)
+        .overrideProvider(GOOGLE_TASKS_SERVICE).useValue(mockTasks),
+      aiPorts,
+    ).compile();
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
@@ -162,7 +154,7 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
   });
 
   beforeEach(async () => {
-    capturedCalls.length = 0;
+    capturedRequests.length = 0;
     await eventRepo.clear();
     await messageRepo.clear();
     const children = await childRepo.find();
@@ -228,16 +220,10 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
       .expect(201);
 
     expect(res.body.eventsCreated).toBe(1);
-    expect(capturedCalls).toHaveLength(1);
-
-    const userMsg = capturedCalls[0].find((m) => m.role === 'user');
-    expect(userMsg).toBeDefined();
-    expect(userMsg!.images).toEqual([fakeImage]);
-
-    // Image-bearing groups are routed out of the batch path, so the prompt
-    // must not contain the multi-message delimiters.
-    expect(userMsg!.content).not.toContain('===MESSAGE_');
-    expect(userMsg!.content).toContain('attached image(s)');
+    expect(capturedRequests).toHaveLength(1);
+    // The image survives the whole pipeline — scrape, group, dedup — and
+    // arrives at the extractor intact.
+    expect(capturedRequests[0].images).toEqual([fakeImage]);
   });
 
   it('creates a calendar event from an image-only message', async () => {
@@ -297,9 +283,7 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
       .post('/api/sync/events')
       .expect(201);
 
-    const userMsg = capturedCalls[0].find((m) => m.role === 'user');
-    expect(userMsg).toBeDefined();
-    expect(userMsg!.images).toBeUndefined();
+    expect(capturedRequests[0].images).toBeUndefined();
   });
 
   it('keeps text-only and image-bearing groups in separate LLM calls', async () => {
@@ -335,14 +319,15 @@ describe('WhatsApp image → multimodal LLM → Calendar (e2e)', () => {
       .post('/api/sync/events')
       .expect(201);
 
-    // Image group goes through parseMessage; text-only group goes through
-    // parseMessage too (only one — single-uncached short-circuit). Two calls
-    // total, never bundled together.
-    expect(capturedCalls).toHaveLength(2);
-    const calls = capturedCalls.map((c) => c.find((m) => m.role === 'user')!);
-    const withImages = calls.filter((m) => m.images && m.images.length > 0);
-    const withoutImages = calls.filter((m) => !m.images || m.images.length === 0);
-    expect(withImages).toHaveLength(1);
-    expect(withoutImages).toHaveLength(1);
+    // Two distinct groups reach the extractor, one carrying images and one
+    // not. Keeping them in separate provider calls is the adapter's job and
+    // is asserted in extraction.chain.spec.ts.
+    expect(capturedRequests).toHaveLength(2);
+    expect(
+      capturedRequests.filter((r) => r.images && r.images.length > 0),
+    ).toHaveLength(1);
+    expect(
+      capturedRequests.filter((r) => !r.images || r.images.length === 0),
+    ).toHaveLength(1);
   });
 });

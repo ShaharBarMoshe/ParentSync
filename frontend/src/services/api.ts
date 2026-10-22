@@ -40,9 +40,17 @@ export const settingsApi = {
   delete: (key: string) => api.delete(`/settings/${key}`),
 };
 
+/**
+ * `authenticated` means *usable right now*, not merely linked. A Google
+ * account whose refresh token Google has expired reports `authenticated:
+ * false` with `state: 'broken'`, even though the backend still stores its row.
+ */
 export interface AccountStatus {
   authenticated: boolean;
+  state?: 'disconnected' | 'connected' | 'expiring' | 'broken';
   email?: string;
+  expiresAt?: string;
+  lastError?: string;
 }
 
 export interface AuthStatus {

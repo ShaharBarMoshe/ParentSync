@@ -1,0 +1,45 @@
+<section id="failure" data-section="Operating it: failure engineering, governance, security and AI SDLC." data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:38px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Load, limits and failure</p>
+<h2 style="font-size:64px;font-weight:600;line-height:1.1;width:1520px">Not every 429 means the same thing — and treating them alike cost hours of guaranteed-failing traffic</h2>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:40px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:30px;font-weight:600;color:#2E6FA7">One place for the policy</h3>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">Every model call goes through one runner, in one order: <b>shared rate limiter → retry ladder → tracing → invoke</b>. One slot per call, so a burst cannot starve extraction.</p>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">Generic framework retry could not express the rule that mattered, so the policy is explicit and tested.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:40px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:30px;font-weight:600;color:#A8700B">The rule that mattered</h3>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">Google returns <b>429</b> both for a per-minute rate limit and for a depleted account. Only the first clears on its own.</p>
+<ul style="font-size:26px;line-height:1.5;color:#4A5568">
+<li>Non-429 4xx → <b>never</b> retried</li>
+<li>Depleted account → fails on the first attempt, aborts the pass</li>
+<li>Everything else → exponential backoff</li>
+</ul>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#FDF3E0;padding:40px;border:1px solid #DDBB77;border-radius:16px">
+<h3 style="font-size:30px;font-weight:600;color:#7A5208">What it cost before</h3>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">One dead account meant <b>8 retries per message</b> plus a per-message fallback — hours of traffic that could not succeed.</p>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">Worse, the swallowed error marked those messages <b>parsed with no events</b>, losing them permanently. Now they stay unparsed for the next pass.</p>
+</div>
+</div>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:10px">
+<h3 style="font-size:29px;font-weight:600">Coalescing, not queuing</h3>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">Two passes started 90 ms apart both read the unparsed rows before either marked anything, and both created events — near-identical duplicates no dedup layer catches, because they are built concurrently from the same input. A second caller now <b>joins the in-flight pass</b> instead of starting a rival one.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:10px">
+<h3 style="font-size:29px;font-weight:600">Backpressure at the edge</h3>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">On mobile, a busy group delivers a dozen notifications in seconds. Work is enqueued with a <b>45-second coalesce window under KEEP, not REPLACE</b> — REPLACE would push the run further out on every new message and let a chatty group starve the pass indefinitely.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">Transactional writes · a rollback leaves messages unparsed, so the next pass retries them</p>
+<aside>This is the slide for the "high load, traffic spikes, failure scenarios" line in the job description.
+
+The centre column is the real content. Google returns 429 for two completely different things: you are going too fast, and you have no money left. One clears by waiting; the other never does. Retrying the second is pure waste, and worse, it burns your retry budget on a wall.
+
+The right column is what that actually cost before I separated them: eight retries per message plus a per-message fallback, so a single expired key produced hours of traffic that was guaranteed to fail. And the swallowed error marked those messages as parsed-with-no-events, which quietly lost them for good. That second part is the bug that mattered — the retries were just money.
+
+Bottom left is a concurrency bug worth naming because no dedup layer could have caught it. Two passes ninety milliseconds apart, both reading the same unparsed rows before either marked anything. Built concurrently from identical input, so they are not duplicates by any content test — they are a locking problem. The fix is that a second caller joins the running pass.
+
+If asked what I would change in a bank: this is in-process coalescing because it is a single-process app. The same shape in your environment is a queue with a visibility timeout and a DLQ — the policy is identical, the mechanism is managed.</aside>
+</section>

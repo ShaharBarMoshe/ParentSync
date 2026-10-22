@@ -1,0 +1,37 @@
+<section id="observability" data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">AI SDLC · observability · tooling</p>
+<h2 style="font-size:68px;font-weight:600;line-height:1.1">Standards the build enforces, not standards a wiki describes</h2>
+<div style="display:flex;gap:32px">
+<div style="flex:1.15;display:flex;flex-direction:column;gap:22px">
+<div style="display:flex;gap:24px;align-items:flex-start">
+<p style="font-size:52px;font-weight:700;color:#2E6FA7;font-family:'JetBrains Mono', 'Courier New', monospace;width:210px">1,165</p>
+<p style="font-size:26px;line-height:1.45;color:#4A5568;width:600px">automated tests across four suites — backend unit, HTTP end-to-end, frontend, and the mobile client. The e2e suite gates on a <b>real compile and bundle of both apps</b>, because a unit test cannot catch a missing import in a module it mocks.</p>
+</div>
+<div style="display:flex;gap:24px;align-items:flex-start">
+<p style="font-size:52px;font-weight:700;color:#2E6FA7;font-family:'JetBrains Mono', 'Courier New', monospace;width:210px">6 + 8</p>
+<p style="font-size:26px;line-height:1.45;color:#4A5568;width:600px">steps in the <b>production smoke test</b>: six that drive a real message end to end through the live system on every deploy and daily, and eight that clean up after it — the Google event, the local rows, and the test message itself.</p>
+</div>
+<div style="display:flex;gap:24px;align-items:flex-start">
+<p style="font-size:52px;font-weight:700;color:#A8700B;font-family:'JetBrains Mono', 'Courier New', monospace;width:210px">0</p>
+<p style="font-size:26px;line-height:1.45;color:#4A5568;width:600px">framework imports permitted outside the adapter and graph layers. The architecture test fails the build otherwise — the standard is executable.</p>
+</div>
+</div>
+<div style="flex:0.85;display:flex;flex-direction:column;gap:18px;background:#FFFFFF;padding:40px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:30px;font-weight:600;color:#2E6FA7">Tracing you can hand to someone else</h3>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">LangSmith tracing is opt-in and documented as a <b>data-egress decision</b>, not a debug flag: the docs say what leaves the machine when it is on.</p>
+<h3 style="font-size:30px;font-weight:600;color:#2E6FA7">Diagnosis as a first-class feature</h3>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">"Why was my group not captured?" is answered by a log line naming the group, not by attaching a debugger. Counters cover events created, classifier rejections, and each dedup layer's firing rate.</p>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">Known gaps are written down with the reason — metrics are point-in-time key-values, not a time series.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">Twelve design documents, each explaining why — including the decisions that were reversed</p>
+<aside>Three numbers and a panel.
+
+1,165 tests is the least interesting of them. What I would actually point at is that the e2e suite compiles and bundles both applications, because mocked unit tests cannot catch a missing import in a module they mock.
+
+Six-plus-eight is the production smoke test, and the eight is the part people miss: it cleans up after itself. A self-test that leaves artefacts behind becomes the thing you stop running. It deletes the Google event, the local rows and the WhatsApp message it sent.
+
+Zero is the architecture test. An executable standard beats a documented one — that is the entire argument for internal tooling, and it is a line in the job description.
+
+The right panel, briefly: tracing is framed as data egress rather than a debug switch, which is the framing a bank needs. And the known gaps are written down with reasons — I would rather hand you a document that says "metrics are point-in-time, here is why that is a problem" than one that implies they are fine.</aside>
+</section>

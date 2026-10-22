@@ -10,8 +10,8 @@ describe('LlmLoggingInterceptor', () => {
   });
 
   const mockContext = {
-    getHandler: () => ({ name: 'callLLM' }),
-    getClass: () => ({ name: 'GeminiService' }),
+    getHandler: () => ({ name: 'extract' }),
+    getClass: () => ({ name: 'ExtractionChain' }),
   } as unknown as ExecutionContext;
 
   it('should be defined', () => {

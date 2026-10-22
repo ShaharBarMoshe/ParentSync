@@ -1,0 +1,17 @@
+<section id="graph" data-section="Agentic orchestration, and the framework features deliberately refused." data-transition="fade" style="background:#111A24;color:#F7F8F6;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;justify-content:space-between">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;color:#5FA8D8;letter-spacing:2px;text-transform:uppercase">Orchestration · LangGraph</p>
+<h2 style="font-size:92px;font-weight:600;line-height:1.08;width:1620px">A graph because the branches are real — not because graphs are fashionable.</h2>
+<p style="font-size:36px;line-height:1.4;color:#C2D2DE;width:1500px">Eight nodes. Three conditional edges, each one skipping money.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#8AA0B2;font-family:'JetBrains Mono', 'Courier New', monospace">2 / 13</p>
+<aside>Keep this to about a minute; the next slide is the interesting one.
+
+The pipeline is: load messages, dedup, extract, persist, screen, request approval, process dismissals, sync. Eight nodes.
+
+The three conditional edges are all about not spending money:
+
+One — if every message group turned out to be a duplicate, skip extraction and persistence entirely and jump to the sync step.
+
+Two — if the model quota is exhausted mid-pass, leave the messages unparsed for the next run rather than writing "no events found" over them. That second part was a real bug: a swallowed quota error used to mark messages parsed-with-no-events, which lost them permanently.
+
+Three — if approval is switched off, skip the screening stage, because screening itself costs an LLM call and an embedding call per event. It only earns those calls when a human will actually be asked to approve something.</aside>
+</section>

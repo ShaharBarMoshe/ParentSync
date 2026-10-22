@@ -1,0 +1,25 @@
+<section id="premise" data-section="What the system is and why an LLM writing to a system of record is the hard part." data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:48px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">The premise</p>
+<h2 style="font-size:68px;font-weight:600;line-height:1.1;width:1500px">Reading school WhatsApp groups is the feature. Being wrong in public is the engineering problem.</h2>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#FFFFFF;padding:40px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;color:#2E6FA7">What it does</h3>
+<p style="font-size:28px;line-height:1.45;color:#4A5568">Watches parent groups and teacher email, extracts the real events — trips, deadlines, appointments — and syncs them to the family Google Calendar.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#FFFFFF;padding:40px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;color:#2E6FA7">Why it is hard</h3>
+<p style="font-size:28px;line-height:1.45;color:#4A5568">Hebrew and English, forwarded flyers, cancellations, truncated messages. The model is confidently wrong often enough that correctness has to be designed, not hoped for.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:14px;background:#FFFFFF;padding:40px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:32px;font-weight:600;color:#A8700B">The stake</h3>
+<p style="font-size:28px;line-height:1.45;color:#4A5568">A wrong event is not a bad answer in a chat window. It is a parent at the wrong school gate on a Sunday morning.</p>
+</div>
+</div>
+<p style="font-size:30px;line-height:1.5;color:#4A5568;width:1500px">That stake is why this looks like a banking problem. Every control below exists because the output is <b>acted on</b>, not merely read: approve before publish, an audit row for every suppression, and a failure mode chosen deliberately for each stage.</p>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">In daily use since v1.0 · ~1,165 automated tests across four suites</p>
+<aside>I want to land one idea here: the difficulty is not getting a model to read Hebrew. It is that the output is acted on.
+
+If a chatbot is wrong, a human reads it and shrugs. If this is wrong, an event lands on a calendar two parents coordinate around and nobody re-reads the source message. That is the same property that makes a bank nervous — output that becomes an action.
+
+Everything after this slide is a control that exists because of that.</aside>
+</section>

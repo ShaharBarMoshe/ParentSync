@@ -273,10 +273,10 @@ svg text { font-family: var(--font-sans); }
   <p class="subtitle">
     End-to-end walkthrough — from raw WhatsApp / Gmail message to Google Calendar event,
     covering storage, semantic deduplication, LLM parsing, approval routing,
-    and reaction-driven feedback loops.
+    and the approval state machine.
   </p>
   <div class="meta">
-    <div class="meta-item"><div class="dot-sm"></div> Phase 20 — Semantic Dedup</div>
+    <div class="meta-item"><div class="dot-sm"></div> Desktop pipeline — see ARCHITECTURE.md</div>
     <div class="meta-item"><div class="dot-sm"></div> NestJS + SQLite + Gemini embeddings</div>
     <div class="meta-item"><div class="dot-sm"></div> Electron desktop app</div>
     <div class="meta-item"><div class="dot-sm" style="background:var(--yellow)"></div> 8 Architectural concerns flagged</div>
@@ -479,7 +479,7 @@ svg text { font-family: var(--font-sans); }
   <div class="cols">
     <div class="col" style="flex:1.2">
       <p style="color:var(--text-muted); margin-bottom:18px; font-size:14px;">
-        Before sending messages to the LLM, <code>EventSyncService</code> merges consecutive unparsed messages
+        Before sending messages to the LLM, the graph's <code>loadMessages</code> node merges consecutive unparsed messages
         from the same channel that are within 2 hours of each other. This reduces API calls and lets the LLM
         see thread context.
       </p>
@@ -624,7 +624,7 @@ svg text { font-family: var(--font-sans); }
       <div class="card">
         <h3>DedupResult shape</h3>
         <p><code>{ match: DedupMatch | null, contentHash: string, embedding: number[] | null }</code></p>
-        <p style="margin-top:6px;">The result is passed back to <code>EventSyncService</code> which stamps both columns onto all messages in the group.</p>
+        <p style="margin-top:6px;">The result travels on the group metadata to <code>persistEvents</code>, which stamps both columns onto every message in the group inside the same transaction as the inserts.</p>
       </div>
       <div class="card blue">
         <h3>Parameters</h3>
@@ -632,7 +632,7 @@ svg text { font-family: var(--font-sans); }
           <li><code>LOOKBACK_DAYS</code> = 30</li>
           <li><code>LOOKBACK_LIMIT</code> = 1000</li>
           <li>Default threshold = <code>0.92</code> (user-configurable)</li>
-          <li>Embedding dim = 768 (Gemini)</li>
+          <li>Embedding dim = model default 3072 (<code>outputDimensionality</code> unset; 768 is the <em>mock</em>)</li>
         </ul>
       </div>
       <div class="card red">
@@ -666,13 +666,13 @@ svg text { font-family: var(--font-sans); }
           </div>
           <div style="flex:1; text-align:center;">
             <div style="color:var(--text-muted); font-size:11px; margin-bottom:4px;">cache MISS</div>
-            <div class="flow-box" style="font-size:12px;">Build prompt: system + negative examples + all groups</div>
+            <div class="flow-box" style="font-size:12px;">Stage-1 classifier gate, then build the extraction request per group</div>
           </div>
         </div>
         <div style="text-align:center; color:var(--text-muted);">↓ (miss path)</div>
-        <div class="flow-box purple">Gemini API call (single request, all groups)</div>
+        <div class="flow-box purple">LangChain chain → Gemini structured output (batched, ≤8 groups per request)</div>
         <div style="text-align:center; color:var(--text-muted);">↓</div>
-        <div class="flow-box">Parse JSON response → ParsedEvent[] per group</div>
+        <div class="flow-box">Schema-validated results, matched back by echoed group id → ParsedEvent[] per group</div>
         <div style="text-align:center; color:var(--text-muted);">↓</div>
         <div class="flow-box blue">createEventsInTransaction()</div>
       </div>
@@ -705,32 +705,38 @@ svg text { font-family: var(--font-sans); }
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════
-  SLIDE 8 — Event Creation + 3-layer Dedup
+  SLIDE 8 — Event Creation + 4-layer Dedup
 ══════════════════════════════════════════════════════════════════ -->
 <div class="slide">
   <div class="slide-tag">Stage 5 — Event Creation</div>
-  <h2>Event Creation &amp; 3-Layer Deduplication</h2>
+  <h2>Event Creation &amp; 4-Layer Deduplication</h2>
   <div class="cols">
     <div class="col" style="flex:1.1">
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Three independent dedup mechanisms prevent the same real-world event from appearing twice.</p>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Four independent mechanisms stop one real-world event appearing twice, plus a deterministic collapse before anything is written. Layers&nbsp;1–2 run <strong>before</strong> the row exists and prevent it; layers&nbsp;3–4 run in <code>screenEvents</code> <strong>after</strong> the insert and mark it <code>REJECTED</code> instead — so a suppressed duplicate is a rejected row, not an absent one, which is what makes it auditable.</p>
       <div class="flow" style="flex-direction:column; gap:8px;">
-        <div class="flow-box blue" style="font-size:13px; font-weight:700;">LAYER 1 — Semantic message dedup <span class="badge blue" style="margin-left:8px">Phase 20</span></div>
-        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;">SHA-256 + cosine similarity — skips forwarded flyers before LLM call</div>
-
+        <div class="flow-box blue" style="font-size:13px; font-weight:700;">LAYER 1 — Semantic message dedup <span class="badge blue" style="margin-left:8px">dedupFilter node</span></div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;">SHA-256 fast path, then cosine on Gemini embeddings. A duplicate group skips extract <em>and</em> persist.</div>
         <div style="text-align:center; color:var(--text-muted);">↓ fresh groups only</div>
 
-        <div class="flow-box green" style="font-size:13px; font-weight:700;">LAYER 2 — Exact event dedup (OLD-1)</div>
-        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;">Same <code>title + date + childId</code> already in DB → skip insert</div>
+        <div class="flow-box purple" style="font-size:13px; font-weight:700;">Single-gathering collapse <span class="badge purple" style="margin-left:8px">in memory</span></div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>collapseSingleGathering()</code> — same title/date/location differing only in time is one gathering ("arrive 17:00, party 17:30"). Deterministic, so unlike layer 3 it cannot fail open.</div>
+        <div style="text-align:center; color:var(--text-muted);">↓ one event per gathering</div>
 
+        <div class="flow-box green" style="font-size:13px; font-weight:700;">LAYER 2 — Exact event dedup</div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>findByTitleDateTimeChild(title, date, <strong>time</strong>, childId)</code> → skip the insert. Past/today events are dropped here too.</div>
         <div style="text-align:center; color:var(--text-muted);">↓ no exact match</div>
 
-        <div class="flow-box purple" style="font-size:13px; font-weight:700;">LAYER 3 — LLM same-slot dedup (OLD-2)</div>
-        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>detectDuplicateOfExisting()</code> — LLM decides if new event == existing event in same time slot.<br>Increments <code>metric.event_dedup_llm_fires</code> counter.</div>
-
-        <div style="text-align:center; color:var(--text-muted);">↓ confirmed unique</div>
-
         <div class="flow-box green" style="font-size:13px; font-weight:700;">INSERT <code>calendar_events</code> row</div>
-        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>approvalStatus = 'NONE'</code> or <code>'PENDING'</code> based on approval channel config</div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>approvalStatus</code> = <code>PENDING</code> with an approval channel configured, else <code>NONE</code>.</div>
+        <div style="text-align:center; color:var(--text-muted);">↓ screenEvents — only when approval is on</div>
+
+        <div class="flow-box purple" style="font-size:13px; font-weight:700;">LAYER 3 — LLM sibling dedup</div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;"><code>eventsAreIdentical()</code> (<code>IDuplicateJudge</code>) vs same-slot <em>and</em> same-day siblings → <code>REJECTED</code>.</div>
+        <div style="text-align:center; color:var(--text-muted);">↓ not a sibling duplicate</div>
+
+        <div class="flow-box blue" style="font-size:13px; font-weight:700;">LAYER 4 — Calendar overlap</div>
+        <div style="font-size:12px; color:var(--text-muted); padding-left:12px;">A matching Google entry within <strong>±60 min</strong> (usually added by hand) → <code>REJECTED</code>, bound to its <code>googleEventId</code>. The app adopts it rather than making a second.</div>
+        <div style="text-align:center; color:var(--text-muted);">↓ survives → approval queue</div>
       </div>
     </div>
     <div class="col" style="flex:0.9; gap:10px;">
@@ -738,18 +744,19 @@ svg text { font-family: var(--font-sans); }
         <h3>createEventsInTransaction()</h3>
         <ul>
           <li>Wraps all inserts + message <code>parsed=true</code> stamps in one DB transaction</li>
-          <li>On any error: entire transaction rolls back, messages stay unparsed (will retry next sync)</li>
-          <li>Stamps <code>embedding</code> + <code>contentHash</code> onto message rows here</li>
+          <li>On any error: the whole transaction rolls back and messages stay unparsed, so the next sync retries them</li>
+          <li>Stamps <code>embedding</code> + <code>contentHash</code> onto every message in the group here, so layer 1 can match it next time</li>
           <li>Increments <code>metric.events_created_total</code></li>
         </ul>
       </div>
       <div class="card yellow">
-        <h3>⚠ LLM dedup retirement</h3>
-        <p>OLD-2 (<code>detectDuplicateOfExisting</code>) was a temporary bridge added in Phase 16. The plan is to remove it once Layer 1 (Phase 20) accumulates enough data. A 4-week review was scheduled by calendar reminder — tracked manually, not in code.</p>
+        <h3>⚠ Layers 3 and 4 fail open</h3>
+        <p>An error in either leaves the event in the approval queue rather than dropping it. A duplicate card the user dismisses is a mild annoyance; an event silently suppressed by a transient LLM or Calendar failure is a missed school trip.</p>
+        <p>Layer 3 also needs LLM quota. The deterministic collapse above exists precisely because this one can fail open.</p>
       </div>
       <div class="card red">
         <h3>⚠ Metrics are point-in-time</h3>
-        <p><code>metric.events_created_total</code> and <code>metric.event_dedup_llm_fires</code> are stored as key-value rows in the <code>settings</code> table. No time series — you can't chart trends over time.</p>
+        <p><code>metric.events_created_total</code>, <code>metric.event_dedup_llm_fires</code> and <code>metric.calendar_dedup_fires</code> are key-value rows in the <code>settings</code> table. No time series — you can't chart trends over time.</p>
       </div>
     </div>
   </div>
@@ -949,7 +956,7 @@ svg text { font-family: var(--font-sans); }
       </div>
       <div class="card red">
         <h3>On REJECTED</h3>
-        <p>Captures a <code>NegativeExample</code> from <code>sourceContent</code> snapshot. The LLM prompt is enriched with this example on the next sync call.</p>
+        <p>Captures a <code>NegativeExample</code> from <code>sourceContent</code> snapshot. Kept for the user's reference only — it is <strong>not</strong> fed back into the prompt. That loop was retired in v1.4.0.</p>
       </div>
       <div class="card yellow">
         <h3>⚠ Reactions can arrive in any order, any time</h3>
@@ -1015,7 +1022,7 @@ svg text { font-family: var(--font-sans); }
 ══════════════════════════════════════════════════════════════════ -->
 <div class="slide">
   <div class="slide-tag">Feedback Loop</div>
-  <h2>NegativeExample Feedback Loop</h2>
+  <h2>NegativeExample Capture <span style="font-size:13px;font-weight:400;opacity:.75">(feedback loop retired in v1.4.0)</span></h2>
   <div class="cols">
     <div class="col" style="flex:1.2">
       <svg viewBox="0 0 480 300" width="100%" style="max-height:275px">
@@ -1053,7 +1060,7 @@ svg text { font-family: var(--font-sans); }
 
         <!-- Next sync -->
         <rect x="80" y="234" width="360" height="36" rx="6" fill="#1a3a1f" stroke="#3fb950" stroke-width="1.5"/>
-        <text x="260" y="250" text-anchor="middle" font-size="11" fill="#3fb950" font-weight="600">Next LLM call includes NegativeExamples in prompt</text>
+        <text x="260" y="250" text-anchor="middle" font-size="11" fill="#8b949e" font-weight="600">Stored for the user's reference — NOT sent to the LLM</text>
         <text x="260" y="264" text-anchor="middle" font-size="10" fill="#8b949e">LLM is told: "do NOT extract events like these"</text>
 
         <!-- Curved arrow back to top -->
@@ -1064,11 +1071,11 @@ svg text { font-family: var(--font-sans); }
     <div class="col" style="flex:0.9; gap:10px;">
       <div class="card blue">
         <h3>Purpose</h3>
-        <p>When the user rejects an event (😢), it means the LLM extracted something it shouldn't have. The NegativeExample captures what was in the message and feeds it back as a "do not do this" example in subsequent prompts — improving precision over time.</p>
+        <p>When the user rejects an event (😢), it means the LLM extracted something it shouldn't have, and the NegativeExample captures what was in the message. <strong>It is no longer fed back into the prompt.</strong> That loop was retired in v1.4.0: the model largely ignored the appended block, it broke the parse cache's hit rate (every new rejection changed the prompt, invalidating every cached entry), and it grew every single parse request. Rejections are still recorded and visible to the user; precision is steered instead through the editable classifier and extractor prompts — see <a href="PROMPT-CUSTOMIZATION.md">Prompt Customization</a>.</p>
       </div>
       <div class="card yellow">
         <h3>⚠ Silent truncation at 50</h3>
-        <p>The pool is capped at 50 entries. When the cap is reached, the oldest entry is dropped silently. There is no UI indicator that older negative examples have been discarded — the user can't know that the LLM has "forgotten" a rejection.</p>
+        <p>The pool is capped at 50 entries and the oldest is dropped when it fills. With the loop retired this no longer affects extraction at all — nothing is "forgotten" by the LLM, because nothing was being told to it.</p>
       </div>
       <div class="card">
         <h3>Undo-reaction cleans up</h3>
@@ -1103,7 +1110,7 @@ svg text { font-family: var(--font-sans); }
       <div class="card">
         <h3>Retry model</h3>
         <ul>
-          <li>No in-process retry logic for LLM calls — failures propagate to the transaction rollback</li>
+          <li><code>ChainRunner</code> applies <code>LlmRetryPolicy</code>: exponential backoff for transient failures, but <strong>never</strong> for a non-429 4xx (a revoked key or wrong model fails the same way five times) and <strong>never</strong> for an exhausted account, which fails immediately even though it arrives as a 429. What retrying cannot fix still propagates to the transaction rollback</li>
           <li>Natural retry = next cron tick (user-configured interval)</li>
           <li>WhatsApp reaction listener is event-driven (no polling)</li>
         </ul>
@@ -1136,7 +1143,7 @@ svg text { font-family: var(--font-sans); }
       <div class="icon">⚠️</div>
       <div>
         <strong>1. O(n) embedding scan — no ANN index</strong><br>
-        Cosine similarity is computed in JS over up to 1,000 candidates per sync. No HNSW/FAISS index. Will degrade linearly as the message volume grows past the lookback window. Consider <code>sqlite-vss</code> or a separate Chroma/Qdrant sidecar for Phase 21+.
+        Cosine similarity is computed in JS over up to 1,000 candidates per sync. No HNSW/FAISS index. Will degrade linearly as the message volume grows past the lookback window. Consider <code>sqlite-vss</code> or a separate Chroma/Qdrant sidecar if the candidate window has to grow.
       </div>
     </div>
 
@@ -1159,8 +1166,8 @@ svg text { font-family: var(--font-sans); }
     <div class="warn">
       <div class="icon">⚠️</div>
       <div>
-        <strong>4. WhatsApp session expiry — no fallback</strong><br>
-        When the whatsapp-web.js session expires, approval messages can't be sent and reactions aren't received — silently. PENDING events accumulate. There's no session health check, fallback notification, or TTL on PENDING events.
+        <strong>4. WhatsApp session expiry — PENDING events still accumulate</strong><br>
+        A dead session is now self-healed (<code>withSessionRecovery</code> re-initialises once per sync cycle), reportable (<code>WHATSAPP_SEND_FAILED</code>), recoverable in one click (<code>POST /api/whatsapp/reconnect</code>), and <code>OutOfBandAlertService</code> routes WhatsApp failures out <em>by email</em> so the notification does not depend on the broken channel. What remains: while it is down, approval cards cannot be sent and reactions are not received, so <code>PENDING</code> events pile up with <strong>no TTL</strong> and nothing ages them out.
       </div>
     </div>
 
@@ -1183,16 +1190,16 @@ svg text { font-family: var(--font-sans); }
     <div class="warn">
       <div class="icon">⚠️</div>
       <div>
-        <strong>7. NegativeExamples cap=50, truncation invisible</strong><br>
-        Once the pool reaches 50, older negative examples are silently dropped. There's no UI to show the pool size, review examples, or confirm they're still influencing the LLM. The undo-reaction path also doesn't remove the captured example.
+        <strong>7. NegativeExamples grow unbounded and nothing reads them</strong><br>
+        Since the feedback loop was retired in v1.4.0, no code path feeds these to the model — the LLM call path does not reference them at all. They are still captured on every 😢, with <strong>no cap and no retention</strong>, so the table only grows. They are readable and deletable via <code>GET/DELETE /api/llm/negative-examples</code>, and un-rejecting an event does remove its example (<code>deleteByMessageContent</code>) — so the gap is retention, not visibility.
       </div>
     </div>
 
     <div class="warn">
       <div class="icon">⚠️</div>
       <div>
-        <strong>8. LLM event-dedup (Layer 3) — no automated retirement</strong><br>
-        <code>detectDuplicateOfExisting()</code> was a temporary Phase 16 bridge. Retirement is tracked only by a personal calendar reminder, not in code. If Phase 20 semantic dedup proves effective, Layer 3 should be removed in a planned Phase 21 cleanup.
+        <strong>8. LLM event-dedup (Layer 3) — costs a call per sibling, and fails open</strong><br>
+        <code>eventsAreIdentical()</code> is asked once per same-slot or same-day sibling, so an event landing on a busy day costs several calls. On a quota error it fails open and the duplicate reaches the approval queue. The deterministic <code>collapseSingleGathering()</code> pass covers the common "same gathering, several times" case without an LLM, but anything it cannot prove identical still depends on layer 3 having quota.
       </div>
     </div>
 
@@ -1234,7 +1241,7 @@ svg text { font-family: var(--font-sans); }
       <div class="flow-arrow">→</div>
       <div class="flow-box green" style="flex:1; font-size:11px; text-align:center; padding:10px 6px;">
         <div style="font-weight:700; margin-bottom:4px;">⑥ Events</div>
-        <div style="color:var(--text-muted)">3-layer<br>dedup+insert</div>
+        <div style="color:var(--text-muted)">4-layer<br>dedup+insert</div>
       </div>
       <div class="flow-arrow">→</div>
       <div class="flow-box yellow" style="flex:1; font-size:11px; text-align:center; padding:10px 6px;">
@@ -1265,7 +1272,7 @@ svg text { font-family: var(--font-sans); }
         <li>⚠ O(n) embedding scan — add ANN index</li>
         <li>⚠ WhatsApp session expiry — add health check + PENDING TTL</li>
         <li>⚠ Images in DB — move to filesystem</li>
-        <li>⚠ Retire Layer 3 LLM dedup (Phase 21)</li>
+        <li>⚠ Layer 3 costs one LLM call per sibling</li>
         <li>⚠ Add time-series metrics table</li>
       </ul>
     </div>
@@ -1281,7 +1288,7 @@ svg text { font-family: var(--font-sans); }
     </div>
   </div>
   <p style="margin-top:16px; font-size:12px; color:var(--text-muted); text-align:center;">
-    ParentSync · Phase 20 · Shahar Bar-Moshe · 2026
+    ParentSync · Message Pipeline · Shahar Bar-Moshe · 2026
   </p>
 </div>
 

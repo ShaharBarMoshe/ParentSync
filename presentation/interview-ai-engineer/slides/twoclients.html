@@ -1,0 +1,44 @@
+<section id="twoclients" data-section="What this project proves, what it does not, and what I would bring." data-transition="fade" style="background:#F7F8F6;color:#111A24;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:26px;font-weight:500;color:#2E6FA7;letter-spacing:2px;text-transform:uppercase">Second platform</p>
+<h2 style="font-size:68px;font-weight:600;line-height:1.1">Two clients that share a design and deliberately not a codebase</h2>
+<table style="font-family:'IBM Plex Sans', Arial, sans-serif;font-size:26px;color:#4A5568;padding:18px 20px">
+<tr>
+<th style="width:22%;text-align:left;font-weight:600;color:#111A24">Concern</th>
+<th style="width:39%;text-align:left;font-weight:600;color:#111A24">Desktop</th>
+<th style="width:39%;text-align:left;font-weight:600;color:#111A24">Android</th>
+</tr>
+<tr>
+<td style="color:#111A24"><b>Message intake</b></td>
+<td>Headless browser, scrollable history</td>
+<td>Notification listener — <b>forward-only</b>, long messages arrive truncated</td>
+</tr>
+<tr>
+<td style="color:#111A24"><b>Calendar write</b></td>
+<td>REST + OAuth client, consent, encrypted refresh tokens</td>
+<td><b>No OAuth at all</b> — a local provider over the signed-in account</td>
+</tr>
+<tr>
+<td style="color:#111A24"><b>Approval</b></td>
+<td>Card with an attachment, reaction approves</td>
+<td><b>Impossible</b> — no API to message an arbitrary chat; replaced with a local notification</td>
+</tr>
+</table>
+<div style="display:flex;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:36px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:29px;font-weight:600;color:#2E6FA7">Why not share the core</h3>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">The browser automation cannot run on Android at all, and the calendar path loses its entire auth layer. The "shared core" would have been everything <i>except</i> the two parts that differ — an abstraction whose implementations have nothing in common.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#FFFFFF;padding:36px;border:1px solid #DDE3E1;border-radius:16px">
+<h3 style="font-size:29px;font-weight:600;color:#A8700B">Truncation, handled honestly</h3>
+<p style="font-size:26px;line-height:1.45;color:#4A5568">Long announcements — the ones that actually contain events — arrive cut off. The body is marked, and the extractor is instructed to <b>return an empty date rather than guess the rest</b>. Inventing a time from half a sentence is how a wrong event reaches a calendar.</p>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;font-size:24px;color:#6B7A86;font-family:'JetBrains Mono', 'Courier New', monospace">Same pipeline shape · same approve-before-publish guarantee · same dedup layering</p>
+<aside>Short slide; the point is a judgement call rather than a technique.
+
+The obvious move when you port something is to extract a shared core. I did not, and I want to be able to defend that. The browser automation cannot run on Android under any circumstances, and the calendar path loses its whole auth layer because the account is already on the device. So the shared core would have been everything except the two things that actually differ — an interface with two implementations that have nothing in common.
+
+What I shared instead was the design: same pipeline shape, same approve-before-publish guarantee, same dedup layering, expressed in each platform's idioms.
+
+The right-hand box is the honest-engineering bit. On mobile, long messages arrive truncated — and the long ones are exactly the ones carrying events. Rather than let the model complete the sentence, the body is marked and the extractor is told to return an empty date. I would rather ask the parent than invent a time. That is the same instinct as fail-open earlier: when the system does not know, it says so.</aside>
+</section>

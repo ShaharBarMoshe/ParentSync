@@ -13,13 +13,16 @@ import {
   GMAIL_SERVICE,
   GOOGLE_CALENDAR_SERVICE,
   GOOGLE_TASKS_SERVICE,
-  LLM_SERVICE,
 } from '../src/shared/constants/injection-tokens';
 import type { IWhatsAppService } from '../src/messages/interfaces/whatsapp-service.interface';
 import type { IGmailService } from '../src/messages/interfaces/gmail-service.interface';
 import type { IGoogleCalendarService } from '../src/calendar/interfaces/google-calendar-service.interface';
 import type { IGoogleTasksService } from '../src/calendar/interfaces/google-tasks-service.interface';
-import type { ILLMService, LlmMessage } from '../src/llm/interfaces/llm-service.interface';
+import {
+  createAiPortMocks,
+  overrideAiPorts,
+} from './helpers/ai-ports';
+import type { ExtractionRequest } from '../src/llm/ports/ai-ports';
 import { MessageSource } from '../src/shared/enums/message-source.enum';
 import { daysFromNow, minutesAgo } from './helpers/relative-dates';
 
@@ -76,68 +79,61 @@ describe('Batch Parse Flow (e2e)', () => {
   };
 
   /**
-   * Mock LLM that handles both single-message (array) and batch (object) formats.
-   * Returns a Hebrew event for messages containing key Hebrew words.
+   * Stubbed AI ports. Extraction answers per request from the message text;
+   * the classifier waves everything through so this spec measures batching,
+   * not relevance.
+   *
+   * Batching is now the extraction adapter's business, so what this spec can
+   * still meaningfully assert is what reaches the port: one `extract` call
+   * carrying every fresh group, rather than one call per group. How that call
+   * is split across provider requests is covered by `extraction.chain.spec.ts`.
    */
-  const mockLlm: ILLMService = {
-    callLLM: jest.fn().mockImplementation(async (messages: LlmMessage[]) => {
-      // Count extraction calls only. The relevance classifier runs one call
-      // per message through the same callLLM port, so a raw call count
-      // conflates "batching works" with "how many messages were classified".
-      const systemPrompt =
-        messages.find((m) => m.role === 'system')?.content || '';
-      if (systemPrompt.includes('calendar event extractor')) {
-        llmCallCount++;
-      } else {
-        classifierCallCount++;
+  const aiPorts = createAiPortMocks();
+  aiPorts.extractor.extract = jest.fn(async (requests: ExtractionRequest[]) => {
+    llmCallCount++;
+    return requests.map((request) => {
+      const events: unknown[] = [];
+      const content = request.content;
+      if (content.includes('טיול') || content.includes('trip')) {
+        events.push({ title: 'טיול שנתי', date: daysFromNow(7) });
       }
-      const userMsg = messages.find((m) => m.role === 'user')?.content || '';
-
-      // Batch mode: multiple ===MESSAGE_N=== delimiters
-      if (userMsg.includes('===MESSAGE_1===')) {
-        const result: Record<string, unknown[]> = {};
-        const msgBlocks = userMsg.split(/===MESSAGE_(\d+)===/);
-
-        for (let i = 1; i < msgBlocks.length; i += 2) {
-          const num = msgBlocks[i];
-          const content = msgBlocks[i + 1] || '';
-
-          const events: unknown[] = [];
-          if (content.includes('טיול') || content.includes('trip')) {
-            events.push({ title: 'טיול שנתי', date: daysFromNow(7) });
-          }
-          if (content.includes('אסיפ') || content.includes('meeting')) {
-            events.push({ title: 'אסיפת הורים', date: daysFromNow(9), time: '18:00' });
-          }
-          if (content.includes('תשלום') || content.includes('payment')) {
-            events.push({ title: 'תשלום עבור טיול', date: daysFromNow(5), description: 'סכום: 120 ש״ח' });
-          }
-          result[num] = events;
-        }
-        return JSON.stringify(result);
+      if (content.includes('אסיפ') || content.includes('meeting')) {
+        events.push({
+          title: 'אסיפת הורים',
+          date: daysFromNow(9),
+          time: '18:00',
+        });
       }
-
-      // Single mode: return array
-      if (userMsg.includes('טיול') || userMsg.includes('trip')) {
-        return JSON.stringify([{ title: 'טיול שנתי', date: daysFromNow(7) }]);
+      if (content.includes('תשלום') || content.includes('payment')) {
+        events.push({
+          title: 'תשלום עבור טיול',
+          date: daysFromNow(5),
+          description: 'סכום: 120 ש״ח',
+        });
       }
-      return '[]';
-    }),
-  };
+      return { id: request.id, events: events as any };
+    });
+  });
+  aiPorts.classifier.classify = jest.fn(async () => {
+    classifierCallCount++;
+    return { isEvent: true, reason: 'stub' };
+  });
 
   beforeAll(async () => {
     llmCallCount = 0;
     classifierCallCount = 0;
 
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const builder = Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(WHATSAPP_SERVICE).useValue(mockWhatsApp)
       .overrideProvider(GMAIL_SERVICE).useValue(mockGmail)
       .overrideProvider(GOOGLE_CALENDAR_SERVICE).useValue(mockCalendar)
-      .overrideProvider(GOOGLE_TASKS_SERVICE).useValue(mockTasks)
-      .overrideProvider(LLM_SERVICE).useValue(mockLlm)
-      .compile();
+      .overrideProvider(GOOGLE_TASKS_SERVICE).useValue(mockTasks);
+    const moduleFixture: TestingModule = await overrideAiPorts(
+      builder,
+      aiPorts,
+    ).compile();
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
