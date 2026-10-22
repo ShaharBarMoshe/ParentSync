@@ -1166,8 +1166,8 @@ svg text { font-family: var(--font-sans); }
     <div class="warn">
       <div class="icon">⚠️</div>
       <div>
-        <strong>4. WhatsApp session expiry — no fallback</strong><br>
-        When the whatsapp-web.js session expires, approval messages can't be sent and reactions aren't received — silently. PENDING events accumulate. There's no session health check, fallback notification, or TTL on PENDING events.
+        <strong>4. WhatsApp session expiry — PENDING events still accumulate</strong><br>
+        A dead session is now self-healed (<code>withSessionRecovery</code> re-initialises once per sync cycle), reportable (<code>WHATSAPP_SEND_FAILED</code>), recoverable in one click (<code>POST /api/whatsapp/reconnect</code>), and <code>OutOfBandAlertService</code> routes WhatsApp failures out <em>by email</em> so the notification does not depend on the broken channel. What remains: while it is down, approval cards cannot be sent and reactions are not received, so <code>PENDING</code> events pile up with <strong>no TTL</strong> and nothing ages them out.
       </div>
     </div>
 
@@ -1190,8 +1190,8 @@ svg text { font-family: var(--font-sans); }
     <div class="warn">
       <div class="icon">⚠️</div>
       <div>
-        <strong>7. NegativeExamples cap=50, truncation invisible</strong><br>
-        Once the pool reaches 50, older negative examples are silently dropped. There's no UI to show the pool size, review examples, or confirm they're still influencing the LLM. The undo-reaction path also doesn't remove the captured example.
+        <strong>7. NegativeExamples grow unbounded and nothing reads them</strong><br>
+        Since the feedback loop was retired in v1.4.0, no code path feeds these to the model — the LLM call path does not reference them at all. They are still captured on every 😢, with <strong>no cap and no retention</strong>, so the table only grows. They are readable and deletable via <code>GET/DELETE /api/llm/negative-examples</code>, and un-rejecting an event does remove its example (<code>deleteByMessageContent</code>) — so the gap is retention, not visibility.
       </div>
     </div>
 
