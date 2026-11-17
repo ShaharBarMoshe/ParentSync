@@ -139,6 +139,17 @@ data class ChildEntity(
     val sortOrder: Int = 0,
     /** Calendar colour key understood by CalendarContract, or null for default. */
     val colorKey: String? = null,
+    /**
+     * The WhatsApp groups that belong to this child, newline-separated — the
+     * same encoding as the desktop `children.channelNames`, so a group name
+     * containing a comma survives. Read and written through
+     * [com.parentsync.mobile.data.ChildChannels], never split by hand.
+     *
+     * A group listed here is captured even when it is not on the global watch
+     * list, and its messages are tagged with this child.
+     */
+    @ColumnInfo(defaultValue = "")
+    val channelNames: String = "",
 )
 
 /**

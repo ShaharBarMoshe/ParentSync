@@ -92,6 +92,29 @@ interface MessageDao {
     fun countFlow(): Flow<Int>
 
     /**
+     * The Messages screen: what was captured, newest first. Bounded because a
+     * busy phone can hold thousands of rows inside the retention window, and a
+     * list nobody scrolls to the end of should not load them all.
+     */
+    @Query("SELECT * FROM messages ORDER BY timestamp DESC LIMIT :limit")
+    fun recentFlow(limit: Int): Flow<List<MessageEntity>>
+
+    /** Same, for one chat. Served by the (channel, timestamp) index. */
+    @Query(
+        """
+        SELECT * FROM messages
+        WHERE channel = :channel
+        ORDER BY timestamp DESC
+        LIMIT :limit
+        """,
+    )
+    fun recentInChannelFlow(channel: String, limit: Int): Flow<List<MessageEntity>>
+
+    /** Chats that have at least one stored message, for the screen's filter. */
+    @Query("SELECT DISTINCT channel FROM messages ORDER BY channel ASC")
+    fun channelsFlow(): Flow<List<String>>
+
+    /**
      * Drops message bodies past the retention window. Events already created
      * from them are kept — the calendar is the product, the message is only the
      * evidence. Returns the image refs of deleted rows so their files can go

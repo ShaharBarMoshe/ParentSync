@@ -10,6 +10,7 @@ import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import com.parentsync.mobile.calendar.DeviceCalendarRepository
 import com.parentsync.mobile.data.MessageIngestor
+import com.parentsync.mobile.ingest.ParentSyncNotificationListener
 import com.parentsync.mobile.data.db.ParentSyncDatabase
 import com.parentsync.mobile.data.media.ImageStore
 import com.parentsync.mobile.data.settings.SettingsStore
@@ -44,7 +45,7 @@ class AppContainer(private val context: Context) {
 
     val calendar: DeviceCalendarRepository by lazy { DeviceCalendarRepository(context) }
 
-    val scheduler: SyncScheduler by lazy { SyncScheduler(context) }
+    val scheduler: SyncScheduler by lazy { SyncScheduler(context, hours = { settings.syncHours }) }
 
     val approvals: ApprovalManager by lazy { ApprovalManager(context, db.events()) }
 
@@ -56,7 +57,7 @@ class AppContainer(private val context: Context) {
     }
 
     val messageIngestor: MessageIngestor by lazy {
-        MessageIngestor(db.messages(), settings, scheduler)
+        MessageIngestor(db.messages(), settings, scheduler, children = { db.children().all() })
     }
 
     val embeddings: GeminiEmbeddingClient by lazy {
@@ -101,10 +102,14 @@ class ParentSyncApp : Application(), Configuration.Provider {
         // is armed here rather than from the UI so it exists even if the user
         // never opens the app after an update.
         try {
-            container.scheduler.ensurePeriodicSync()
+            container.scheduler.ensureScheduledSync()
         } catch (e: Exception) {
             Log.e(TAG, "could not arm the periodic sync", e)
         }
+        // Runs whenever the process starts — including when WorkManager wakes it
+        // for the periodic pass — so a listener the OS dropped is re-bound
+        // without waiting for the user to open the app.
+        ParentSyncNotificationListener.ensureBound(this)
     }
 
     override val workManagerConfiguration: Configuration

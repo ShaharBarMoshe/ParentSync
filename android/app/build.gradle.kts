@@ -74,6 +74,13 @@ android {
         buildConfig = true
     }
 
+    // MigrationTestHelper reads the exported schemas as assets. Robolectric
+    // only sees the variant's merged assets, not a test-only source set, so they
+    // go in debug — a few KB, and never in a release build.
+    sourceSets {
+        getByName("debug").assets.directories += "$projectDir/schemas"
+    }
+
     testOptions {
         unitTests {
             isIncludeAndroidResources = true

@@ -5,16 +5,24 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.parentsync.mobile.AppContainer
 import com.parentsync.mobile.calendar.DeviceCalendarRepository
+import com.parentsync.mobile.data.ChildChannels
 import com.parentsync.mobile.data.db.ApprovalStatus
+import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.db.EventEntity
+import com.parentsync.mobile.data.db.MessageEntity
 import com.parentsync.mobile.data.db.SyncLogEntity
+import com.parentsync.mobile.ingest.WhatsAppNotificationParser
+import com.parentsync.mobile.sync.SyncSchedule
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.util.UUID
 
 data class SettingsUiState(
     val watchedChannels: Set<String> = emptySet(),
@@ -26,6 +34,7 @@ data class SettingsUiState(
     val listenerConnected: Boolean = false,
     val gmailAccount: String? = null,
     val gmailEnabled: Boolean = false,
+    val syncHours: Set<Int> = SyncSchedule.DEFAULT_HOURS,
 )
 
 class MainViewModel(private val container: AppContainer) : ViewModel() {
@@ -43,6 +52,54 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         container.db.syncLogs().recentFlow(SYNC_LOG_LIMIT)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
 
+    private val _messageChannelFilter = MutableStateFlow<String?>(null)
+
+    /** The chat the Messages screen is narrowed to, or null for all chats. */
+    val messageChannelFilter: StateFlow<String?> = _messageChannelFilter
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val recentMessages: StateFlow<List<MessageEntity>> =
+        _messageChannelFilter.flatMapLatest { channel ->
+            if (channel == null) {
+                container.db.messages().recentFlow(MESSAGE_LIMIT)
+            } else {
+                container.db.messages().recentInChannelFlow(channel, MESSAGE_LIMIT)
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
+
+    val messageChannels: StateFlow<List<String>> =
+        container.db.messages().channelsFlow()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
+
+    fun filterMessagesByChannel(channel: String?) { _messageChannelFilter.value = channel }
+
+    val children: StateFlow<List<ChildEntity>> =
+        container.db.children().allFlow()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), emptyList())
+
+    /**
+     * Creates a child ([id] null) or replaces one, with the WhatsApp groups that
+     * are theirs. A blank name is refused rather than stored: an unnamed child
+     * would title every event ": Trip".
+     */
+    fun saveChild(id: String?, name: String, channels: List<String>) = viewModelScope.launch {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return@launch
+        val existing = children.value.firstOrNull { it.id == id }
+        container.db.children().upsert(
+            ChildEntity(
+                id = existing?.id ?: UUID.randomUUID().toString(),
+                name = trimmed,
+                sortOrder = existing?.sortOrder ?: children.value.size,
+                colorKey = existing?.colorKey,
+                channelNames = ChildChannels.encode(channels),
+            ),
+        )
+    }
+
+    /** Events already created for the child keep their title; only the link goes. */
+    fun deleteChild(id: String) = viewModelScope.launch { container.db.children().delete(id) }
+
     val messageCount: StateFlow<Int> =
         container.db.messages().countFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), 0)
@@ -55,7 +112,14 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         container.settings.observe { s ->
             SettingsUiState(
                 watchedChannels = s.watchedChannels,
-                seenChannels = s.seenChannels.sorted(),
+                // Cleaned on the way out too: names remembered before the
+                // count suffix was stripped ("Group (2 messages)") would
+                // otherwise stay in the list as separate groups.
+                seenChannels = s.seenChannels
+                    .map(WhatsAppNotificationParser::stripTitleCount)
+                    .filter { it.isNotEmpty() }
+                    .distinct()
+                    .sorted(),
                 captureAllChannels = s.captureAllChannels,
                 calendarId = s.calendarId,
                 geminiModel = s.geminiModel,
@@ -63,6 +127,7 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
                 listenerConnected = s.listenerConnected,
                 gmailAccount = s.gmailAccount,
                 gmailEnabled = s.gmailEnabled,
+                syncHours = s.syncHours,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), SettingsUiState())
 
@@ -106,12 +171,39 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         container.settings.watchedChannels = current
     }
 
+    /**
+     * The hours the app wakes up to sync. Re-queues straight away, so the new
+     * schedule applies from the next chosen hour, not after the old one fires.
+     * The last hour cannot be removed — an empty schedule would never wake.
+     */
+    fun setSyncHours(hours: Set<Int>) {
+        if (hours.isEmpty()) return
+        container.settings.syncHours = hours
+        container.scheduler.rescheduleAfterSettingsChange()
+    }
+
+    fun toggleSyncHour(hour: Int) {
+        val current = container.settings.syncHours
+        setSyncHours(if (hour in current) current - hour else current + hour)
+    }
+
     fun setCaptureAll(enabled: Boolean) { container.settings.captureAllChannels = enabled }
 
     fun setRetentionDays(days: Int) { container.settings.messageRetentionDays = days }
 
-    fun refreshListenerState(enabled: Boolean) =
-        container.settings.setListenerConnected(enabled)
+    private val _listenerGranted = MutableStateFlow(false)
+
+    /** Notification access is granted — not the same as the listener being bound. */
+    val listenerGranted: StateFlow<Boolean> = _listenerGranted
+
+    /**
+     * "Connected" means granted *and* bound. Showing granted alone is what let
+     * a dropped listener read as healthy on a real phone.
+     */
+    fun refreshListenerState(granted: Boolean, bound: Boolean) {
+        _listenerGranted.value = granted
+        container.settings.setListenerConnected(granted && bound)
+    }
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -123,5 +215,6 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         private const val STOP_TIMEOUT = 5_000L
         private const val UPCOMING_LIMIT = 100
         private const val SYNC_LOG_LIMIT = 20
+        private const val MESSAGE_LIMIT = 300
     }
 }

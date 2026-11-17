@@ -75,6 +75,74 @@ onto it, so dismissing the notification decides nothing.
 
 ---
 
+## Per-child groups
+
+As on desktop, each child has a list of WhatsApp groups (Settings → **Children**).
+Stored newline-separated in `children.channelNames`, the same encoding as the
+desktop column, so a group name containing a comma survives. Matching goes
+through `ChildChannels`, using the same normalisation as the watch list (Hebrew
+gershayim vs straight quotes, RTL marks, whitespace).
+
+- A group assigned to a child is **always captured**, whether or not it is on the
+  watch list, and its messages are stored with that child's `childId`.
+- When the event is created, the group's child wins over the extractor's guess;
+  the extractor's `childName` is only used for unassigned groups.
+- A group assigned to **two or more** children (a whole-school group) is captured
+  but tagged to none — picking one sibling would mislabel the other's events — so
+  the extractor decides from the text.
+- Event titles are `"Name: title"`, as on desktop, never prefixed twice. The
+  dedupe key uses the raw title, so the prefix cannot split one event into two.
+
+Schema v2 adds the column with an additive migration (`MIGRATION_1_2`);
+`MigrationTest` runs it against the exported v1 schema. There is no destructive
+fallback: captured messages cannot be re-read once WhatsApp's notification is
+gone.
+
+## Sync schedule
+
+Settings → **Sync schedule**: the hours of the day (0–23) the app wakes up and
+runs a pass, with one-tap **Every hour** and **9 · 14 · 18** (desktop's default,
+and the default here). Stored as `"9,14,18"` — the desktop `check_schedule`
+format. The hour arithmetic lives in `SyncSchedule` (pure java.time, unit-tested
+for midnight wrap, exactly-on-the-hour and the DST gap).
+
+How it runs: `SyncScheduler.ensureScheduledSync()` queues **one** OneTimeWork for
+the next chosen hour, and the worker queues the following one when it finishes,
+whatever its outcome — a failed pass must not end the chain. Three details,
+each of which broke the chain until handled:
+
+- **One work name per target time** (`sync-at-<epochMs>`), with KEEP. The worker
+  enqueues its successor while still running; on a shared name KEEP would drop
+  the successor and REPLACE would cancel the running pass. Per-target names also
+  make the call idempotent from app start, boot and the worker.
+- **The successor is computed from the run's own target, not "now"** (carried as
+  `KEY_TARGET_MS` input). A run that starts early — forced via adb, or after a
+  clock change — would otherwise pick its own slot again, collide with its own
+  name and be dropped. Verified on the emulator: a 09:00 run forced at 20:31
+  queued 14:00.
+- **Changing the hours** cancels everything tagged `parentsync-sync-scheduled`
+  and queues the next run immediately; tapping *Every hour* at 20:33 queued
+  21:00.
+
+This replaced the 6-hour periodic pass, which `ensureScheduledSync` cancels on
+upgrade. Times are not exact: Android may defer a wake-up in Doze by minutes.
+New messages are still processed ~45 s after they arrive, independent of the
+schedule. Force a scheduled run for testing:
+
+```bash
+adb shell dumpsys jobscheduler | grep "JOB androidx.work.*parentsync"   # job id
+adb shell cmd jobscheduler run -f -n androidx.work.systemjobscheduler \
+  com.parentsync.mobile.debug <id>
+```
+
+## Messages screen
+
+The **Messages** tab lists what the listener captured, newest first (capped at
+300), with a per-chat filter, and whether each one has been processed yet. It
+reads `messages` directly, so it shows exactly what the pipeline will see.
+
+---
+
 ## Storage: what was measured and what changed
 
 The desktop database was measured at **40 MB holding only 100 messages**. Three
@@ -126,9 +194,8 @@ Other things done for the sake of a phone, rather than ported:
   takes down *every* database call.)
 - **Coalesced sync.** A busy group delivers a dozen notifications in seconds.
   `SyncScheduler.requestSoon()` enqueues one unique pass with a 45-second delay
-  under `ExistingWorkPolicy.KEEP`, so the burst becomes one LLM batch. The
-  periodic pass is every 6 hours — only a safety net, since messages now arrive
-  by push rather than by polling.
+  under `ExistingWorkPolicy.KEEP`, so the burst becomes one LLM batch. On top
+  of that the app wakes at the hours the user picks — see *Sync schedule*.
 - **No Hilt, no LangChain.** The DI graph is a dozen lazy singletons
   (`AppContainer`), and WorkManager already provides the retry/backoff ladder
   that the desktop `ChainRunner` exists to give a long-lived process.
@@ -263,10 +330,48 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-**94 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+**131 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
 a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
 the dedup service (15), the embedding codec (8), and the own-notification guard
 (2).
+
+### Verified on a physical phone (Android 16, HyperOS)
+
+- Install over USB needs **Install via USB** and **USB debugging (Security
+  settings)** in Developer options; without them `adb install` fails with
+  `INSTALL_FAILED_USER_RESTRICTED` and `pm grant` is refused.
+- The listener binds, and **real `com.whatsapp` notifications arrive**. A
+  per-chat notification carried two messages, parsed with their senders.
+- WhatsApp also posts **group-summary** notifications with no message lines;
+  these are dropped, as designed.
+- **Found on the phone, not reproducible on the emulator:** once a second
+  message is waiting, WhatsApp appends the unread count to the title —
+  `"Group name (2 messages)"`. Left in, the group's name changed with every
+  message, so it could never match a watched group or a child's group, and since
+  the name feeds `sourceKey`, a re-posted message would have been stored again.
+  `WhatsAppNotificationParser.stripTitleCount` removes it (English and Hebrew
+  forms), and names already remembered with the suffix are cleaned when shown.
+- The v1 → v2 migration ran on the phone's real database with its messages kept.
+- **The OS can drop the listener and never rebind it.** Hours later the service
+  was missing from `dumpsys notification`'s live list while access was still
+  granted — the app said "Connected" and captured nothing, even when opened.
+  Now `ParentSyncNotificationListener.isBound` tracks the actual binding, and
+  `ensureBound()` calls `requestRebind()` on process start and on every resume
+  when access is granted but the service is not bound; `onListenerDisconnected`
+  requests a rebind too. Settings shows "Connected" only when granted *and*
+  bound. Verified: after install, "not bound; requesting rebind" → "connected"
+  within ~1.5 s and the service is back in the live list. On HyperOS, also allow
+  Autostart and set battery use to "No restrictions".
+- **The sync spinner never stopped** and hid the Sync button: `isSyncingFlow`
+  counted every ENQUEUED pass, and the periodic safety net is always enqueued.
+  Now only a RUNNING pass, or a manual one waiting to start, counts
+  (`SyncScheduler.isActive`, unit-tested). The Sync button is always shown.
+- **Your own messages are never captured.** WhatsApp posts no notification for a
+  message sent from the same phone, so testing needs a message *from someone
+  else* (or from another device on a different account).
+- `adb shell setprop log.tag.PSListener VERBOSE` now also logs each WhatsApp
+  notification's full shape (flags, group, every extra) — VERBOSE only, because
+  it includes message text.
 
 ### Not yet verified
 
@@ -276,10 +381,8 @@ the dedup service (15), the embedding codec (8), and the own-notification guard
 - **Dedup on a device.** 15 unit tests cover the rules, but the on-device path is
   unreached without a key: the worker returns early when the LLM is
   unconfigured, before the dedup check. Add a key and it runs.
-- **Real WhatsApp notification shapes.** The harness reproduces the documented
-  MessagingStyle structure, not a specific WhatsApp build's actual output. First
-  thing to check on a real phone: `adb shell setprop log.tag.PSListener VERBOSE`
-  and confirm the parsed channel and sender match the chat.
+- **More real WhatsApp shapes.** One build on one phone has been seen (above);
+  1:1 chats, media and very long messages from a real WhatsApp are still unseen.
 - **Gmail.** `play-services-auth` and the Gmail REST client are wired as
   dependencies, but sign-in and fetching are not implemented yet — it needs an
   OAuth client id and a Google account on the device.

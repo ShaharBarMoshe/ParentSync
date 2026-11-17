@@ -7,6 +7,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 class Converters {
@@ -28,7 +29,7 @@ class Converters {
         ChildEntity::class,
         SyncLogEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -56,8 +57,23 @@ abstract class ParentSyncDatabase : RoomDatabase() {
             "PRAGMA journal_size_limit = 4194304",
         )
 
+        /**
+         * v2: per-child WhatsApp groups. Additive, so existing children keep
+         * their rows and simply start with no groups assigned. Never a
+         * destructive fallback: the captured messages on the phone cannot be
+         * re-read once WhatsApp's notification is gone.
+         */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `children` ADD COLUMN `channelNames` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2)
+
         fun build(context: Context): ParentSyncDatabase =
             Room.databaseBuilder(context, ParentSyncDatabase::class.java, NAME)
+                .addMigrations(*ALL_MIGRATIONS)
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
                 .addCallback(
                     object : Callback() {

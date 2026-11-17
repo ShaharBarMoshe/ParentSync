@@ -3,16 +3,18 @@ package com.parentsync.mobile.sync
 import android.content.Context
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import android.util.Log
+import java.time.Duration
+import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
 /**
@@ -42,7 +44,10 @@ fun interface SyncTrigger {
  * short initial delay means the first message schedules the pass and the rest
  * ride along.
  */
-class SyncScheduler(private val context: Context) : SyncTrigger {
+class SyncScheduler(
+    private val context: Context,
+    private val hours: () -> Set<Int> = { SyncSchedule.DEFAULT_HOURS },
+) : SyncTrigger {
 
     private val workManager: WorkManager get() = WorkManager.getInstance(context)
 
@@ -74,35 +79,48 @@ class SyncScheduler(private val context: Context) : SyncTrigger {
     }
 
     /**
-     * The safety net. Picks up messages whose pass failed, and runs retention.
+     * Makes sure the next scheduled pass — at the next hour the user picked in
+     * Settings — is queued. Idempotent: the work is named after its target time,
+     * so calling this again for the same target is a no-op (KEEP). Called on
+     * process start and by the worker at the end of every scheduled pass, which
+     * is how the chain continues from one chosen hour to the next.
      *
-     * 6 hours rather than 1: a periodic pass with nothing to do still wakes the
-     * device, and on a phone that is battery spent for no result. Anything urgent
-     * already came through [requestSoon].
+     * Each run gets its own unique name rather than sharing one, because the
+     * worker enqueues its successor while it is itself still running: on a shared
+     * name KEEP would drop the successor and REPLACE would cancel the running
+     * pass.
+     *
+     * Replaces the old 6-hour periodic pass, which is cancelled here so phones
+     * upgrading from it do not run both.
      */
-    fun ensurePeriodicSync() {
-        val request = PeriodicWorkRequestBuilder<SyncWorker>(
-            PERIODIC_HOURS,
-            TimeUnit.HOURS,
-            PERIODIC_FLEX_HOURS,
-            TimeUnit.HOURS,
-        )
-            .setConstraints(
-                Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    // The periodic pass is housekeeping, so it can wait for a
-                    // moment the user is not paying for in battery.
-                    .setRequiresBatteryNotLow(true)
-                    .build(),
-            )
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+    fun ensureScheduledSync(now: ZonedDateTime = ZonedDateTime.now()) {
+        workManager.cancelUniqueWork(WORK_PERIODIC)
+        val target = SyncSchedule.nextRun(now, hours())
+        val delayMs = Duration.between(now, target).toMillis().coerceAtLeast(0)
+        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+            .setConstraints(networkConstraints())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 5, TimeUnit.MINUTES)
             .addTag(TAG_SYNC)
+            .addTag(TAG_SCHEDULED)
+            .setInputData(workDataOf(KEY_TARGET_MS to target.toInstant().toEpochMilli()))
             .build()
-        workManager.enqueueUniquePeriodicWork(
-            WORK_PERIODIC,
-            ExistingPeriodicWorkPolicy.UPDATE,
+        workManager.enqueueUniqueWork(
+            scheduledWorkName(target),
+            ExistingWorkPolicy.KEEP,
             request,
         )
+        Log.i(TAG_LOG, "next scheduled sync at $target")
+    }
+
+    /**
+     * The user changed the hours: drop whatever was queued for the old ones and
+     * queue the next run for the new ones. Not called from a worker — it would
+     * cancel the pass that is running.
+     */
+    fun rescheduleAfterSettingsChange() {
+        workManager.cancelAllWorkByTag(TAG_SCHEDULED)
+        ensureScheduledSync()
     }
 
     fun cancelAll() {
@@ -110,10 +128,19 @@ class SyncScheduler(private val context: Context) : SyncTrigger {
     }
 
     /** True while any pass is queued or running, for the UI's progress state. */
+    /**
+     * True while a pass is actually running, or while one the user asked for is
+     * waiting to start.
+     *
+     * Not every ENQUEUED pass: the periodic safety net is *always* enqueued
+     * between runs, so counting it made the spinner spin forever and hid the
+     * Sync button — seen on a real phone. A coalesced pass waiting out its 45 s
+     * window does not count either; nothing is happening yet.
+     */
     fun isSyncingFlow(): Flow<Boolean> =
-        workManager.getWorkInfosByTagFlow(TAG_SYNC).map { infos ->
-            infos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
-        }
+        workManager.getWorkInfosByTagFlow(TAG_SYNC).map { infos -> infos.any(::isActive) }
+
+    internal fun isActive(info: WorkInfo): Boolean = isActive(info.state, info.tags)
 
     private fun networkConstraints() = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -122,8 +149,24 @@ class SyncScheduler(private val context: Context) : SyncTrigger {
     companion object {
         const val TAG_SYNC = "parentsync-sync"
         const val TAG_MANUAL = "parentsync-sync-manual"
+        const val TAG_SCHEDULED = "parentsync-sync-scheduled"
+
+        /**
+         * The hour a scheduled run was queued for. The worker schedules its
+         * successor strictly after this, not after "now": a run that starts
+         * early (forced from adb, or a clock change) would otherwise compute its
+         * own slot as "next", collide with its own work name, and be dropped by
+         * KEEP — ending the chain.
+         */
+        const val KEY_TARGET_MS = "scheduled_target_ms"
+        private const val TAG_LOG = "SyncScheduler"
+
+        /** One name per target time — see [ensureScheduledSync] for why. */
+        fun scheduledWorkName(target: ZonedDateTime): String =
+            "sync-at-${target.toInstant().toEpochMilli()}"
         private const val WORK_SOON = "sync-soon"
         private const val WORK_MANUAL = "sync-manual"
+        /** The 6-hour periodic pass older builds queued; cancelled on upgrade. */
         private const val WORK_PERIODIC = "sync-periodic"
 
         /**
@@ -132,7 +175,10 @@ class SyncScheduler(private val context: Context) : SyncTrigger {
          * is on the calendar before the parent thinks to look.
          */
         const val COALESCE_WINDOW_SECONDS = 45L
-        const val PERIODIC_HOURS = 6L
-        const val PERIODIC_FLEX_HOURS = 1L
+
+        /** Pure form of [isSyncingFlow]'s rule, so it is unit-tested without WorkManager. */
+        fun isActive(state: WorkInfo.State, tags: Set<String>): Boolean =
+            state == WorkInfo.State.RUNNING ||
+                (state == WorkInfo.State.ENQUEUED && TAG_MANUAL in tags)
     }
 }

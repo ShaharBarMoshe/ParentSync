@@ -1,6 +1,7 @@
 package com.parentsync.mobile.data
 
 import android.util.Log
+import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.db.MessageDao
 import com.parentsync.mobile.data.db.MessageEntity
 import com.parentsync.mobile.data.db.MessageSource
@@ -24,6 +25,12 @@ class MessageIngestor(
     private val messages: MessageDao,
     private val settings: SettingsStore,
     private val scheduler: SyncTrigger,
+    /**
+     * The children and their groups. A lookup, not a cached copy: the table is
+     * a handful of rows, and a group assigned in Settings must take effect on
+     * the very next notification rather than after a restart.
+     */
+    private val children: suspend () -> List<ChildEntity> = { emptyList() },
     private val now: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -67,10 +74,20 @@ class MessageIngestor(
         // offer a real list instead of asking the user to type a group name.
         settings.rememberSeenChannel(parsed.first().channel)
 
+        val knownChildren = try {
+            children()
+        } catch (e: Exception) {
+            // Fail towards the watch list rather than dropping the message: a
+            // group that is also on it is still captured, just without a child.
+            Log.e(TAG, "could not load children; capturing by watch list only", e)
+            emptyList()
+        }
+
         var stored = 0
         var skipped = 0
         for (message in parsed) {
-            if (!settings.isChannelWatched(message.channel)) {
+            val assigned = ChildChannels.isAssigned(message.channel, knownChildren)
+            if (!assigned && !settings.isChannelWatched(message.channel)) {
                 // The single most likely reason a user sees no events: the group
                 // is not on the watch list. Say so by name.
                 Log.i(TAG, "\"${message.channel}\" is not watched; skipping its message")
@@ -91,6 +108,7 @@ class MessageIngestor(
                 timestamp = message.timestampMs,
                 channel = message.channel,
                 sender = message.sender,
+                childId = ChildChannels.childFor(message.channel, knownChildren)?.id,
                 createdAt = now(),
             )
             // IGNORE on conflict: WhatsApp re-posts the whole conversation every

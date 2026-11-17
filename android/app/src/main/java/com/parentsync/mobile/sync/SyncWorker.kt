@@ -9,6 +9,8 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.parentsync.mobile.AppContainer
 import com.parentsync.mobile.R
+import com.parentsync.mobile.data.ChildChannels
+import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.db.ApprovalStatus
 import com.parentsync.mobile.data.db.EventEntity
 import com.parentsync.mobile.data.db.MessageEntity
@@ -19,6 +21,7 @@ import com.parentsync.mobile.llm.LlmQuotaExhaustedException
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZonedDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -53,13 +56,28 @@ class SyncWorker(
         )
     }
 
+    /** Later of now and this run's own target; see [SyncScheduler.KEY_TARGET_MS]. */
+    private fun nextSearchFrom(): ZonedDateTime {
+        val now = ZonedDateTime.now()
+        val targetMs = inputData.getLong(SyncScheduler.KEY_TARGET_MS, 0L)
+        if (targetMs <= 0L) return now
+        val target = Instant.ofEpochMilli(targetMs).atZone(now.zone)
+        return if (target.isAfter(now)) target else now
+    }
+
+    private fun triggerLabel(): String = when {
+        tags.contains(SyncScheduler.TAG_MANUAL) -> "manual"
+        tags.contains(SyncScheduler.TAG_SCHEDULED) -> "scheduled"
+        else -> "auto"
+    }
+
     override suspend fun doWork(): Result {
         val startedAt = System.currentTimeMillis()
         val logId = container.db.syncLogs().insert(
             SyncLogEntity(
                 startedAt = startedAt,
                 finishedAt = null,
-                trigger = if (tags.contains(SyncScheduler.TAG_MANUAL)) "manual" else "auto",
+                trigger = triggerLabel(),
             ),
         )
 
@@ -99,7 +117,7 @@ class SyncWorker(
                     id = logId,
                     startedAt = startedAt,
                     finishedAt = System.currentTimeMillis(),
-                    trigger = if (tags.contains(SyncScheduler.TAG_MANUAL)) "manual" else "auto",
+                    trigger = triggerLabel(),
                     messagesIngested = ingested,
                     eventsCreated = created,
                     ok = error == null,
@@ -107,6 +125,14 @@ class SyncWorker(
                 ),
             )
             runCatching { container.db.syncLogs().prune(SYNC_LOG_RETENTION) }
+
+            // A scheduled pass queues the next one, whatever happened in it: a
+            // failed pass must not break the chain of chosen hours. Retries are
+            // separate — WorkManager reruns this same request.
+            if (tags.contains(SyncScheduler.TAG_SCHEDULED) && outcome !is Result.Retry) {
+                runCatching { container.scheduler.ensureScheduledSync(nextSearchFrom()) }
+                    .onFailure { Log.e(TAG, "could not queue the next scheduled sync", it) }
+            }
         }
 
         return outcome
@@ -188,7 +214,7 @@ class SyncWorker(
             }
 
             for (event in extracted) {
-                if (createEvent(message, event, children.associate { it.name to it.id })) {
+                if (createEvent(message, event, children)) {
                     createdCount++
                 }
             }
@@ -210,7 +236,7 @@ class SyncWorker(
     private suspend fun createEvent(
         message: MessageEntity,
         extracted: ExtractedEvent,
-        childIdsByName: Map<String, String>,
+        children: List<ChildEntity>,
     ): Boolean {
         val date = parseDate(extracted.date) ?: run {
             Log.i(TAG, "dropping \"${extracted.title}\": no usable date (${extracted.date})")
@@ -223,10 +249,17 @@ class SyncWorker(
             return false
         }
 
-        val childId = extracted.childName
-            .takeIf { it.isNotBlank() }
-            ?.let { name -> childIdsByName.entries.firstOrNull { it.key.equals(name, true) }?.value }
+        // The group decides first: a message from a group the parent assigned
+        // to a child is that child's, whatever name the extractor guessed. The
+        // extractor's guess is only used for unassigned or shared groups.
+        val child = children.firstOrNull { it.id == message.childId }
+            ?: extracted.childName
+                .takeIf { it.isNotBlank() }
+                ?.let { name -> children.firstOrNull { it.name.equals(name, ignoreCase = true) } }
+        val childId = child?.id
 
+        // Keyed on the raw title, so the prefix below cannot make one event
+        // look like two.
         val dedupeKey = dedupeKey(extracted.title, date.toString(), childId)
         container.db.events().byDedupeKey(dedupeKey)?.let {
             Log.i(TAG, "\"${extracted.title}\" on $date already known; skipping")
@@ -236,7 +269,7 @@ class SyncWorker(
         val now = System.currentTimeMillis()
         val row = EventEntity(
             id = UUID.randomUUID().toString(),
-            title = extracted.title,
+            title = ChildChannels.prefixTitle(extracted.title, child?.name),
             date = date.toString(),
             time = extracted.time.takeIf { it.isNotBlank() },
             endTime = extracted.endTime.takeIf { it.isNotBlank() },

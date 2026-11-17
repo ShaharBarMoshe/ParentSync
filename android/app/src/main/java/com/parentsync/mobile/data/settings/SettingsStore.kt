@@ -1,6 +1,7 @@
 package com.parentsync.mobile.data.settings
 
 import android.content.Context
+import com.parentsync.mobile.sync.SyncSchedule
 import android.content.SharedPreferences
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -114,6 +115,21 @@ class SettingsStore(context: Context) {
             prefs.edit().putBoolean(KEY_GMAIL_ENABLED, value).commit()
         }
 
+    /**
+     * Hours of the day (0–23) the app wakes up and syncs. Stored as "9,14,18",
+     * the desktop `check_schedule` format. Never empty: clearing every hour
+     * would mean the app never wakes, so an empty write keeps the default.
+     */
+    var syncHours: Set<Int>
+        get() = prefs.getString(KEY_SYNC_HOURS, null)
+            ?.let(SyncSchedule::parse)
+            ?.takeIf { it.isNotEmpty() }
+            ?: SyncSchedule.DEFAULT_HOURS
+        set(value) {
+            val hours = value.filter { it in 0..23 }.toSet().ifEmpty { SyncSchedule.DEFAULT_HOURS }
+            prefs.edit().putString(KEY_SYNC_HOURS, SyncSchedule.format(hours)).commit()
+        }
+
     /** Days of message rows to keep. Events outlive their messages. */
     var messageRetentionDays: Int
         get() = prefs.getInt(KEY_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
@@ -195,6 +211,7 @@ class SettingsStore(context: Context) {
         const val DEFAULT_DEDUPE_THRESHOLD = 0.92f
         private const val MAX_SEEN_CHANNELS = 200
 
+        private const val KEY_SYNC_HOURS = "sync_hours"
         private const val KEY_WATCHED_CHANNELS = "watched_channels"
         private const val KEY_CAPTURE_ALL = "capture_all_channels"
         private const val KEY_EXTRA_PACKAGES = "extra_source_packages"

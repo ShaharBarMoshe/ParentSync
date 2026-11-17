@@ -3,6 +3,7 @@ package com.parentsync.mobile.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
+import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.db.EmbeddingCandidate
 import com.parentsync.mobile.data.db.MessageDao
 import com.parentsync.mobile.data.db.MessageEntity
@@ -53,6 +54,10 @@ class MessageIngestorTest {
         override suspend fun setEmbedding(id: String, embedding: ByteArray?, contentHash: String?) = Unit
         override suspend fun embeddingCandidates(since: Long, limit: Int): List<EmbeddingCandidate> = emptyList()
         override fun countFlow(): Flow<Int> = throw UnsupportedOperationException()
+        override fun recentFlow(limit: Int): Flow<List<MessageEntity>> = throw UnsupportedOperationException()
+        override fun recentInChannelFlow(channel: String, limit: Int): Flow<List<MessageEntity>> =
+            throw UnsupportedOperationException()
+        override fun channelsFlow(): Flow<List<String>> = throw UnsupportedOperationException()
         override suspend fun imageRefsBefore(before: Long): List<String> = emptyList()
         override suspend fun deleteBefore(before: Long): Int = 0
     }
@@ -122,6 +127,70 @@ class MessageIngestorTest {
         assertThat(result.stored).isEqualTo(0)
         assertThat(result.skipped).isEqualTo(1)
         assertThat(dao.inserted).isEmpty()
+    }
+
+    // ------------------------------------------------------- per-child groups
+
+    private fun ingestorWithChildren(vararg children: ChildEntity) =
+        MessageIngestor(dao, settings, trigger, children = { children.toList() }) { FIXED_NOW }
+
+    private fun child(id: String, name: String, vararg groups: String) =
+        ChildEntity(id = id, name = name, channelNames = ChildChannels.encode(groups.toList()))
+
+    @Test
+    fun `a group assigned to a child is captured without being on the watch list`() = runTest {
+        val ingestor = ingestorWithChildren(child("yoni", "Yoni", "Class 2 parents"))
+
+        val result = ingestor.onNotification(whatsApp())
+
+        assertThat(result.stored).isEqualTo(1)
+        assertThat(dao.inserted.single().childId).isEqualTo("yoni")
+    }
+
+    @Test
+    fun `a watched group that belongs to no child is captured untagged`() = runTest {
+        settings.watchedChannels = setOf("Class 2 parents")
+        val ingestor = ingestorWithChildren(child("maya", "Maya", "Gan Shaked"))
+
+        ingestor.onNotification(whatsApp())
+
+        assertThat(dao.inserted.single().childId).isNull()
+    }
+
+    @Test
+    fun `a group shared by two children is captured but tagged to neither`() = runTest {
+        val ingestor = ingestorWithChildren(
+            child("yoni", "Yoni", "Class 2 parents"),
+            child("maya", "Maya", "Class 2 parents"),
+        )
+
+        ingestor.onNotification(whatsApp())
+
+        assertThat(dao.inserted.single().childId).isNull()
+    }
+
+    @Test
+    fun `a child's group does not open the gate for other groups`() = runTest {
+        val ingestor = ingestorWithChildren(child("maya", "Maya", "Gan Shaked"))
+
+        val result = ingestor.onNotification(whatsApp(group = "Family"))
+
+        assertThat(result.stored).isEqualTo(0)
+        assertThat(dao.inserted).isEmpty()
+    }
+
+    @Test
+    fun `if the children cannot be loaded the watch list still works`() = runTest {
+        settings.watchedChannels = setOf("Class 2 parents")
+        val ingestor = MessageIngestor(
+            dao, settings, trigger,
+            children = { throw IllegalStateException("db closed") },
+        ) { FIXED_NOW }
+
+        val result = ingestor.onNotification(whatsApp())
+
+        assertThat(result.stored).isEqualTo(1)
+        assertThat(dao.inserted.single().childId).isNull()
     }
 
     @Test

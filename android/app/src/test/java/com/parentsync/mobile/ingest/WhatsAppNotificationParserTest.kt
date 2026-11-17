@@ -32,6 +32,50 @@ class WhatsAppNotificationParserTest {
         isGroupSummary = isSummary,
     )
 
+    // ------------------------------------------------- unread-count suffix
+
+    private val inbox = listOf(
+        NotificationPayload.StyleMessage("Trip on Sunday", "Bruria", 1_800_000_001_000),
+    )
+
+    @Test
+    fun `the unread count WhatsApp appends to a group title is not part of its name`() {
+        // Captured from a real phone: the title grows " (2 messages)" once a
+        // second message is waiting.
+        val result = WhatsAppNotificationParser.parse(
+            payload(conversationTitle = "״מקום לנשום״ - גינה קהילתית (2 messages)", isGroup = true, messages = inbox),
+        )
+
+        assertThat(result.single().channel).isEqualTo("״מקום לנשום״ - גינה קהילתית")
+    }
+
+    @Test
+    fun `the same message keeps its key as the unread count grows`() {
+        val first = WhatsAppNotificationParser.parse(
+            payload(conversationTitle = "Class 2 parents", isGroup = true, messages = inbox),
+        )
+        val later = WhatsAppNotificationParser.parse(
+            payload(conversationTitle = "Class 2 parents (3 messages)", isGroup = true, messages = inbox),
+        )
+
+        assertThat(later.single().sourceKey).isEqualTo(first.single().sourceKey)
+    }
+
+    @Test
+    fun `Hebrew and new-message forms of the count are stripped too`() {
+        assertThat(WhatsAppNotificationParser.stripTitleCount("כיתה ב (5 הודעות)")).isEqualTo("כיתה ב")
+        assertThat(WhatsAppNotificationParser.stripTitleCount("כיתה ב (5 הודעות חדשות)")).isEqualTo("כיתה ב")
+        assertThat(WhatsAppNotificationParser.stripTitleCount("Football (12 new messages)")).isEqualTo("Football")
+        assertThat(WhatsAppNotificationParser.stripTitleCount("Football (1 message)")).isEqualTo("Football")
+    }
+
+    @Test
+    fun `a bracket that is really part of the group name is kept`() {
+        assertThat(WhatsAppNotificationParser.stripTitleCount("Grade 3 (Blue)")).isEqualTo("Grade 3 (Blue)")
+        assertThat(WhatsAppNotificationParser.stripTitleCount("Year (2024)")).isEqualTo("Year (2024)")
+        assertThat(WhatsAppNotificationParser.stripTitleCount("Room (2 A)")).isEqualTo("Room (2 A)")
+    }
+
     // ---------------------------------------------------------------- sources
 
     @Test

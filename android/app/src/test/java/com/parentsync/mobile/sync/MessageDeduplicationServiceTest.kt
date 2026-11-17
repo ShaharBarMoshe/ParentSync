@@ -56,6 +56,10 @@ class MessageDeduplicationServiceTest {
         override suspend fun markParsed(ids: List<String>) = Unit
         override suspend fun setEmbedding(id: String, embedding: ByteArray?, contentHash: String?) = Unit
         override fun countFlow(): Flow<Int> = throw UnsupportedOperationException()
+        override fun recentFlow(limit: Int): Flow<List<MessageEntity>> = throw UnsupportedOperationException()
+        override fun recentInChannelFlow(channel: String, limit: Int): Flow<List<MessageEntity>> =
+            throw UnsupportedOperationException()
+        override fun channelsFlow(): Flow<List<String>> = throw UnsupportedOperationException()
         override suspend fun imageRefsBefore(before: Long): List<String> = emptyList()
         override suspend fun deleteBefore(before: Long): Int = 0
     }

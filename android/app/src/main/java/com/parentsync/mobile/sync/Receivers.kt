@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.parentsync.mobile.ParentSyncApp
+import com.parentsync.mobile.ingest.ParentSyncNotificationListener
 import com.parentsync.mobile.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -98,8 +99,8 @@ class ReminderReceiver : BroadcastReceiver() {
  *
  * WorkManager restores its own queue, so this is belt and braces for the case
  * where the app was updated and the schedule changed. The notification listener
- * is re-bound by the OS and needs nothing from us — but if the user revoked
- * access while the app was not running, this is the first chance to notice.
+ * should be re-bound by the OS, but a real phone was seen not to, so this asks
+ * for it too.
  */
 class BootCompletedReceiver : BroadcastReceiver() {
 
@@ -113,8 +114,11 @@ class BootCompletedReceiver : BroadcastReceiver() {
         try {
             val app = context.applicationContext as ParentSyncApp
             Notifications.ensureChannels(context)
-            app.container.scheduler.ensurePeriodicSync()
-            Log.i(TAG, "re-armed periodic sync after $action")
+            app.container.scheduler.ensureScheduledSync()
+            // The OS is supposed to re-bind the listener itself; on a HyperOS
+            // phone it did not, so ask explicitly.
+            ParentSyncNotificationListener.ensureBound(context)
+            Log.i(TAG, "re-armed scheduled sync after $action")
         } catch (e: Exception) {
             Log.e(TAG, "could not re-arm sync after $action", e)
         }

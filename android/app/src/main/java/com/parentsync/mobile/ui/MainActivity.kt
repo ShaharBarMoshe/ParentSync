@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -50,8 +52,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.parentsync.mobile.ParentSyncApp
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateListOf
+import com.parentsync.mobile.data.ChildChannels
+import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.db.EventEntity
+import com.parentsync.mobile.data.db.MessageEntity
 import com.parentsync.mobile.ingest.ParentSyncNotificationListener
+import com.parentsync.mobile.sync.SyncSchedule
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
 
@@ -85,7 +103,11 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Notification access can be revoked in Settings without the app being
         // told, so it is re-read every time the screen comes back.
-        viewModel.refreshListenerState(ParentSyncNotificationListener.isEnabled(this))
+        ParentSyncNotificationListener.ensureBound(this)
+        viewModel.refreshListenerState(
+            granted = ParentSyncNotificationListener.isEnabled(this),
+            bound = ParentSyncNotificationListener.isBound,
+        )
         viewModel.refreshCalendars()
     }
 
@@ -121,7 +143,12 @@ private fun ParentSyncTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = colors, content = content)
 }
 
-private enum class Tab(val label: String) { PENDING("Approvals"), UPCOMING("Upcoming"), SETTINGS("Settings") }
+private enum class Tab(val label: String) {
+    PENDING("Approvals"),
+    MESSAGES("Messages"),
+    UPCOMING("Upcoming"),
+    SETTINGS("Settings"),
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,16 +166,23 @@ private fun AppScaffold(
             TopAppBar(
                 title = { Text("ParentSync") },
                 actions = {
-                    if (syncing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.padding(end = 16.dp).height(20.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        OutlinedButton(
-                            onClick = viewModel::syncNow,
-                            modifier = Modifier.padding(end = 8.dp),
-                        ) { Text("Sync") }
+                    // Always present, so a sync can be asked for at any time; it
+                    // only shows progress while a pass is really running.
+                    OutlinedButton(
+                        onClick = viewModel::syncNow,
+                        enabled = !syncing,
+                        modifier = Modifier.padding(end = 8.dp),
+                    ) {
+                        if (syncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("Syncing")
+                        } else {
+                            Text("Sync now")
+                        }
                     }
                 },
             )
@@ -177,6 +211,7 @@ private fun AppScaffold(
         Column(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
                 Tab.PENDING -> PendingScreen(viewModel, pending)
+                Tab.MESSAGES -> MessagesScreen(viewModel)
                 Tab.UPCOMING -> UpcomingScreen(viewModel)
                 Tab.SETTINGS -> SettingsScreen(
                     viewModel = viewModel,
@@ -234,6 +269,93 @@ private fun PendingScreen(viewModel: MainViewModel, pending: List<EventEntity>) 
     }
 }
 
+private const val HOURS_PER_ROW = 6
+
+private val messageTimeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM, HH:mm")
+
+/**
+ * Everything the listener captured from WhatsApp, newest first, optionally
+ * narrowed to one chat. This is the in-app record of the messages: WhatsApp's
+ * own notification is gone once swiped, but the row stays until retention.
+ */
+@Composable
+private fun MessagesScreen(viewModel: MainViewModel) {
+    val messages by viewModel.recentMessages.collectAsStateWithLifecycle()
+    val channels by viewModel.messageChannels.collectAsStateWithLifecycle()
+    val selected by viewModel.messageChannelFilter.collectAsStateWithLifecycle()
+
+    Column(Modifier.fillMaxSize()) {
+        if (channels.size > 1) {
+            LazyRow(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item {
+                    FilterChip(
+                        selected = selected == null,
+                        onClick = { viewModel.filterMessagesByChannel(null) },
+                        label = { Text("All") },
+                    )
+                }
+                items(channels, key = { it }) { channel ->
+                    FilterChip(
+                        selected = selected == channel,
+                        onClick = { viewModel.filterMessagesByChannel(channel) },
+                        label = { Text(channel) },
+                    )
+                }
+            }
+        }
+        if (messages.isEmpty()) {
+            EmptyState(
+                "No messages yet",
+                "Messages from watched WhatsApp groups are saved here as they arrive. " +
+                    "Pick groups to watch under Settings.",
+            )
+            return@Column
+        }
+        LazyColumn(
+            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(messages, key = { it.id }) { message -> MessageCard(message) }
+        }
+    }
+}
+
+@Composable
+private fun MessageCard(message: MessageEntity) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    message.channel,
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    Instant.ofEpochMilli(message.timestamp)
+                        .atZone(ZoneId.systemDefault())
+                        .format(messageTimeFormat),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            message.sender?.takeIf { it.isNotBlank() && it != message.channel }?.let {
+                Text(it, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(message.content, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (message.parsed) "Processed" else "Waiting to be processed",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 @Composable
 private fun UpcomingScreen(viewModel: MainViewModel) {
     val upcoming by viewModel.upcomingEvents.collectAsStateWithLifecycle()
@@ -273,6 +395,7 @@ private fun SettingsScreen(
     val state by viewModel.settingsState.collectAsStateWithLifecycle()
     val calendars by viewModel.calendars.collectAsState()
     val messages by viewModel.messageCount.collectAsStateWithLifecycle()
+    val children by viewModel.children.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { viewModel.refreshCalendars() }
 
@@ -282,18 +405,25 @@ private fun SettingsScreen(
     ) {
         item {
             SettingsCard("WhatsApp access") {
+                val granted by viewModel.listenerGranted.collectAsStateWithLifecycle()
                 Text(
-                    if (state.listenerConnected) {
-                        "Connected. New messages in watched groups are captured."
-                    } else {
-                        "Not connected. ParentSync cannot see any WhatsApp messages " +
-                            "until you switch it on under notification access."
+                    when {
+                        state.listenerConnected ->
+                            "Connected. New messages in watched groups are captured."
+                        granted ->
+                            "Access is granted, but the phone has stopped ParentSync's " +
+                                "listener, so messages are being missed. Reconnecting… If " +
+                                "this keeps happening, allow ParentSync to autostart and set " +
+                                "its battery use to \"No restrictions\"."
+                        else ->
+                            "Not connected. ParentSync cannot see any WhatsApp messages " +
+                                "until you switch it on under notification access."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = onOpenListenerSettings) {
-                    Text(if (state.listenerConnected) "Review access" else "Grant access")
+                    Text(if (granted) "Review access" else "Grant access")
                 }
             }
         }
@@ -329,6 +459,15 @@ private fun SettingsScreen(
         }
 
         item {
+            ChildrenCard(
+                children = children,
+                seenChannels = state.seenChannels,
+                onSave = viewModel::saveChild,
+                onDelete = viewModel::deleteChild,
+            )
+        }
+
+        item {
             SettingsCard("Watched groups") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -353,15 +492,74 @@ private fun SettingsScreen(
                     )
                 }
                 state.seenChannels.forEach { channel ->
+                    // A group assigned to a child is always captured, so its
+                    // switch shows on and locked, with the owner named, rather
+                    // than offering a toggle that would do nothing.
+                    val owners = ChildChannels.childrenFor(channel, children)
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(channel, Modifier.weight(1f))
+                        Column(Modifier.weight(1f)) {
+                            Text(channel)
+                            if (owners.isNotEmpty()) {
+                                Text(
+                                    "For ${owners.joinToString { it.name }}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                         Switch(
-                            checked = channel in state.watchedChannels,
+                            checked = owners.isNotEmpty() || channel in state.watchedChannels,
+                            enabled = owners.isEmpty(),
                             onCheckedChange = { viewModel.setChannelWatched(channel, it) },
                         )
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard("Sync schedule") {
+                val next = remember(state.syncHours) {
+                    SyncSchedule.nextRun(java.time.ZonedDateTime.now(), state.syncHours)
+                }
+                Text(
+                    "ParentSync wakes up and syncs ${SyncSchedule.describe(state.syncHours)}. " +
+                        "Next: ${next.format(DateTimeFormatter.ofPattern("EEE HH:mm"))}.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "New messages are also processed about a minute after they arrive. " +
+                        "Android may delay a wake-up by a few minutes to save battery.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { viewModel.setSyncHours(SyncSchedule.EVERY_HOUR) }) {
+                        Text("Every hour")
+                    }
+                    OutlinedButton(onClick = { viewModel.setSyncHours(SyncSchedule.DEFAULT_HOURS) }) {
+                        Text("9 · 14 · 18")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                // 24 hour chips, six to a row so they fit a phone width.
+                (0..23).chunked(HOURS_PER_ROW).forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        row.forEach { hour ->
+                            FilterChip(
+                                selected = hour in state.syncHours,
+                                onClick = { viewModel.toggleSyncHour(hour) },
+                                label = { Text("%02d".format(hour)) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
                 }
             }
@@ -393,6 +591,151 @@ private fun SettingsScreen(
             }
         }
     }
+}
+
+/**
+ * Per-child WhatsApp groups, as on desktop. Each child owns a list of groups;
+ * a message from one of them is captured and tagged with that child, and its
+ * events are titled "Name: …".
+ */
+@Composable
+private fun ChildrenCard(
+    children: List<ChildEntity>,
+    seenChannels: List<String>,
+    onSave: (id: String?, name: String, channels: List<String>) -> Unit,
+    onDelete: (id: String) -> Unit,
+) {
+    // null = closed; a ChildEntity with a blank id = adding a new child.
+    var editing by remember { mutableStateOf<ChildEntity?>(null) }
+
+    SettingsCard("Children") {
+        if (children.isEmpty()) {
+            Text(
+                "Add each child and pick the WhatsApp groups that belong to them. " +
+                    "Their groups are captured automatically and events get the child's name.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        children.forEach { child ->
+            val channels = ChildChannels.decode(child.channelNames)
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(child.name, fontWeight = FontWeight.Medium)
+                    Text(
+                        if (channels.isEmpty()) "No groups yet" else channels.joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = { editing = child }) { Text("Edit") }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = { editing = ChildEntity(id = "", name = "") }) { Text("Add child") }
+    }
+
+    editing?.let { child ->
+        ChildDialog(
+            child = child,
+            seenChannels = seenChannels,
+            onDismiss = { editing = null },
+            onSave = { name, channels ->
+                onSave(child.id.ifBlank { null }, name, channels)
+                editing = null
+            },
+            onDelete = if (child.id.isBlank()) {
+                null
+            } else {
+                { onDelete(child.id); editing = null }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ChildDialog(
+    child: ChildEntity,
+    seenChannels: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (name: String, channels: List<String>) -> Unit,
+    onDelete: (() -> Unit)?,
+) {
+    var name by remember(child.id) { mutableStateOf(child.name) }
+    val selected = remember(child.id) {
+        mutableStateListOf<String>().apply { addAll(ChildChannels.decode(child.channelNames)) }
+    }
+    var typed by remember(child.id) { mutableStateOf("") }
+    // Groups already assigned stay listed even if this phone has not seen a
+    // message from them yet (typed by hand, or configured before a reinstall).
+    val options = (seenChannels + selected).distinct().sorted()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (child.id.isBlank()) "Add child" else "Edit ${child.name}") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("WhatsApp groups", style = MaterialTheme.typography.titleSmall)
+                if (options.isEmpty()) {
+                    Text(
+                        "No groups seen yet. Type a group's name exactly as it appears in " +
+                            "WhatsApp, or wait for a message to arrive from it.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                options.forEach { channel ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = channel in selected,
+                            onCheckedChange = { on -> if (on) selected += channel else selected -= channel },
+                        )
+                        Text(channel, Modifier.weight(1f))
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = typed,
+                        onValueChange = { typed = it },
+                        label = { Text("Add a group by name") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        enabled = typed.isNotBlank(),
+                        onClick = {
+                            val group = typed.trim()
+                            if (group !in selected) selected += group
+                            typed = ""
+                        },
+                    ) { Text("Add") }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, selected.toList()) }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            Row {
+                onDelete?.let { TextButton(onClick = it) { Text("Delete") } }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
 }
 
 @Composable

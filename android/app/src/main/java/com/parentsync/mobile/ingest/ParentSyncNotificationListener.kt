@@ -40,6 +40,7 @@ class ParentSyncNotificationListener : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(TAG, "notification listener connected")
+        isBound = true
         (applicationContext as ParentSyncApp).container.settings.setListenerConnected(true)
     }
 
@@ -47,7 +48,11 @@ class ParentSyncNotificationListener : NotificationListenerService() {
         super.onListenerDisconnected()
         // Worth a log: silent disconnection is the usual cause of "the app just
         // stopped seeing messages", and there is no other signal for it.
-        Log.w(TAG, "notification listener disconnected")
+        Log.w(TAG, "notification listener disconnected; asking the system to rebind")
+        isBound = false
+        // Without this a disconnect is permanent until the user toggles access
+        // off and on — the app keeps saying "connected" and captures nothing.
+        requestRebindSafely(this)
         (applicationContext as ParentSyncApp).container.settings.setListenerConnected(false)
     }
 
@@ -58,6 +63,9 @@ class ParentSyncNotificationListener : NotificationListenerService() {
         // `adb shell setprop log.tag.PSListener VERBOSE` turns it on.
         if (Log.isLoggable(TAG, Log.VERBOSE)) {
             Log.v(TAG, "onNotificationPosted from ${notification.packageName}")
+        }
+        if (Log.isLoggable(TAG, Log.VERBOSE) && notification.packageName == WHATSAPP_PACKAGE) {
+            logShape(notification)
         }
         val payload = try {
             toPayload(notification)
@@ -84,6 +92,33 @@ class ParentSyncNotificationListener : NotificationListenerService() {
                 Log.e(TAG, "ingest failed for ${payload.packageName}", e)
             }
         }
+    }
+
+    /**
+     * The full shape of a WhatsApp notification: flags, grouping and every
+     * extra. VERBOSE-only, because it includes message text — it exists to
+     * answer "what does *this* WhatsApp build actually post?", which no
+     * emulator can, and which decides what the parser has to handle.
+     */
+    private fun logShape(sbn: StatusBarNotification) {
+        val n = sbn.notification
+        val extras = n.extras
+        val described = extras.keySet().sorted().joinToString { key ->
+            val value = when (val v = extras.get(key)) {
+                is Array<*> -> "array[${v.size}]"
+                is CharSequence -> "\"${v.toString().take(SHAPE_TEXT_LIMIT)}\""
+                null -> "null"
+                else -> v.javaClass.simpleName
+            }
+            "$key=$value"
+        }
+        Log.v(
+            TAG,
+            "shape id=${sbn.id} tag=${sbn.tag} group=${n.group} " +
+                "summary=${(n.flags and Notification.FLAG_GROUP_SUMMARY) != 0} " +
+                "channel=${n.channelId} category=${n.category} shortcut=${n.shortcutId} " +
+                "template=${extras.getString(Notification.EXTRA_TEMPLATE)} extras={$described}",
+        )
     }
 
     /** Nothing to do: a dismissed notification does not un-send its message. */
@@ -141,6 +176,41 @@ class ParentSyncNotificationListener : NotificationListenerService() {
 
     companion object {
         private const val TAG = "PSListener"
+
+        /**
+         * Whether the system currently has this service bound — distinct from
+         * [isEnabled], which only says access is *granted*. Process-scoped on
+         * purpose: when the process dies the binding goes with it, and this
+         * resets to false, which is exactly the case [ensureBound] must handle.
+         *
+         * Seen on a HyperOS phone: access granted, listener not in the live
+         * list, app open — every WhatsApp message silently missed.
+         */
+        @Volatile
+        var isBound: Boolean = false
+            private set
+
+        /**
+         * Asks the system to bind the listener if access is granted but it is not
+         * bound. Called on app start and every time the screen resumes; a no-op
+         * when already bound, so it costs nothing in the normal case.
+         */
+        fun ensureBound(context: Context) {
+            if (isBound || !isEnabled(context)) return
+            Log.w(TAG, "access granted but listener not bound; requesting rebind")
+            requestRebindSafely(context)
+        }
+
+        private fun requestRebindSafely(context: Context) {
+            try {
+                requestRebind(ComponentName(context, ParentSyncNotificationListener::class.java))
+            } catch (e: Exception) {
+                // Throws if access was revoked in the meantime; nothing to rebind.
+                Log.e(TAG, "rebind request failed", e)
+            }
+        }
+        private const val WHATSAPP_PACKAGE = "com.whatsapp"
+        private const val SHAPE_TEXT_LIMIT = 80
 
         /**
          * Whether the user has granted notification access to this app.

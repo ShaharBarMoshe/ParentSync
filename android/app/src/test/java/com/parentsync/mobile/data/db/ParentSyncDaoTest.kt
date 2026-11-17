@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import com.parentsync.mobile.data.embedding.EmbeddingCodec
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -282,6 +283,38 @@ class ParentSyncDaoTest {
         events.setCalendarEventId(e.id, null, NOW)
 
         assertThat(events.approvedAwaitingCalendar(50).map { it.id }).containsExactly(e.id)
+    }
+
+    // ------------------------------------------------------------ messages screen
+
+    @Test
+    fun `the messages screen lists newest first and respects the limit`() = runTest {
+        repeat(5) { i -> messages.insertIgnoringDuplicates(message(id = "m$i", timestamp = NOW + i)) }
+
+        val shown = messages.recentFlow(limit = 3).first()
+
+        assertThat(shown.map { it.id }).containsExactly("m4", "m3", "m2").inOrder()
+    }
+
+    @Test
+    fun `filtering by chat shows only that chat`() = runTest {
+        messages.insertIgnoringDuplicates(message(id = "a", channel = "Class 2 parents", timestamp = NOW))
+        messages.insertIgnoringDuplicates(message(id = "b", channel = "Football", timestamp = NOW + 1))
+        messages.insertIgnoringDuplicates(message(id = "c", channel = "Class 2 parents", timestamp = NOW + 2))
+
+        val shown = messages.recentInChannelFlow("Class 2 parents", limit = 10).first()
+
+        assertThat(shown.map { it.id }).containsExactly("c", "a").inOrder()
+    }
+
+    @Test
+    fun `the chat filter lists each chat once, sorted`() = runTest {
+        messages.insertIgnoringDuplicates(message(channel = "Football"))
+        messages.insertIgnoringDuplicates(message(channel = "Class 2 parents"))
+        messages.insertIgnoringDuplicates(message(channel = "Football"))
+
+        assertThat(messages.channelsFlow().first())
+            .containsExactly("Class 2 parents", "Football").inOrder()
     }
 
     // ------------------------------------------------------------ sync logs
