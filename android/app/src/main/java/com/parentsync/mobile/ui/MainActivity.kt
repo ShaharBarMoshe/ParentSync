@@ -47,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -61,6 +62,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateListOf
+import com.parentsync.mobile.calendar.CalendarChoice
 import com.parentsync.mobile.data.ChildChannels
 import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.db.EventEntity
@@ -439,14 +441,31 @@ private fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     Button(onClick = onRequestPermissions) { Text("Grant calendar access") }
                 } else {
+                    if (CalendarChoice.needsAttention(state.calendarId, calendars)) {
+                        Text(
+                            "Events are going to a calendar on this phone only, so they " +
+                                "won't appear in Google Calendar. Choose a Google calendar below.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
                     calendars.forEach { cal ->
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(cal.displayName, fontWeight = FontWeight.Medium)
-                                Text(cal.accountName, style = MaterialTheme.typography.bodySmall)
+                                Text(CalendarChoice.label(cal), fontWeight = FontWeight.Medium)
+                                Text(
+                                    CalendarChoice.subtitle(cal),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (CalendarChoice.isPhoneOnly(cal)) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        Color.Unspecified
+                                    },
+                                )
                             }
                             Switch(
                                 checked = state.calendarId == cal.id,

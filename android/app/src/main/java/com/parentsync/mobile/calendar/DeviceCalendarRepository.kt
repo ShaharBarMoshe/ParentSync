@@ -100,16 +100,11 @@ class DeviceCalendarRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "could not list calendars", e)
         }
-        return out.filter { it.canWrite }
+        return CalendarChoice.sorted(out.filter { it.canWrite })
     }
 
-    /** The calendar to default to: the primary Google one, else the first writable. */
-    fun suggestDefaultCalendar(): DeviceCalendar? {
-        val all = writableCalendars()
-        return all.firstOrNull { it.isPrimary && it.accountType == GOOGLE_ACCOUNT_TYPE }
-            ?: all.firstOrNull { it.accountType == GOOGLE_ACCOUNT_TYPE }
-            ?: all.firstOrNull()
-    }
+    /** The calendar to default to; see [CalendarChoice.suggest]. */
+    fun suggestDefaultCalendar(): DeviceCalendar? = CalendarChoice.suggest(writableCalendars())
 
     /**
      * Inserts [event] and returns the provider row id, or null on failure.
@@ -236,7 +231,6 @@ class DeviceCalendarRepository(private val context: Context) {
 
     companion object {
         private const val TAG = "DeviceCalendar"
-        private const val GOOGLE_ACCOUNT_TYPE = "com.google"
         private const val DAY_MILLIS = 24L * 60 * 60 * 1000
         private const val DEFAULT_DURATION_MILLIS = 60L * 60 * 1000
     }

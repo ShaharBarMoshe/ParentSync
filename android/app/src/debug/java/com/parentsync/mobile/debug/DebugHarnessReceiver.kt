@@ -62,6 +62,8 @@ class DebugHarnessReceiver : BroadcastReceiver() {
             ACTION_SEED_EVENT -> seedPendingEvent(app, intent)
             ACTION_CREATE_LOCAL_CALENDAR -> createLocalCalendar(app, context)
             ACTION_DUMP -> dumpState(app)
+            ACTION_SELECT_CALENDAR -> selectCalendar(app, intent)
+            ACTION_APPROVE -> approve(app, intent)
             else -> Log.w(TAG, "unknown action ${intent.action}")
         }
     }
@@ -140,6 +142,45 @@ class DebugHarnessReceiver : BroadcastReceiver() {
      * Lets the approval and calendar-write paths be verified without a Gemini
      * key, which an emulator run has no way to supply.
      */
+    /** Same as tapping a calendar's switch in Settings. */
+    private fun selectCalendar(app: ParentSyncApp, intent: Intent) {
+        val id = intent.getLongExtra(EXTRA_CALENDAR_ID, -1L)
+        if (id <= 0) {
+            Log.w(TAG, "SELECT_CALENDAR needs --el $EXTRA_CALENDAR_ID <id>")
+            return
+        }
+        app.container.settings.calendarId = id
+        Log.i(TAG, "calendar set to $id")
+    }
+
+    /**
+     * Same path as the Approve button: settle, then ask for a sync soon so the
+     * worker writes it to the calendar. Lets the approve → calendar write be
+     * verified on a locked phone.
+     */
+    private fun approve(app: ParentSyncApp, intent: Intent) {
+        val eventId = intent.getStringExtra(EXTRA_EVENT_ID)
+        if (eventId.isNullOrBlank()) {
+            Log.w(TAG, "APPROVE needs --es $EXTRA_EVENT_ID <id>")
+            return
+        }
+        val pending = goAsync()
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            try {
+                if (app.container.approvals.settle(eventId, approved = true)) {
+                    app.container.scheduler.requestSoon()
+                    Log.i(TAG, "approved $eventId; sync requested")
+                } else {
+                    Log.w(TAG, "event $eventId was not pending")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "approve $eventId failed", e)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
     private fun seedPendingEvent(app: ParentSyncApp, intent: Intent) {
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Debug event"
         val date = intent.getStringExtra(EXTRA_DATE) ?: "2027-01-15"
@@ -268,6 +309,8 @@ class DebugHarnessReceiver : BroadcastReceiver() {
         const val ACTION_SEED_EVENT = "com.parentsync.mobile.debug.SEED_EVENT"
         const val ACTION_CREATE_LOCAL_CALENDAR = "com.parentsync.mobile.debug.CREATE_LOCAL_CALENDAR"
         const val ACTION_DUMP = "com.parentsync.mobile.debug.DUMP"
+        const val ACTION_SELECT_CALENDAR = "com.parentsync.mobile.debug.SELECT_CALENDAR"
+        const val ACTION_APPROVE = "com.parentsync.mobile.debug.APPROVE"
 
         private const val EXTRA_CAPTURE_ALL = "captureAll"
         private const val EXTRA_PACKAGE = "package"
@@ -281,5 +324,7 @@ class DebugHarnessReceiver : BroadcastReceiver() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_DATE = "date"
         private const val EXTRA_TIME = "time"
+        private const val EXTRA_CALENDAR_ID = "calendarId"
+        private const val EXTRA_EVENT_ID = "eventId"
     }
 }

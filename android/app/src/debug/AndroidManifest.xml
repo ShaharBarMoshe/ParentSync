@@ -18,6 +18,8 @@
                 <action android:name="com.parentsync.mobile.debug.SEED_EVENT" />
                 <action android:name="com.parentsync.mobile.debug.CREATE_LOCAL_CALENDAR" />
                 <action android:name="com.parentsync.mobile.debug.DUMP" />
+                <action android:name="com.parentsync.mobile.debug.SELECT_CALENDAR" />
+                <action android:name="com.parentsync.mobile.debug.APPROVE" />
             </intent-filter>
         </receiver>
     </application>

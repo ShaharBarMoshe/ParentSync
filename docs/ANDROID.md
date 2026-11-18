@@ -54,6 +54,15 @@ local row id; whether Google accepted it is never reported. The app treats a
 successful insert as success, which is the same assumption the stock Calendar app
 makes.
 
+**A phone-only calendar is a trap.** Phones also ship a calendar with account
+type `LOCAL` (on HyperOS its name is the raw key `calendar_displayname_local`).
+An insert there succeeds and the event is marked as added, but it never reaches
+Google. `CalendarChoice` keeps it out of the default (Google primary, then other
+Google, then other accounts, phone-only last), labels it "Phone calendar — On
+this phone only", and Settings shows a red warning while it is selected and a
+synced calendar exists. A stored calendar that has disappeared is replaced by
+the default; a phone-only one is flagged rather than silently switched.
+
 ### 3. The approval loop had to be replaced
 
 Desktop posts an approval card with an `.ics` attachment to a WhatsApp group and
@@ -304,7 +313,20 @@ the same provider through the same code path — so an insert proves the write
 works. What it cannot prove is that Google's sync adapter then uploads it.
 
 `SEED_EVENT` inserts a `PENDING` event directly, so the approval and
-calendar-write paths can be exercised without a Gemini key.
+calendar-write paths can be exercised without a Gemini key. `APPROVE` takes
+the same path as the Approve button, and `SELECT_CALENDAR` the same as the
+switch in Settings, so the whole approve → calendar loop runs on a locked phone:
+
+```bash
+adb shell "am broadcast -f 0x20 -n $RCV -a com.parentsync.mobile.debug.SELECT_CALENDAR --el calendarId 5"
+adb shell "am broadcast -f 0x20 -n $RCV -a com.parentsync.mobile.debug.SEED_EVENT --es title 'Calendar test' --es date 2027-01-15 --es time 10:00"
+adb shell "am broadcast -f 0x20 -n $RCV -a com.parentsync.mobile.debug.APPROVE --es eventId <id from the log>"
+# Uploaded to Google once _sync_id is set and dirty=0:
+adb shell content query --uri content://com.android.calendar/events --where "_id=<row>" --projection _id:calendar_id:_sync_id:dirty
+```
+
+`-f 0x20` (include stopped packages) is needed right after an install, before
+the app has run.
 
 ### Verified on the emulator (Android 16, API 36)
 
@@ -330,7 +352,7 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-**131 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+**137 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
 a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
 the dedup service (15), the embedding codec (8), and the own-notification guard
 (2).
@@ -366,6 +388,15 @@ the dedup service (15), the embedding codec (8), and the own-notification guard
   counted every ENQUEUED pass, and the periodic safety net is always enqueued.
   Now only a RUNNING pass, or a manual one waiting to start, counts
   (`SyncScheduler.isActive`, unit-tested). The Sync button is always shown.
+- **An approved event "was not added to the calendar"** — it was, to
+  calendar 1, the phone-only `LOCAL` calendar, so it never reached Google. See
+  "A phone-only calendar is a trap" above. Verified after the fix with
+  `SEED_EVENT` → `APPROVE` against the primary Google calendar: the worker
+  inserted row 1503 into calendar 5, and Google's adapter uploaded it
+  (`_sync_id` set, `dirty=0`) within about a minute. On a locked phone the
+  "soon" sync ran ~2 minutes after approval, not 45 s.
+- **Gemini extraction works against the live API**: a captured message was
+  turned into a pending event by a manual sync.
 - **Your own messages are never captured.** WhatsApp posts no notification for a
   message sent from the same phone, so testing needs a message *from someone
   else* (or from another device on a different account).
@@ -375,9 +406,6 @@ the dedup service (15), the embedding codec (8), and the own-notification guard
 
 ### Not yet verified
 
-- **The Gemini extraction call** — the request and response shape are pinned by
-  `GeminiClientTest` against a local HTTP server, but no call has been made to
-  the live service for want of an API key.
 - **Dedup on a device.** 15 unit tests cover the rules, but the on-device path is
   unreached without a key: the worker returns early when the LLM is
   unconfigured, before the dedup check. Add a key and it runs.

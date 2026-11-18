@@ -1,9 +1,11 @@
 package com.parentsync.mobile.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.parentsync.mobile.AppContainer
+import com.parentsync.mobile.calendar.CalendarChoice
 import com.parentsync.mobile.calendar.DeviceCalendarRepository
 import com.parentsync.mobile.data.ChildChannels
 import com.parentsync.mobile.data.db.ApprovalStatus
@@ -155,9 +157,16 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
      * lands and an empty list would otherwise look like "no calendars".
      */
     fun refreshCalendars() {
-        _calendars.value = container.calendar.writableCalendars()
-        if (container.settings.calendarId <= 0) {
-            container.calendar.suggestDefaultCalendar()?.let {
+        val calendars = container.calendar.writableCalendars()
+        _calendars.value = calendars
+        // Pick a default when nothing is chosen, or the chosen calendar is gone
+        // (deleted, account removed). A phone-only choice is left alone and
+        // flagged in Settings instead: it may be deliberate, and silently
+        // moving future events to another calendar would be worse.
+        val stored = container.settings.calendarId
+        if (calendars.isNotEmpty() && calendars.none { it.id == stored }) {
+            CalendarChoice.suggest(calendars)?.let {
+                Log.i(TAG, "calendar $stored unavailable; defaulting to ${it.id}")
                 container.settings.calendarId = it.id
             }
         }
@@ -212,6 +221,7 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     companion object {
+        private const val TAG = "PSMainViewModel"
         private const val STOP_TIMEOUT = 5_000L
         private const val UPCOMING_LIMIT = 100
         private const val SYNC_LOG_LIMIT = 20
