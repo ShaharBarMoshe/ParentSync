@@ -6,7 +6,8 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /** Where a message came from. Stored as the string name, not the ordinal. */
-enum class MessageSource { WHATSAPP, GMAIL }
+/** MANUAL: typed into the app by the parent (see `WrittenMessages`). */
+enum class MessageSource { WHATSAPP, GMAIL, MANUAL }
 
 enum class ApprovalStatus { NONE, PENDING, APPROVED, REJECTED }
 

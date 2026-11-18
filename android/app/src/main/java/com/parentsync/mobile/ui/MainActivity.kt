@@ -59,11 +59,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.RadioButton
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateListOf
 import com.parentsync.mobile.calendar.CalendarChoice
+import com.parentsync.mobile.calendar.DeviceCalendarRepository
 import com.parentsync.mobile.data.ChildChannels
+import com.parentsync.mobile.data.WrittenMessages
 import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.db.EventEntity
 import com.parentsync.mobile.data.db.MessageEntity
@@ -285,8 +289,25 @@ private fun MessagesScreen(viewModel: MainViewModel) {
     val messages by viewModel.recentMessages.collectAsStateWithLifecycle()
     val channels by viewModel.messageChannels.collectAsStateWithLifecycle()
     val selected by viewModel.messageChannelFilter.collectAsStateWithLifecycle()
+    val children by viewModel.children.collectAsStateWithLifecycle()
+    var writing by remember { mutableStateOf(false) }
+
+    if (writing) {
+        WriteMessageDialog(
+            children = children,
+            onDismiss = { writing = false },
+            onSend = { text, childId ->
+                viewModel.writeMessage(text, childId)
+                writing = false
+            },
+        )
+    }
 
     Column(Modifier.fillMaxSize()) {
+        Button(
+            onClick = { writing = true },
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+        ) { Text("Write message") }
         if (channels.size > 1) {
             LazyRow(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -312,7 +333,8 @@ private fun MessagesScreen(viewModel: MainViewModel) {
             EmptyState(
                 "No messages yet",
                 "Messages from watched WhatsApp groups are saved here as they arrive. " +
-                    "Pick groups to watch under Settings.",
+                    "Pick groups to watch under Settings. Your own WhatsApp messages " +
+                    "can't be seen; write them here with \"Write message\".",
             )
             return@Column
         }
@@ -323,6 +345,63 @@ private fun MessagesScreen(viewModel: MainViewModel) {
             items(messages, key = { it.id }) { message -> MessageCard(message) }
         }
     }
+}
+
+/**
+ * Type a message and say which child it is for. WhatsApp gives no notification
+ * for messages sent from this phone, so this is how the parent's own messages
+ * reach the pipeline.
+ */
+@Composable
+private fun WriteMessageDialog(
+    children: List<ChildEntity>,
+    onDismiss: () -> Unit,
+    onSend: (text: String, childId: String?) -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+    var childId by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Write message") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "Handled like a WhatsApp message: any events in it go to Approvals.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it.take(WrittenMessages.MAX_LENGTH) },
+                    label = { Text("Message") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("For", style = MaterialTheme.typography.titleSmall)
+                val options = listOf<ChildEntity?>(null) + children
+                options.forEach { child ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { childId = child?.id },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = childId == child?.id, onClick = { childId = child?.id })
+                        Text(child?.name ?: "No specific child")
+                    }
+                }
+                if (children.isEmpty()) {
+                    Text(
+                        "Add children under Settings to choose one here.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = text.isNotBlank(), onClick = { onSend(text, childId) }) { Text("Send") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -431,50 +510,12 @@ private fun SettingsScreen(
         }
 
         item {
-            SettingsCard("Calendar") {
-                if (calendars.isEmpty()) {
-                    Text(
-                        "No writable calendar found. Grant calendar access so events " +
-                            "can be added to the Google account already on this phone.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = onRequestPermissions) { Text("Grant calendar access") }
-                } else {
-                    if (CalendarChoice.needsAttention(state.calendarId, calendars)) {
-                        Text(
-                            "Events are going to a calendar on this phone only, so they " +
-                                "won't appear in Google Calendar. Choose a Google calendar below.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                    calendars.forEach { cal ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(CalendarChoice.label(cal), fontWeight = FontWeight.Medium)
-                                Text(
-                                    CalendarChoice.subtitle(cal),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (CalendarChoice.isPhoneOnly(cal)) {
-                                        MaterialTheme.colorScheme.error
-                                    } else {
-                                        Color.Unspecified
-                                    },
-                                )
-                            }
-                            Switch(
-                                checked = state.calendarId == cal.id,
-                                onCheckedChange = { viewModel.selectCalendar(cal.id) },
-                            )
-                        }
-                    }
-                }
-            }
+            CalendarCard(
+                calendars = calendars,
+                selectedId = state.calendarId,
+                onSelect = viewModel::selectCalendar,
+                onRequestPermissions = onRequestPermissions,
+            )
         }
 
         item {
@@ -672,6 +713,120 @@ private fun ChildrenCard(
             },
         )
     }
+}
+
+/**
+ * "Add events to: <calendar>" with a Change button, rather than a switch per
+ * calendar: a phone with three Google accounts lists a dozen calendars, and a
+ * column of switches did not read as "pick one".
+ */
+@Composable
+private fun CalendarCard(
+    calendars: List<DeviceCalendarRepository.DeviceCalendar>,
+    selectedId: Long,
+    onSelect: (Long) -> Unit,
+    onRequestPermissions: () -> Unit,
+) {
+    var picking by remember { mutableStateOf(false) }
+    SettingsCard("Calendar") {
+        if (calendars.isEmpty()) {
+            Text(
+                "No writable calendar found. Grant calendar access so events " +
+                    "can be added to the Google account already on this phone.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onRequestPermissions) { Text("Grant calendar access") }
+            return@SettingsCard
+        }
+        val selected = calendars.firstOrNull { it.id == selectedId }
+        Text("Approved events are added to", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(4.dp))
+        if (selected == null) {
+            Text("No calendar chosen", fontWeight = FontWeight.Medium)
+        } else {
+            CalendarLabel(selected)
+        }
+        if (CalendarChoice.needsAttention(selectedId, calendars)) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "This calendar is on this phone only, so events won't appear in " +
+                    "Google Calendar. Choose a Google calendar.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = { picking = true }) { Text("Choose calendar") }
+    }
+    if (picking) {
+        CalendarPickerDialog(
+            calendars = calendars,
+            selectedId = selectedId,
+            onDismiss = { picking = false },
+            onSelect = {
+                onSelect(it)
+                picking = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun CalendarLabel(cal: DeviceCalendarRepository.DeviceCalendar) {
+    Column {
+        Text(CalendarChoice.label(cal), fontWeight = FontWeight.Medium)
+        Text(
+            CalendarChoice.subtitle(cal),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (CalendarChoice.isPhoneOnly(cal)) MaterialTheme.colorScheme.error else Color.Unspecified,
+        )
+    }
+}
+
+@Composable
+private fun CalendarPickerDialog(
+    calendars: List<DeviceCalendarRepository.DeviceCalendar>,
+    selectedId: Long,
+    onDismiss: () -> Unit,
+    onSelect: (Long) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose calendar") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                CalendarChoice.groupedByAccount(calendars).forEach { (account, group) ->
+                    Text(
+                        account,
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                    )
+                    group.forEach { cal ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(cal.id) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = cal.id == selectedId, onClick = { onSelect(cal.id) })
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                CalendarChoice.label(cal),
+                                color = if (CalendarChoice.isPhoneOnly(cal)) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    Color.Unspecified
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable

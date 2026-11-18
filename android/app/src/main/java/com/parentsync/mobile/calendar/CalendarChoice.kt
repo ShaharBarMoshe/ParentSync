@@ -43,6 +43,19 @@ object CalendarChoice {
         return isPhoneOnly(selected) && calendars.any { !isPhoneOnly(it) }
     }
 
+    /**
+     * Calendars grouped under their account for the picker, in [sorted] order
+     * (so the primary Google account comes first and phone-only last). Phone-
+     * only calendars are grouped under a heading that says so, not under the
+     * provider's internal "account_name_local".
+     */
+    fun groupedByAccount(calendars: List<DeviceCalendar>): List<Pair<String, List<DeviceCalendar>>> =
+        sorted(calendars)
+            .groupBy { if (isPhoneOnly(it)) PHONE_ONLY_HEADING else it.accountName.ifBlank { it.accountType } }
+            .toList()
+
+    const val PHONE_ONLY_HEADING = "On this phone only (not synced)"
+
     /** What Settings shows as the calendar's name; the HyperOS key is not a name. */
     fun label(cal: DeviceCalendar): String =
         if (isPhoneOnly(cal) && (cal.displayName.isBlank() || cal.displayName.startsWith("calendar_displayname"))) {

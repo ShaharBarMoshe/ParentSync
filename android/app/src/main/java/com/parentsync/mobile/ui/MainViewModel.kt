@@ -8,6 +8,7 @@ import com.parentsync.mobile.AppContainer
 import com.parentsync.mobile.calendar.CalendarChoice
 import com.parentsync.mobile.calendar.DeviceCalendarRepository
 import com.parentsync.mobile.data.ChildChannels
+import com.parentsync.mobile.data.WrittenMessages
 import com.parentsync.mobile.data.db.ApprovalStatus
 import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.db.EventEntity
@@ -150,6 +151,22 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun syncNow() = container.scheduler.requestNow()
+
+    /**
+     * Stores a message the parent typed and starts a sync straight away, so its
+     * events reach Approvals without waiting for the schedule.
+     */
+    fun writeMessage(text: String, childId: String?) = viewModelScope.launch {
+        try {
+            val child = childId?.let { id -> container.db.children().all().firstOrNull { it.id == id } }
+            val message = WrittenMessages.build(text, child, System.currentTimeMillis()) ?: return@launch
+            container.db.messages().insertIgnoringDuplicates(message)
+            Log.i(TAG, "stored written message ${message.id} for child=${child?.name}")
+            container.scheduler.requestNow()
+        } catch (e: Exception) {
+            Log.e(TAG, "could not store written message", e)
+        }
+    }
 
     /**
      * Reloads the calendar list. Called when the screen opens and after the

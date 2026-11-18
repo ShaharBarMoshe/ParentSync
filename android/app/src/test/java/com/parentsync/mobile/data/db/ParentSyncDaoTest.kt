@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
+import com.parentsync.mobile.data.WrittenMessages
 import com.parentsync.mobile.data.embedding.EmbeddingCodec
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -339,6 +340,22 @@ class ParentSyncDaoTest {
         syncLogs.insert(SyncLogEntity(startedAt = NOW, finishedAt = null, trigger = "auto"))
 
         assertThat(syncLogs.prune(keep = 200)).isEqualTo(0)
+    }
+
+    @Test
+    fun `a message written in the app is queued for the next sync with its source and child`() = runTest {
+        val child = ChildEntity(id = "c1", name = "Noa")
+        val written = WrittenMessages.build("Trip next Sunday at 09:00", child, NOW)!!
+
+        assertThat(messages.insertIgnoringDuplicates(written)).isNotEqualTo(-1L)
+        // Writing the same text again is a second message, not a duplicate.
+        val again = WrittenMessages.build("Trip next Sunday at 09:00", child, NOW)!!
+        assertThat(messages.insertIgnoringDuplicates(again)).isNotEqualTo(-1L)
+
+        val queued = messages.unparsed(10)
+        assertThat(queued).hasSize(2)
+        assertThat(queued.map { it.source }).containsExactly(MessageSource.MANUAL, MessageSource.MANUAL)
+        assertThat(queued.map { it.childId }).containsExactly("c1", "c1")
     }
 
     companion object {

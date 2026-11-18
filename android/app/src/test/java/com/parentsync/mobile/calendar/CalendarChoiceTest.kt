@@ -63,4 +63,14 @@ class CalendarChoiceTest {
         assertThat(CalendarChoice.label(googleShared)).isEqualTo("Family")
         assertThat(CalendarChoice.subtitle(googleShared)).isEqualTo("me@example.com")
     }
+
+    @Test
+    fun `the picker groups by account, primary account first and phone-only last`() {
+        val otherAccount = cal(7, "com.google", primary = true).copy(accountName = "family@example.com")
+        val groups = CalendarChoice.groupedByAccount(listOf(phoneLocal, googleShared, otherAccount, googlePrimary))
+
+        assertThat(groups.map { it.first })
+            .containsExactly("me@example.com", "family@example.com", CalendarChoice.PHONE_ONLY_HEADING).inOrder()
+        assertThat(groups.first().second).containsExactly(googlePrimary, googleShared).inOrder()
+    }
 }

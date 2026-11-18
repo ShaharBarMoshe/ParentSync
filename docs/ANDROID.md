@@ -63,6 +63,10 @@ this phone only", and Settings shows a red warning while it is selected and a
 synced calendar exists. A stored calendar that has disappeared is replaced by
 the default; a phone-only one is flagged rather than silently switched.
 
+Settings shows the choice as "Approved events are added to <calendar>" with a
+**Choose calendar** button; the picker lists calendars grouped by account
+(`CalendarChoice.groupedByAccount`), primary Google account first.
+
 ### 3. The approval loop had to be replaced
 
 Desktop posts an approval card with an `.ics` attachment to a WhatsApp group and
@@ -143,6 +147,22 @@ adb shell dumpsys jobscheduler | grep "JOB androidx.work.*parentsync"   # job id
 adb shell cmd jobscheduler run -f -n androidx.work.systemjobscheduler \
   com.parentsync.mobile.debug <id>
 ```
+
+## Writing a message in the app
+
+WhatsApp posts no notification for a message sent from this phone, so the
+listener never sees what the parent writes. **Messages → Write message** fills
+that gap: type the text, choose the child it is for (or "No specific child"),
+and Send. `WrittenMessages.build` stores it as an ordinary unparsed message —
+source `MANUAL`, group "Written in ParentSync", sender "Me", the chosen child
+on `childId` — and a sync starts at once. From there it is the normal path:
+extraction, dedup, Approvals, calendar; the event title gets the child's name.
+Each written message has its own key, so the same text sent twice is kept
+twice. The source is stored as a string, so adding `MANUAL` needed no migration.
+
+Verified on the emulator: "Swimming lesson next Monday at 16:30 in the
+community pool" was pending in Approvals as "Swimming lesson", Monday's date,
+about 3 s after Send.
 
 ## Messages screen
 
@@ -352,7 +372,7 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-**137 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+**144 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
 a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
 the dedup service (15), the embedding codec (8), and the own-notification guard
 (2).
