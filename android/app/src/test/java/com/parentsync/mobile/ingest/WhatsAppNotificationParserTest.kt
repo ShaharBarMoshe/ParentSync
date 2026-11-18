@@ -355,6 +355,8 @@ class OwnNotificationGuardTest {
         val own = com.parentsync.mobile.sync.Notifications.OWN_CHANNELS
         com.google.common.truth.Truth.assertThat(own).containsExactly(
             com.parentsync.mobile.sync.Notifications.CHANNEL_APPROVALS,
+            // Retired, but a card posted on it before the upgrade can still be showing.
+            com.parentsync.mobile.sync.Notifications.LEGACY_CHANNEL_APPROVALS,
             com.parentsync.mobile.sync.Notifications.CHANNEL_REMINDERS,
             com.parentsync.mobile.sync.Notifications.CHANNEL_SYNC,
             com.parentsync.mobile.sync.Notifications.CHANNEL_ALERTS,

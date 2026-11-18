@@ -16,7 +16,14 @@ import androidx.core.app.NotificationManagerCompat
  */
 object Notifications {
 
-    const val CHANNEL_APPROVALS = "approvals"
+    /**
+     * v2 because a channel's sound and vibration cannot be changed by the app
+     * once created; the first "approvals" channel did not vibrate. The old one
+     * is deleted in [ensureChannels] and stays in [OWN_CHANNELS] in case a card
+     * posted on it is still showing.
+     */
+    const val CHANNEL_APPROVALS = "approvals_v2"
+    const val LEGACY_CHANNEL_APPROVALS = "approvals"
     const val CHANNEL_REMINDERS = "reminders"
     const val CHANNEL_SYNC = "sync"
     const val CHANNEL_ALERTS = "alerts"
@@ -33,6 +40,7 @@ object Notifications {
      */
     val OWN_CHANNELS: Set<String> = setOf(
         CHANNEL_APPROVALS,
+        LEGACY_CHANNEL_APPROVALS,
         CHANNEL_REMINDERS,
         CHANNEL_SYNC,
         CHANNEL_ALERTS,
@@ -65,8 +73,11 @@ object Notifications {
                 description =
                     context.getString(com.parentsync.mobile.R.string.channel_approvals_desc)
                 setShowBadge(true)
+                enableVibration(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
             },
         )
+        manager.deleteNotificationChannel(LEGACY_CHANNEL_APPROVALS)
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_REMINDERS,

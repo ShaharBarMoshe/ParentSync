@@ -60,10 +60,13 @@ class ApprovalManager(
 
         val notification = NotificationCompat.Builder(context, Notifications.CHANNEL_APPROVALS)
             .setSmallIcon(R.drawable.ic_stat_parentsync)
-            .setContentTitle(event.title)
-            .setContentText(describe(event))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(detail(event)))
-            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setContentTitle(ApprovalText.title(event))
+            .setContentText(ApprovalText.summary(event))
+            .setSubText(ApprovalText.SUBTEXT)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(ApprovalText.detail(event)))
+            // REMINDER, not RECOMMENDATION: HyperOS files "recommendation" with
+            // promotional notices, where an approval request goes unseen.
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             // Must survive being swiped: a dismissed card would otherwise lose
             // the only prompt the parent gets.
@@ -113,21 +116,6 @@ class ApprovalManager(
             .cancel(Notifications.approvalNotificationId(eventId))
     }
 
-    private fun describe(event: EventEntity): String = buildString {
-        append(event.date)
-        event.time?.takeIf { it.isNotBlank() }?.let { append(" at ").append(it) }
-        event.location?.takeIf { it.isNotBlank() }?.let { append(" · ").append(it) }
-    }
-
-    private fun detail(event: EventEntity): String = buildString {
-        appendLine(describe(event))
-        event.childId?.let { appendLine() }
-        event.sourceContent?.takeIf { it.isNotBlank() }?.let {
-            appendLine()
-            append(it.take(MAX_SOURCE_PREVIEW))
-        }
-    }
-
     private fun actionIntent(eventId: String, action: String): PendingIntent {
         val intent = Intent(context, ApprovalActionReceiver::class.java).apply {
             this.action = action
@@ -159,7 +147,6 @@ class ApprovalManager(
 
     companion object {
         private const val TAG = "ApprovalManager"
-        private const val MAX_SOURCE_PREVIEW = 400
         private const val MAIN_ACTIVITY = "com.parentsync.mobile.ui.MainActivity"
     }
 }

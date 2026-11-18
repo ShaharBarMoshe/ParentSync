@@ -88,6 +88,17 @@ onto it, so dismissing the notification decides nothing.
 
 ---
 
+
+**The approval notification** (`ApprovalText`) reads "Approve: <title>", with
+"Event to approve" beside the app name and "Wed 25 Nov 2026 · 17:00 ·
+<place>" as the text; expanded, it adds the start of the original message.
+The first version showed only the title and "2026-11-25 at 17:00", posted as
+`CATEGORY_RECOMMENDATION` on a channel without vibration — on HyperOS that
+read like a promotional notice and was easy to miss. It is now
+`CATEGORY_REMINDER` on channel `approvals_v2` (HIGH, vibrates). A new channel
+id was needed because an app cannot change a channel's sound or vibration
+after creating it; the old `approvals` channel is deleted at start-up and kept
+in `OWN_CHANNELS`.
 ## Per-child groups
 
 As on desktop, each child has a list of WhatsApp groups (Settings → **Children**).
@@ -398,7 +409,7 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-**150 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+**155 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
 a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
 the dedup service (15), the embedding codec (8), and the own-notification guard
 (2).
