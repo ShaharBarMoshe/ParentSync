@@ -78,7 +78,33 @@ class SettingsStore(context: Context) {
             prefs.edit().putStringSet(KEY_SEEN_CHANNELS, value).commit()
         }
 
-    fun rememberSeenChannel(channel: String) {
+    /** When each group last notified; see [RecentGroups]. */
+    val seenChannelTimes: Map<String, Long>
+        get() {
+            migrateUntimedSeenChannels()
+            return RecentGroups.decode(prefs.getStringSet(KEY_SEEN_CHANNEL_TIMES, emptySet()).orEmpty())
+        }
+
+    /**
+     * Groups remembered before times were recorded have none, and would vanish
+     * from the child editor until they next post. Stamped once as seen now
+     * instead: they stay offered for two weeks, then age out unless active.
+     */
+    private fun migrateUntimedSeenChannels() {
+        if (prefs.contains(KEY_SEEN_CHANNEL_TIMES)) return
+        val now = System.currentTimeMillis()
+        val legacy = seenChannels.filter { it.isNotBlank() }.associateWith { now }
+        prefs.edit().putStringSet(KEY_SEEN_CHANNEL_TIMES, RecentGroups.encode(legacy)).commit()
+    }
+
+    /** Groups that notified in the last two weeks, most recently active first. */
+    fun recentChannels(now: Long = System.currentTimeMillis()): List<String> =
+        RecentGroups.recent(seenChannelTimes, now)
+
+    fun rememberSeenChannel(channel: String, now: Long = System.currentTimeMillis()) {
+        RecentGroups.touch(seenChannelTimes, channel, now)?.let {
+            prefs.edit().putStringSet(KEY_SEEN_CHANNEL_TIMES, RecentGroups.encode(it)).commit()
+        }
         val current = seenChannels
         if (channel in current) return
         // Bounded: a chatty device would otherwise grow this forever.
@@ -158,8 +184,17 @@ class SettingsStore(context: Context) {
      * resume, so losing it to a kill costs nothing and a synchronous disk write
      * on a system callback is not worth paying for.
      */
+    /**
+     * Also stamps the time: a stale `true` left by a killed process would
+     * otherwise be rewritten unchanged on reconnect, and SharedPreferences
+     * does not notify observers of an unchanged value — Settings would keep
+     * showing "not connected" while the listener is bound.
+     */
     fun setListenerConnected(connected: Boolean) =
-        prefs.edit().putBoolean(KEY_LISTENER_CONNECTED, connected).apply()
+        prefs.edit()
+            .putBoolean(KEY_LISTENER_CONNECTED, connected)
+            .putLong(KEY_LISTENER_CHANGED_AT, System.currentTimeMillis())
+            .apply()
 
     val listenerConnected: Boolean
         get() = prefs.getBoolean(KEY_LISTENER_CONNECTED, false)
@@ -216,6 +251,7 @@ class SettingsStore(context: Context) {
         private const val KEY_CAPTURE_ALL = "capture_all_channels"
         private const val KEY_EXTRA_PACKAGES = "extra_source_packages"
         private const val KEY_SEEN_CHANNELS = "seen_channels"
+        private const val KEY_SEEN_CHANNEL_TIMES = "seen_channel_times"
         private const val KEY_GEMINI_MODEL = "gemini_model"
         private const val KEY_CALENDAR_ID = "calendar_id"
         private const val KEY_GMAIL_ACCOUNT = "gmail_account"
@@ -224,6 +260,7 @@ class SettingsStore(context: Context) {
         private const val KEY_DEDUPE_DAYS = "dedupe_lookback_days"
         private const val KEY_DEDUPE_THRESHOLD = "dedupe_threshold"
         private const val KEY_LISTENER_CONNECTED = "listener_connected"
+        private const val KEY_LISTENER_CHANGED_AT = "listener_changed_at"
         private const val KEY_ONBOARDED = "onboarding_complete"
     }
 }

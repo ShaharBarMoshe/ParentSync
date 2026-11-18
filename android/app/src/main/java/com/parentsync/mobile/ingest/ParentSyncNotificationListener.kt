@@ -3,6 +3,10 @@ package com.parentsync.mobile.ingest
 import android.app.Notification
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.os.Bundle
 import android.os.Parcelable
 import android.provider.Settings
@@ -42,6 +46,30 @@ class ParentSyncNotificationListener : NotificationListenerService() {
         Log.i(TAG, "notification listener connected")
         isBound = true
         (applicationContext as ParentSyncApp).container.settings.setListenerConnected(true)
+        catchUpOnActiveNotifications()
+    }
+
+    /**
+     * Feeds the notifications still in the shade through the normal path.
+     *
+     * While the listener was unbound (after an app update, or HyperOS killing
+     * it) WhatsApp kept posting; those messages are gone for good once their
+     * notification is dismissed, but the ones still showing can be read now.
+     * Re-delivery is harmless: the ingestor dedupes on each message's source
+     * key, so a notification already stored is skipped.
+     */
+    private fun catchUpOnActiveNotifications() {
+        val active = try {
+            activeNotifications.orEmpty()
+        } catch (e: Exception) {
+            Log.e(TAG, "could not read active notifications", e)
+            return
+        }
+        val candidates = active.filter { it.packageName == WHATSAPP_PACKAGE ||
+            it.packageName in (applicationContext as ParentSyncApp).container.settings.extraSourcePackages }
+        if (candidates.isEmpty()) return
+        Log.i(TAG, "catching up on ${candidates.size} notification(s) already showing")
+        candidates.forEach(::onNotificationPosted)
     }
 
     override fun onListenerDisconnected() {
@@ -199,7 +227,47 @@ class ParentSyncNotificationListener : NotificationListenerService() {
             if (isBound || !isEnabled(context)) return
             Log.w(TAG, "access granted but listener not bound; requesting rebind")
             requestRebindSafely(context)
+            val app = context.applicationContext
+            Handler(Looper.getMainLooper()).postDelayed({ forceRebindIfStillUnbound(app) }, REBIND_GRACE_MILLIS)
         }
+
+        @Volatile
+        private var lastToggleAt = 0L
+
+        /**
+         * HyperOS ignores [requestRebind] after the app is updated or killed —
+         * seen on the phone: access granted, listener missing from the live
+         * list, every rebind request silently dropped, until access was
+         * toggled off and on. Disabling and re-enabling our own listener
+         * component does the same without the user: the system sees the
+         * component change and binds it again. Access itself is untouched.
+         */
+        private fun forceRebindIfStillUnbound(context: Context) {
+            if (isBound || !isEnabled(context)) return
+            val now = SystemClock.elapsedRealtime()
+            if (lastToggleAt != 0L && now - lastToggleAt < TOGGLE_COOLDOWN_MILLIS) return
+            lastToggleAt = now
+            Log.w(TAG, "rebind request ignored; re-enabling the listener component")
+            val component = ComponentName(context, ParentSyncNotificationListener::class.java)
+            try {
+                val pm = context.packageManager
+                pm.setComponentEnabledSetting(
+                    component,
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP,
+                )
+                pm.setComponentEnabledSetting(
+                    component,
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    PackageManager.DONT_KILL_APP,
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "could not re-enable the listener component", e)
+            }
+        }
+
+        private const val REBIND_GRACE_MILLIS = 4_000L
+        private const val TOGGLE_COOLDOWN_MILLIS = 60_000L
 
         private fun requestRebindSafely(context: Context) {
             try {

@@ -1,5 +1,6 @@
 package com.parentsync.mobile.sync
 
+import com.parentsync.mobile.calendar.ChildColors
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.util.Log
@@ -104,7 +105,7 @@ class SyncWorker(
             }
         } catch (e: Exception) {
             Log.e(TAG, "sync pass failed", e)
-            error = e.message ?: e::class.java.simpleName
+            error = SyncLogText.error(e)
             outcome = if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
         } finally {
             // Retention always runs, even on a failed pass: a pass that keeps
@@ -121,7 +122,7 @@ class SyncWorker(
                     messagesIngested = ingested,
                     eventsCreated = created,
                     ok = error == null,
-                    error = error,
+                    error = error?.let(SyncLogText::cap),
                 ),
             )
             runCatching { container.db.syncLogs().prune(SYNC_LOG_RETENTION) }
@@ -301,6 +302,15 @@ class SyncWorker(
         }
 
         val queued = container.db.events().approvedAwaitingCalendar(CALENDAR_BATCH)
+        if (queued.isEmpty()) return 0
+        val childColors = try {
+            container.db.children().all().associate { it.id to it.colorKey }
+        } catch (e: Exception) {
+            // A missing colour is cosmetic; the event still goes on the calendar.
+            Log.e(TAG, "could not load children; writing events without colours", e)
+            emptyMap()
+        }
+        val colorKeys = container.calendar.eventColorKeys(calendarId)
         var written = 0
         for (event in queued) {
             val date = parseDate(event.date) ?: continue
@@ -326,6 +336,7 @@ class SyncWorker(
                     startTime = event.time?.let(::parseTime),
                     endTime = event.endTime?.let(::parseTime),
                     reminderMinutes = DEFAULT_REMINDER_MINUTES,
+                    color = ChildColors.forEvent(event.childId?.let(childColors::get), colorKeys),
                 ),
             )
             if (id == null) {

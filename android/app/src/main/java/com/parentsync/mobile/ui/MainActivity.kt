@@ -61,6 +61,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.parentsync.mobile.calendar.ChildColors
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateListOf
@@ -521,7 +529,7 @@ private fun SettingsScreen(
         item {
             ChildrenCard(
                 children = children,
-                seenChannels = state.seenChannels,
+                recentChannels = state.recentChannels,
                 onSave = viewModel::saveChild,
                 onDelete = viewModel::deleteChild,
             )
@@ -661,8 +669,8 @@ private fun SettingsScreen(
 @Composable
 private fun ChildrenCard(
     children: List<ChildEntity>,
-    seenChannels: List<String>,
-    onSave: (id: String?, name: String, channels: List<String>) -> Unit,
+    recentChannels: List<String>,
+    onSave: (id: String?, name: String, channels: List<String>, colorKey: String?) -> Unit,
     onDelete: (id: String) -> Unit,
 ) {
     // null = closed; a ChildEntity with a blank id = adding a new child.
@@ -682,6 +690,9 @@ private fun ChildrenCard(
                 Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ChildColors.byKey(child.colorKey)?.let { c ->
+                    ColorDot(Color(c.argb), Modifier.padding(end = 12.dp))
+                }
                 Column(Modifier.weight(1f)) {
                     Text(child.name, fontWeight = FontWeight.Medium)
                     Text(
@@ -700,10 +711,10 @@ private fun ChildrenCard(
     editing?.let { child ->
         ChildDialog(
             child = child,
-            seenChannels = seenChannels,
+            recentChannels = recentChannels,
             onDismiss = { editing = null },
-            onSave = { name, channels ->
-                onSave(child.id.ifBlank { null }, name, channels)
+            onSave = { name, channels, colorKey ->
+                onSave(child.id.ifBlank { null }, name, channels, colorKey)
                 editing = null
             },
             onDelete = if (child.id.isBlank()) {
@@ -832,9 +843,9 @@ private fun CalendarPickerDialog(
 @Composable
 private fun ChildDialog(
     child: ChildEntity,
-    seenChannels: List<String>,
+    recentChannels: List<String>,
     onDismiss: () -> Unit,
-    onSave: (name: String, channels: List<String>) -> Unit,
+    onSave: (name: String, channels: List<String>, colorKey: String?) -> Unit,
     onDelete: (() -> Unit)?,
 ) {
     var name by remember(child.id) { mutableStateOf(child.name) }
@@ -842,9 +853,16 @@ private fun ChildDialog(
         mutableStateListOf<String>().apply { addAll(ChildChannels.decode(child.channelNames)) }
     }
     var typed by remember(child.id) { mutableStateOf("") }
-    // Groups already assigned stay listed even if this phone has not seen a
-    // message from them yet (typed by hand, or configured before a reinstall).
-    val options = (seenChannels + selected).distinct().sorted()
+    // A new child shows no colour until saved; the view model then gives it
+    // one its siblings do not have, unless one is picked here.
+    var color by remember(child.id) { mutableStateOf(ChildColors.byKey(child.colorKey)?.key) }
+    // Offered: groups with a message in the last two weeks, most recently
+    // active first. Groups already assigned stay listed after them even when
+    // quiet or typed by hand, so saving never drops one silently.
+    // Taken from the saved assignment too, so unticking a quiet group leaves
+    // it on screen to tick again rather than vanishing.
+    val initial = remember(child.id) { ChildChannels.decode(child.channelNames) }
+    val assignedQuiet = (initial + selected).distinct().filter { it !in recentChannels }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -859,15 +877,21 @@ private fun ChildDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
+                Text("Calendar colour", style = MaterialTheme.typography.titleSmall)
+                ColorPicker(selected = color, onPick = { color = it })
+                Spacer(Modifier.height(12.dp))
                 Text("WhatsApp groups", style = MaterialTheme.typography.titleSmall)
-                if (options.isEmpty()) {
-                    Text(
-                        "No groups seen yet. Type a group's name exactly as it appears in " +
-                            "WhatsApp, or wait for a message to arrive from it.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                options.forEach { channel ->
+                Text(
+                    if (recentChannels.isEmpty()) {
+                        "No group has had a message in the last 2 weeks. Type a group's name " +
+                            "exactly as it appears in WhatsApp."
+                    } else {
+                        "Groups with messages in the last 2 weeks. Not listed? Type its name below."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                (recentChannels + assignedQuiet).forEach { channel ->
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -899,7 +923,7 @@ private fun ChildDialog(
             }
         },
         confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, selected.toList()) }) {
+            TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, selected.toList(), color) }) {
                 Text("Save")
             }
         },
@@ -910,6 +934,38 @@ private fun ChildDialog(
             }
         },
     )
+}
+
+@Composable
+private fun ColorDot(color: Color, modifier: Modifier = Modifier, size: Int = 16) {
+    Box(modifier.size(size.dp).clip(CircleShape).background(color))
+}
+
+/** Google Calendar's eleven event colours, so the choice syncs as-is. */
+@Composable
+private fun ColorPicker(selected: String?, onPick: (String) -> Unit) {
+    Column(Modifier.padding(vertical = 4.dp)) {
+        ChildColors.PALETTE.chunked(6).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 4.dp)) {
+                row.forEach { c ->
+                    val isSelected = c.key == selected
+                    Box(
+                        Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(c.argb))
+                            .border(
+                                width = if (isSelected) 3.dp else 0.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                                shape = CircleShape,
+                            )
+                            .clickable { onPick(c.key) }
+                            .semantics { contentDescription = c.name },
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

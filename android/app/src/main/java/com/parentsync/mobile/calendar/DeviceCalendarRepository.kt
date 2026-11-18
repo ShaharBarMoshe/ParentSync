@@ -50,6 +50,8 @@ class DeviceCalendarRepository(private val context: Context) {
         val startTime: LocalTime?,
         val endTime: LocalTime?,
         val reminderMinutes: Int? = null,
+        /** The child's colour; null leaves the calendar's own colour. */
+        val color: ChildColors.EventColor? = null,
     )
 
     fun hasPermissions(): Boolean =
@@ -103,6 +105,39 @@ class DeviceCalendarRepository(private val context: Context) {
         return CalendarChoice.sorted(out.filter { it.canWrite })
     }
 
+    /**
+     * Event colour keys the calendar's account publishes in
+     * [CalendarContract.Colors] — Google's eleven, or none for a phone-only
+     * calendar. Empty on any failure, which falls back to a plain RGB colour.
+     */
+    fun eventColorKeys(calendarId: Long): Set<String> {
+        if (!hasPermissions()) return emptySet()
+        return try {
+            val account = context.contentResolver.query(
+                ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI, calendarId),
+                arrayOf(CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE),
+                null,
+                null,
+                null,
+            )?.use { c -> if (c.moveToFirst()) c.getStringOrEmpty(0) to c.getStringOrEmpty(1) else null }
+                ?: return emptySet()
+            val keys = HashSet<String>()
+            context.contentResolver.query(
+                CalendarContract.Colors.CONTENT_URI,
+                arrayOf(CalendarContract.Colors.COLOR_KEY),
+                "${CalendarContract.Colors.ACCOUNT_NAME} = ? AND " +
+                    "${CalendarContract.Colors.ACCOUNT_TYPE} = ? AND " +
+                    "${CalendarContract.Colors.COLOR_TYPE} = ?",
+                arrayOf(account.first, account.second, CalendarContract.Colors.TYPE_EVENT.toString()),
+                null,
+            )?.use { c -> while (c.moveToNext()) keys += c.getStringOrEmpty(0) }
+            keys
+        } catch (e: Exception) {
+            Log.e(TAG, "could not read event colours for calendar $calendarId", e)
+            emptySet()
+        }
+    }
+
     /** The calendar to default to; see [CalendarChoice.suggest]. */
     fun suggestDefaultCalendar(): DeviceCalendar? = CalendarChoice.suggest(writableCalendars())
 
@@ -125,6 +160,11 @@ class DeviceCalendarRepository(private val context: Context) {
             event.description?.let { put(CalendarContract.Events.DESCRIPTION, it) }
             event.location?.let { put(CalendarContract.Events.EVENT_LOCATION, it) }
             put(CalendarContract.Events.EVENT_TIMEZONE, zone.id)
+            when (val color = event.color) {
+                is ChildColors.EventColor.Key -> put(CalendarContract.Events.EVENT_COLOR_KEY, color.key)
+                is ChildColors.EventColor.Rgb -> put(CalendarContract.Events.EVENT_COLOR, color.argb)
+                null -> Unit
+            }
 
             if (event.startTime == null) {
                 // All-day events must be UTC midnight with ALL_DAY set, or the

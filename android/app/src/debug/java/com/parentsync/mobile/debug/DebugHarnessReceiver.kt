@@ -1,5 +1,7 @@
 package com.parentsync.mobile.debug
 
+import com.parentsync.mobile.calendar.ChildColors
+import com.parentsync.mobile.data.db.ChildEntity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
@@ -189,6 +191,18 @@ class DebugHarnessReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val now = System.currentTimeMillis()
+                // Optional child, by name; created with a free colour if new, so
+                // the per-child calendar colour can be checked end to end.
+                val childId = intent.getStringExtra(EXTRA_CHILD)?.let { name ->
+                    val dao = app.container.db.children()
+                    val all = dao.all()
+                    all.firstOrNull { it.name == name }?.id ?: ChildEntity(
+                        id = UUID.randomUUID().toString(),
+                        name = name,
+                        sortOrder = all.size,
+                        colorKey = ChildColors.nextFree(all.map { it.colorKey }),
+                    ).also { dao.upsert(it) }.id
+                }
                 val row = EventEntity(
                     id = UUID.randomUUID().toString(),
                     title = title,
@@ -198,7 +212,8 @@ class DebugHarnessReceiver : BroadcastReceiver() {
                     sourceMessageId = null,
                     sourceContent = "seeded by the debug harness",
                     approvalStatus = ApprovalStatus.PENDING,
-                    dedupeKey = SyncWorker.dedupeKey(title, date, null),
+                    childId = childId,
+                    dedupeKey = SyncWorker.dedupeKey(title, date, childId),
                     createdAt = now,
                     updatedAt = now,
                 )
@@ -318,6 +333,7 @@ class DebugHarnessReceiver : BroadcastReceiver() {
         private const val EXTRA_GROUP = "group"
         private const val EXTRA_SENDER = "sender"
         private const val EXTRA_BODY = "body"
+        private const val EXTRA_CHILD = "child"
         private const val EXTRA_TRUNCATE = "truncate"
         private const val EXTRA_IS_GROUP = "isGroup"
         private const val EXTRA_WHEN_MS = "whenMs"

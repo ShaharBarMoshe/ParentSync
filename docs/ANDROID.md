@@ -117,10 +117,64 @@ gershayim vs straight quotes, RTL marks, whitespace).
 - Event titles are `"Name: title"`, as on desktop, never prefixed twice. The
   dedupe key uses the raw title, so the prefix cannot split one event into two.
 
+### A calendar colour per child
+
+Each child has a calendar colour (`children.colorKey`, a column that existed
+since v1, so no migration). The palette is Google Calendar's own eleven event
+colours (`ChildColors`), under the keys Google's sync adapter publishes in
+`CalendarContract.Colors`:
+
+- A new child gets the first colour no sibling has, strongly different hues
+  first (Peacock, Tomato, Basil, Banana, …); with more than eleven children the
+  least-used colour repeats. Children saved before colours existed are filled
+  in the same way when the app opens. The colour can be changed in the child
+  editor, and shows as a dot in Settings → Children.
+- When an approved event is written, its child's colour goes on the event as
+  `EVENT_COLOR_KEY` if the target calendar's account publishes that key — that
+  is what makes it sync to Google and show on every device. A calendar with no
+  colour table (phone-only) gets the RGB value in `EVENT_COLOR` instead. Events
+  with no child keep the calendar's colour.
+- Only events written from now on are coloured; events already on the
+  calendar are left as they are.
+
+### Choosing a child's groups
+
+The child editor lists only the groups that **had a message in the last 2
+weeks**, most recently active first — a phone has seen far more chats than the
+few school groups that matter, and an old trip group is noise. A group not in
+the list (quiet lately, or never notified on this phone) can be typed by name
+in the "Add a group by name" field. Groups already assigned stay listed below
+the recent ones even when quiet, so editing a child never drops one.
+
+Activity is recorded by `MessageIngestor` for every WhatsApp group that
+notifies, watched or not, via `SettingsStore.rememberSeenChannel` → `RecentGroups`:
+a string set of `"<epochMillis>\t<name>"`, refreshed at most once an hour per
+group (not a disk write per message) and capped at 200 groups, dropping the
+longest-silent. Groups seen before this was added are stamped once as seen
+"now" on first read, so they stay offered for two weeks after the update and
+then age out unless they post. The "Watched groups" card still lists every group seen.
+
 Schema v2 adds the column with an additive migration (`MIGRATION_1_2`);
 `MigrationTest` runs it against the exported v1 schema. There is no destructive
 fallback: captured messages cannot be re-read once WhatsApp's notification is
 gone.
+
+## Keeping logs small
+
+Nothing the app logs grows without bound:
+
+- **Sync log** (`sync_logs`, the diagnostics list): capped at 200 rows by
+  `SyncLogDao.prune` after every pass, failed passes included, and each row's
+  error text is capped at 500 characters by `SyncLogText` — an HTTP failure's
+  message can carry a whole response body, and a pass that keeps failing would
+  store it every time.
+- **Logcat** lines go to Android's shared in-memory ring buffer, not to app
+  storage; Android rotates it. The app writes no log files.
+- **Captured messages** are dropped after the retention period, the SQLite
+  write-ahead log is limited to 4 MB (`journal_size_limit`), and WorkManager
+  prunes its own finished-work records.
+
+Measured on the phone (Nov 2026): the whole app data directory is about 1.1 MB.
 
 ## Sync schedule
 
@@ -380,7 +434,13 @@ adb shell "am broadcast -f 0x20 -n $RCV -a com.parentsync.mobile.debug.SEED_EVEN
 adb shell "am broadcast -f 0x20 -n $RCV -a com.parentsync.mobile.debug.APPROVE --es eventId <id from the log>"
 # Uploaded to Google once _sync_id is set and dirty=0:
 adb shell content query --uri content://com.android.calendar/events --where "_id=<row>" --projection _id:calendar_id:_sync_id:dirty
+# Per-child colour: add --es child '<name>' to SEED_EVENT (the child is created
+# with a free colour if new), approve, then check eventColor_index:
+adb shell content query --uri content://com.android.calendar/events --where "_id=<row>" --projection _id:eventColor_index:_sync_id:dirty
 ```
+
+Verified on the phone: an event for a child with Peacock (key 7) was written
+with `eventColor_index=7` and uploaded by Google (`_sync_id` set, `dirty=0`).
 
 `-f 0x20` (include stopped packages) is needed right after an install, before
 the app has run.
@@ -409,7 +469,7 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-**155 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+**169 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
 a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
 the dedup service (15), the embedding codec (8), and the own-notification guard
 (2).
@@ -441,6 +501,24 @@ the dedup service (15), the embedding codec (8), and the own-notification guard
   bound. Verified: after install, "not bound; requesting rebind" → "connected"
   within ~1.5 s and the service is back in the live list. On HyperOS, also allow
   Autostart and set battery use to "No restrictions".
+- **…and then HyperOS started ignoring `requestRebind()` too** (Nov 2026,
+  after an app update): access granted, listener not live, three rebind
+  requests on app open all dropped, and the Settings screen still said
+  "Connected" from a stale stored flag. Re-granting access bound it at once, so
+  binding itself worked. Now, if the listener is still unbound 4 s after the
+  rebind request, `ensureBound` disables and re-enables the app's own listener
+  component (`setComponentEnabledSetting`, `DONT_KILL_APP`, at most once a
+  minute); the system sees the component change and binds it. Access is not
+  touched. Verified twice on the phone: reinstall → "rebind request ignored;
+  re-enabling the listener component" → "connected", access still granted.
+  Also:
+  - on connect, the WhatsApp notifications still in the shade are fed through
+    the ingestor (`catchUpOnActiveNotifications`), so messages that arrived
+    while unbound are not lost if their notification is still showing —
+    duplicates are dropped by source key;
+  - "Connected" requires the stored flag *and* `isBound` in this process, and
+    each connect also stamps `listener_changed_at` so the screen refreshes
+    even when the flag was already (stale) `true`.
 - **The sync spinner never stopped** and hid the Sync button: `isSyncingFlow`
   counted every ENQUEUED pass, and the periodic safety net is always enqueued.
   Now only a RUNNING pass, or a manual one waiting to start, counts

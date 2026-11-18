@@ -24,12 +24,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.parentsync.mobile.calendar.ChildColors
+import com.parentsync.mobile.ingest.ParentSyncNotificationListener
 import java.time.LocalDate
 import java.util.UUID
 
 data class SettingsUiState(
     val watchedChannels: Set<String> = emptySet(),
     val seenChannels: List<String> = emptyList(),
+    /** Groups with a message in the last two weeks, newest first — offered for children. */
+    val recentChannels: List<String> = emptyList(),
     val captureAllChannels: Boolean = false,
     val calendarId: Long = -1,
     val geminiModel: String = "",
@@ -85,19 +89,41 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
      * are theirs. A blank name is refused rather than stored: an unnamed child
      * would title every event ": Trip".
      */
-    fun saveChild(id: String?, name: String, channels: List<String>) = viewModelScope.launch {
+    fun saveChild(id: String?, name: String, channels: List<String>, colorKey: String?) = viewModelScope.launch {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return@launch
-        val existing = children.value.firstOrNull { it.id == id }
-        container.db.children().upsert(
-            ChildEntity(
-                id = existing?.id ?: UUID.randomUUID().toString(),
-                name = trimmed,
-                sortOrder = existing?.sortOrder ?: children.value.size,
-                colorKey = existing?.colorKey,
-                channelNames = ChildChannels.encode(channels),
-            ),
-        )
+        try {
+            val all = container.db.children().all()
+            val existing = all.firstOrNull { it.id == id }
+            container.db.children().upsert(
+                ChildEntity(
+                    id = existing?.id ?: UUID.randomUUID().toString(),
+                    name = trimmed,
+                    sortOrder = existing?.sortOrder ?: all.size,
+                    // A new child gets a colour no sibling has unless one was picked.
+                    colorKey = ChildColors.byKey(colorKey)?.key
+                        ?: existing?.colorKey
+                        ?: ChildColors.nextFree(all.map { it.colorKey }),
+                    channelNames = ChildChannels.encode(channels),
+                ),
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "could not save child \"$trimmed\"", e)
+        }
+    }
+
+    init {
+        // Children added before colours existed get one each, distinct from
+        // their siblings, so the calendar tells them apart from now on.
+        viewModelScope.launch {
+            try {
+                val dao = container.db.children()
+                ChildColors.fillMissing(dao.all(), { it.colorKey }, { c, key -> c.copy(colorKey = key) })
+                    .forEach { dao.upsert(it) }
+            } catch (e: Exception) {
+                Log.e(TAG, "could not assign child colours", e)
+            }
+        }
     }
 
     /** Events already created for the child keep their title; only the link goes. */
@@ -123,11 +149,18 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
                     .filter { it.isNotEmpty() }
                     .distinct()
                     .sorted(),
+                recentChannels = s.recentChannels()
+                    .map(WhatsAppNotificationParser::stripTitleCount)
+                    .filter { it.isNotEmpty() }
+                    .distinct(),
                 captureAllChannels = s.captureAllChannels,
                 calendarId = s.calendarId,
                 geminiModel = s.geminiModel,
                 retentionDays = s.messageRetentionDays,
-                listenerConnected = s.listenerConnected,
+                // The stored flag alone goes stale: an app update kills the
+                // process without a disconnect callback, so it stays true while
+                // nothing is bound. Only trust it while this process is bound.
+                listenerConnected = s.listenerConnected && ParentSyncNotificationListener.isBound,
                 gmailAccount = s.gmailAccount,
                 gmailEnabled = s.gmailEnabled,
                 syncHours = s.syncHours,

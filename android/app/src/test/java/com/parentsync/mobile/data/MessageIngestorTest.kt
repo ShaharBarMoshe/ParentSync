@@ -8,6 +8,7 @@ import com.parentsync.mobile.data.db.EmbeddingCandidate
 import com.parentsync.mobile.data.db.MessageDao
 import com.parentsync.mobile.data.db.MessageEntity
 import com.parentsync.mobile.data.db.MessageSource
+import com.parentsync.mobile.data.settings.RecentGroups
 import com.parentsync.mobile.data.settings.SettingsStore
 import com.parentsync.mobile.ingest.NotificationPayload
 import com.parentsync.mobile.sync.Notifications
@@ -239,6 +240,16 @@ class MessageIngestorTest {
 
         // Otherwise the user would have to type a group name exactly.
         assertThat(settings.seenChannels).contains("A New Group")
+    }
+
+    @Test
+    fun `a group that just notified is offered as recently active`() = runTest {
+        ingestor.onNotification(whatsApp(group = "Class 2B"))
+
+        assertThat(settings.recentChannels()).contains("Class 2B")
+        // Two weeks and a day later it no longer counts as active.
+        val later = System.currentTimeMillis() + RecentGroups.WINDOW_MILLIS + 24L * 60 * 60 * 1000
+        assertThat(settings.recentChannels(later)).doesNotContain("Class 2B")
     }
 
     // ------------------------------------------------------------- truncation
