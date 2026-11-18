@@ -164,6 +164,32 @@ Verified on the emulator: "Swimming lesson next Monday at 16:30 in the
 community pool" was pending in Approvals as "Swimming lesson", Monday's date,
 about 3 s after Send.
 
+## Event location and description
+
+The extraction prompt (`ExtractionPrompt.SYSTEM`) has an explicit `location`
+rule: when the message says where the event happens — venue, address, school,
+park, hall, classroom, city, or a meeting link — that goes in `location`, in
+the message's own wording and language. The group chat's name is never a
+location, nor is a place mentioned for something else. Without the rule the
+model often left the field empty even when a place was named.
+
+The calendar description is the original message, built by
+`EventDescription.build` when the event is created and stored on the event:
+
+```
+Original message
+Group: Class 2 parents
+From: Bruria
+Sent: 18/11/2026 07:33
+
+Science fair on Wednesday 25.11 at 17:00 in the Herzl school hall, Modiin. …
+```
+
+It is stored rather than looked up at write time because approval can come
+after the message has been pruned. Events created before this fall back to the
+bare message text. Verified live on the emulator: that message became "Science
+fair" with location "Herzl school hall, Modiin" and the description above.
+
 ## Messages screen
 
 The **Messages** tab lists what the listener captured, newest first (capped at
@@ -372,7 +398,7 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-**144 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+**150 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
 a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
 the dedup service (15), the embedding codec (8), and the own-notification guard
 (2).

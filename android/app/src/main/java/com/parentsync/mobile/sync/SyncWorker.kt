@@ -274,6 +274,7 @@ class SyncWorker(
             time = extracted.time.takeIf { it.isNotBlank() },
             endTime = extracted.endTime.takeIf { it.isNotBlank() },
             location = extracted.location.takeIf { it.isNotBlank() },
+            description = EventDescription.build(message),
             childId = childId,
             source = message.source,
             sourceMessageId = message.id,
@@ -317,7 +318,9 @@ class SyncWorker(
                 calendarId,
                 com.parentsync.mobile.calendar.DeviceCalendarRepository.NewEvent(
                     title = event.title,
-                    description = event.sourceContent,
+                    // Events created before descriptions were stored fall back
+                    // to the bare message text.
+                    description = event.description ?: event.sourceContent,
                     location = event.location,
                     date = date,
                     startTime = event.time?.let(::parseTime),

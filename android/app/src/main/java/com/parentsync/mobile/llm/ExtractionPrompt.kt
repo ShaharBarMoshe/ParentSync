@@ -36,6 +36,14 @@ Rules:
   "next week" against the message's own date, which is given to you.
 - Times must be 24-hour `HH:mm`. If the message gives a range, fill both `time`
   and `endTime`. If it gives only a start, leave `endTime` empty.
+- `location`: when the message says where the event takes place, put that
+  place in `location` — a venue, address, school, park, hall, classroom, field
+  or city ("room 4", "the community pool", "בית הספר", "פארק הירקון, תל אביב",
+  "אולם הספורט"). Keep the message's own wording and language, and include
+  the city or address when given with the place. A meeting link (Zoom, Meet)
+  counts as a location. Do NOT use the group chat's name as a location, and do
+  not take a place that is mentioned for something else (where to buy
+  something, where a photo was taken). If no place is stated, leave it empty.
 - If a field is not stated, return an empty string for it. Do not guess.
 - `confidence` is your own estimate from 0 to 100, as a string. Use below 50 when
   the message is vague about what or when.
