@@ -20,7 +20,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-/** An event the model found in a message. Mirrors the desktop `ParsedEvent`. */
+/** An event the model found in a message. */
 data class ExtractedEvent(
     val title: String,
     /** `yyyy-MM-dd`. Empty when the model could not commit to one. */
@@ -42,10 +42,9 @@ class LlmQuotaExhaustedException(message: String) : Exception(message)
 /**
  * Minimal Gemini REST client.
  *
- * Deliberately not the LangChain/LangGraph stack the desktop build uses. That
- * stack exists there to coordinate a graph of nodes with a shared rate limiter
- * and retry ladder inside one long-lived process. Here the unit of work is a
- * single WorkManager job that WorkManager itself retries with backoff, and
+ * Deliberately no agent framework (LangChain and the like). Those exist to
+ * coordinate a graph of nodes with a shared rate limiter and retry ladder inside
+ * one long-lived process. Here the unit of work is a single WorkManager job that WorkManager itself retries with backoff, and
  * pulling in a JVM agent framework would add megabytes to an APK to re-implement
  * what the platform already does.
  *

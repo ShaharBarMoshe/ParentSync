@@ -1,9 +1,11 @@
 # ParentSync for Android
 
-A native Android port of the desktop app. Same job — read school WhatsApp groups
-and email, extract events, put them on the family calendar — but the platform
-changes three things so fundamentally that the result is not a wrapper around the
-desktop build, and two desktop features have no Android equivalent at all.
+Read school WhatsApp groups, extract events with Gemini, ask the parent to
+approve each one, put the approved ones on the family calendar. Three things
+about the platform shape almost every design decision below: WhatsApp can only
+be read through its notifications, the calendar is a local provider with no
+OAuth, and the app cannot send a WhatsApp message. The pipeline overview is in
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 Project lives in `android/`. Kotlin, Compose, Room, WorkManager.
 `compileSdk`/`targetSdk` 36 (Android 16), `minSdk` 29.
@@ -14,18 +16,17 @@ Project lives in `android/`. Kotlin, Compose, Room, WorkManager.
 
 ### 1. WhatsApp reading is forward-only
 
-Desktop drives a headless Chromium against `web.whatsapp.com` and can scroll back
-through history. Android reads
+There is no WhatsApp API for a personal account, so the app reads
 [`NotificationListenerService`](../android/app/src/main/java/com/parentsync/mobile/ingest/ParentSyncNotificationListener.kt),
 which means:
 
-| | Desktop | Android |
-|---|---|---|
-| History | Scrollable, with a scan window | **None.** A message exists only if a notification fired while the listener was running |
-| Long messages | Full text | **Truncated by WhatsApp** before a listener ever sees it |
-| Muted chats | Read normally | **Never notified**, so never captured |
-| Read elsewhere | Read normally | A message already read on another device may not notify |
-| Media | Downloaded via the web client | Notifications carry no image bytes |
+| | What the app gets |
+|---|---|
+| History | **None.** A message exists only if a notification fired while the listener was running |
+| Long messages | **Truncated by WhatsApp** before a listener ever sees it |
+| Muted chats | **Never notified**, so never captured |
+| Read elsewhere | A message already read on another device may not notify |
+| Media | Notifications carry no image bytes |
 
 Truncation is the one that bites, because the long messages are exactly the ones
 that contain events. The parser marks a cut body, `MessageIngestor` appends
@@ -44,9 +45,9 @@ their own.
 
 This is the part that gets *simpler*. `CalendarContract` is a local
 ContentProvider over the calendars already synced on the phone, and Google's own
-sync adapter owns the uplink. So the desktop `AuthModule` +
-`GoogleCalendarService` — OAuth client, consent flow, encrypted refresh tokens,
-token refresh — collapses into `READ_CALENDAR` / `WRITE_CALENDAR` and an insert.
+sync adapter owns the uplink. So everything the Calendar REST API would need —
+OAuth client, consent flow, encrypted refresh tokens, token refresh — collapses
+into `READ_CALENDAR` / `WRITE_CALENDAR` and an insert.
 No token exists to leak or expire.
 
 The trade: a write is asynchronous and unacknowledged. The provider hands back a
@@ -69,8 +70,9 @@ Settings shows the choice as "Approved events are added to <calendar>" with a
 
 ### 3. The approval loop had to be replaced
 
-Desktop posts an approval card with an `.ics` attachment to a WhatsApp group and
-watches for a 👍 reaction. **None of that is reachable from an Android app:**
+The obvious design — post an approval card with an `.ics` attachment to a
+WhatsApp group and watch for a 👍 reaction — **is not reachable from an Android
+app:**
 
 - there is no API to send a WhatsApp message to an arbitrary chat;
 - `RemoteInput` can reply only to a conversation that currently has a live
@@ -83,7 +85,7 @@ pending list. Better in one way — one tap, no round trip through WhatsApp, can
 be lost to a muted chat. Worse in another: approving only works on the phone
 running the app, not from any device signed into WhatsApp.
 
-As on desktop, the `PENDING` row is the durable record. The notification is a view
+The `PENDING` row is the durable record. The notification is a view
 onto it, so dismissing the notification decides nothing.
 
 ---
@@ -99,11 +101,12 @@ read like a promotional notice and was easy to miss. It is now
 id was needed because an app cannot change a channel's sound or vibration
 after creating it; the old `approvals` channel is deleted at start-up and kept
 in `OWN_CHANNELS`.
+
 ## Per-child groups
 
-As on desktop, each child has a list of WhatsApp groups (Settings → **Children**).
-Stored newline-separated in `children.channelNames`, the same encoding as the
-desktop column, so a group name containing a comma survives. Matching goes
+Each child has a list of WhatsApp groups (Settings → **Children**).
+Stored newline-separated in `children.channelNames`, so a group name containing
+a comma survives. Matching goes
 through `ChildChannels`, using the same normalisation as the watch list (Hebrew
 gershayim vs straight quotes, RTL marks, whitespace).
 
@@ -114,7 +117,7 @@ gershayim vs straight quotes, RTL marks, whitespace).
 - A group assigned to **two or more** children (a whole-school group) is captured
   but tagged to none — picking one sibling would mislabel the other's events — so
   the extractor decides from the text.
-- Event titles are `"Name: title"`, as on desktop, never prefixed twice. The
+- Event titles are `"Name: title"`, never prefixed twice. The
   dedupe key uses the raw title, so the prefix cannot split one event into two.
 
 ### A calendar colour per child
@@ -210,9 +213,8 @@ Measured on the phone (Nov 2026): the whole app data directory is about 1.1 MB.
 ## Sync schedule
 
 Settings → **Sync schedule**: the hours of the day (0–23) the app wakes up and
-runs a pass, with one-tap **Every hour** and **9 · 14 · 18** (desktop's default,
-and the default here). Stored as `"9,14,18"` — the desktop `check_schedule`
-format. The hour arithmetic lives in `SyncSchedule` (pure java.time, unit-tested
+runs a pass, with one-tap **Every hour** and **9 · 14 · 18** (the default).
+Stored as `"9,14,18"`. The hour arithmetic lives in `SyncSchedule` (pure java.time, unit-tested
 for midnight wrap, exactly-on-the-hour and the DST gap).
 
 How it runs: `SyncScheduler.ensureScheduledSync()` queues **one** OneTimeWork for
@@ -335,12 +337,13 @@ reads `messages` directly, so it shows exactly what the pipeline will see.
 
 ## Storage: what was measured and what changed
 
-The desktop database was measured at **40 MB holding only 100 messages**. Three
-causes, all of which matter more on a phone:
+The obvious SQLite layout — vectors as JSON, images inline, logs and messages
+kept forever — was measured at **40 MB holding only 100 messages**. Three
+causes, all of which matter on a phone:
 
-| Problem (desktop) | Measured | Android |
+| Naive layout | Measured | What the app does |
 |---|---|---|
-| Embeddings as JSON text | **~39 KB per row**, 3072 dims; a dedup pass reads up to 1000 of them (~39 MB of JSON parsed per check) | Quantised int8 blob, **3 076 bytes** — 12.7× smaller, and compared without allocating. `EmbeddingCodec` |
+| Embeddings as JSON text | **~39 KB per row**, 3072 dims; a dedup pass reading 1000 of them parses ~39 MB of JSON per check | Quantised int8 blob, **3 076 bytes** at 3072 dims — 12.7× smaller, and compared without allocating. `EmbeddingCodec` |
 | Images as base64 JSON inline in `messages` | **10.6 MB for 22 rows** | Files under `filesDir/message-images`; the row keeps a filename. `ImageStore` |
 | `sync_logs` unbounded | **2934 rows**, no retention | Capped at 200, pruned every pass |
 | No message retention at all | — | Processed rows older than 1 day deleted (unprocessed kept up to 14); **events are kept** — the calendar entry is the product, the message is only the evidence |
@@ -365,16 +368,15 @@ paid extraction.
 
 `MessageDeduplicationService` **never throws**. If the embedding call fails the
 message is treated as fresh and goes to the LLM — an occasional duplicate event
-is a nuisance, a dropped event is a missed school trip. Same fail-open contract
-as the desktop service.
+is a nuisance, a dropped event is a missed school trip.
 
-Embeddings are requested at **768 dimensions**, not the desktop's 3072. The model
+Embeddings are requested at **768 dimensions**, not the model's full 3072. The model
 is Matryoshka-trained so a truncated vector is still usable, and on a phone it is
 4× less to store and 4× less to score per candidate. `EmbeddingCodec` refuses to
 score vectors of differing length, so changing this can never silently compare
 across dimensionalities.
 
-Other things done for the sake of a phone, rather than ported:
+Other things done for the sake of a phone:
 
 - **Bounded queries.** The dedup candidate pool is limited by both a time window
   and a row cap, served by a `(parsed, timestamp)` index.
@@ -388,7 +390,7 @@ Other things done for the sake of a phone, rather than ported:
   of that the app wakes at the hours the user picks — see *Sync schedule*.
 - **No Hilt, no LangChain.** The DI graph is a dozen lazy singletons
   (`AppContainer`), and WorkManager already provides the retry/backoff ladder
-  that the desktop `ChainRunner` exists to give a long-lived process.
+  an LLM framework would otherwise supply inside a long-lived process.
 
 ---
 
@@ -401,7 +403,7 @@ worth knowing:
 |---|---|
 | `BIND_NOTIFICATION_LISTENER_SERVICE` on the listener service | Signature permission the OS holds, so `exported` must be `true` and the OS is the only possible caller |
 | **No** `default_filter_types` meta-data | Declaring it narrows what the OS delivers, and a WhatsApp notification is not reliably classified as a "conversation" (that needs a shortcut id). With the filter in place the service binds and then **receives nothing at all** — indistinguishable from the user not having granted access. Verified on the emulator |
-| `READ_CALENDAR` / `WRITE_CALENDAR` | Replaces the whole desktop calendar OAuth path |
+| `READ_CALENDAR` / `WRITE_CALENDAR` | Replaces a whole calendar OAuth flow |
 | `FOREGROUND_SERVICE_DATA_SYNC` + `SystemForegroundService` redeclared with the type | A sync started in the background is killed on API 34+ without the type |
 | `queries` for `com.whatsapp` | Android 11+ hides other packages; needed to deep-link a chat and to tell whether WhatsApp is installed |
 | `WorkManagerInitializer` removed via `tools:node="remove"` | `ParentSyncApp` provides the `Configuration` so workers can be constructed with dependencies; the default initialiser would race it and win |
@@ -547,9 +549,9 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-**183 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+**191 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
 a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
-the dedup service (15), the embedding codec (8), and the own-notification guard
+the dedup service (15), the embedding codec (8), the embedding client (6), and the own-notification guard
 (2).
 
 ### Verified on a physical phone (Android 16, HyperOS)
@@ -640,14 +642,3 @@ clears it. And `pm clear` wipes app data but **not** the calendar provider, so
 delete leftover events through `content delete` or a stale row will look like a
 successful write.
 
----
-
-## Relationship to the desktop app
-
-The phone is intended to replace the desktop service, not run alongside it. Both
-writing to the same Google Calendar would produce duplicate events: the desktop
-build dedupes against its own SQLite table, which the phone does not share. The
-phone does check `CalendarContract` for an existing event with the same title on
-the same day before inserting, which would catch many — but not all — collisions.
-Retire the desktop service (`systemctl --user disable --now parentsync.service`)
-before relying on the phone.

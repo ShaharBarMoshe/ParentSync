@@ -3,7 +3,7 @@ package com.parentsync.mobile.llm
 import com.parentsync.mobile.data.MessageIngestor
 
 /**
- * The extraction prompt, ported from the desktop extractor.
+ * The extraction prompt.
  *
  * Two rules are new here and both exist because of how Android captures
  * messages:
@@ -11,13 +11,13 @@ import com.parentsync.mobile.data.MessageIngestor
  *  - **Truncation.** A notification body can be cut off mid-sentence. The model
  *    is told to decline rather than infer a missing time, because the marker
  *    means the rest of the message is genuinely unavailable — not merely unsaid.
- *  - **No thread context.** Desktop merges a group's consecutive messages before
- *    extracting; a notification arrives alone. The model is told to treat the
+ *  - **No thread context.** A notification arrives alone, without the group's
+ *    surrounding messages. The model is told to treat the
  *    message as self-contained and not to resolve references it cannot see.
  *
- * The system prompt keeps the phrase "calendar event extractor" because the
- * desktop tests assert on it to tell the extractor call apart from the relevance
- * classifier, and keeping the wording lets the same assertion work here.
+ * The system prompt keeps the phrase "calendar event extractor": tests
+ * (`ExtractionPromptTest`, `GeminiClientTest`) assert on it to recognise the
+ * extraction call, so rewording it means updating them too.
  */
 object ExtractionPrompt {
 

@@ -1,248 +1,18 @@
 # Architecture
 
-ParentSync is a private-use family task manager that reads school WhatsApp groups
-and Gmail, extracts events with an LLM, and syncs approved ones to a Google
-Calendar.
+ParentSync is a single-user Android app (`android/`, package
+`com.parentsync.mobile`) that reads school WhatsApp groups, extracts events with
+Google Gemini, asks the parent to approve each one, and writes approved events to
+the Google Calendar already synced on the phone.
 
-It exists as **two independent clients**:
+Kotlin + Jetpack Compose, Room, WorkManager. `compileSdk`/`targetSdk` 36,
+`minSdk` 29. Feature-level detail, measurements and the debug harness are in
+[ANDROID.md](ANDROID.md).
 
-| | Desktop | Android |
-|---|---|---|
-| Shell | Electron, wrapping a NestJS backend and React frontend in one executable | Native Kotlin + Compose app |
-| Code | `backend/`, `frontend/`, `electron/` | `android/` |
-| WhatsApp | `whatsapp-web.js` driving a headless Chromium against WhatsApp Web | `NotificationListenerService` |
-| Calendar | Google Calendar REST + OAuth 2.0 | `CalendarContract`, against the account already on the phone — no OAuth |
-| Approval | Card with an `.ics` posted to a WhatsApp channel, 👍 reaction approves | Local notification with Approve / Reject, plus an in-app list |
-| Storage | SQLite via TypeORM | SQLite via Room |
-| Status | Primary, in daily use (v1.5.5) | Runnable vertical slice; see [ANDROID.md](ANDROID.md) for what is and is not verified |
+(ParentSync started as an Electron desktop app; it was removed when the project
+became Android-only. See the git history before that change.)
 
-They are deliberately **not** a shared codebase. The two platforms disagree on so
-much — how messages arrive, whether OAuth is needed, whether an arbitrary
-WhatsApp message can be sent at all — that the honest shared artefact is the
-*design*, not the code: the same pipeline shape, the same approve-before-publish
-guarantee, the same multi-layer duplicate suppression, each expressed in the
-idioms of its platform.
-
-The rest of this document describes the desktop architecture, which is the
-reference implementation. [ANDROID.md](ANDROID.md) covers the Android client and,
-more usefully, **why it had to differ**.
-
-## How It Fits Together
-
-```
-  Electron Main Process
-  ├── forks NestJS backend (child process, localhost:41932 by default,
-  │     auto-bumped if the port is taken)
-  ├── loads React frontend (file:// or via backend static serve)
-  ├── system tray icon
-  └── manages lifecycle (startup, shutdown, IPC)
-
-  ┌─────────────────────────────────────────────────────────────┐
-  │                      Electron Shell                         │
-  │                                                             │
-  │   ┌─────────────────────┐     ┌──────────────────────────┐ │
-  │   │   React Frontend    │────>│   NestJS Backend          │ │
-  │   │   (Vite + TS)       │ API │   (REST, localhost)       │ │
-  │   │                     │<────│                            │ │
-  │   │  Pages:             │     │  Modules:                  │ │
-  │   │  - Dashboard        │     │  - SettingsModule          │ │
-  │   │  - Calendar         │     │  - MessagesModule          │ │
-  │   │  - Monitor          │     │  - CalendarModule          │ │
-  │   │  - Settings         │     │  - LlmModule               │ │
-  │   │                     │     │  - SyncModule              │ │
-  │   │  Components:        │     │  - AuthModule              │ │
-  │   │  - WhatsAppQRModal  │     │  - MonitorModule           │ │
-  │   │  - MonitorCharts    │     │  - SharedModule            │ │
-  │   │  - Icon system      │     │                            │ │
-  │   └─────────────────────┘     └──────────┬───────────────┘ │
-  │                                           │                 │
-  └───────────────────────────────────────────┼─────────────────┘
-                                              │
-              ┌───────────────────────────────┼──────────────┐
-              │                               │              │
-        ┌─────┴─────┐  ┌──────────┐  ┌──────┴─────┐  ┌────┴────┐
-        │  SQLite    │  │ WhatsApp │  │  Google    │  │  LLM    │
-        │  (TypeORM) │  │ Web.js   │  │  APIs      │  │ (Gemini)│
-        │            │  │(Puppeteer│  │(Gmail,     │  │         │
-        │ ~/.config/ │  │ managed) │  │ Calendar,  │  │         │
-        │ ParentSync/│  │          │  │ Tasks)     │  │         │
-        └────────────┘  └──────────┘  └────────────┘  └─────────┘
-```
-
-## Backend Architecture
-
-**Pattern**: Clean Architecture + Hexagonal (Ports & Adapters) on NestJS.
-
-### Layers
-
-| Layer | What | Where |
-|-------|------|-------|
-| **Domain** | Entities, business rules | `*.entity.ts` files in each module |
-| **Application** | Use-case services | `*.service.ts` (SyncService, MessageParserService) |
-| **Interface** | Controllers, guards, pipes | `*.controller.ts`, DTOs, filters |
-| **Infrastructure** | DB repos, API adapters | Repository implementations, external service clients |
-
-### Feature Modules
-
-| Module | Responsibility |
-|--------|---------------|
-| `SettingsModule` | User settings CRUD, stored in SQLite |
-| `MessagesModule` | WhatsApp scraping (whatsapp-web.js), Gmail fetching, message storage |
-| `CalendarModule` | Calendar events CRUD, Google Calendar sync |
-| `LlmModule` | LangChain chains against Gemini, embeddings (`gemini-embedding-001`), two-stage parsing pipeline (`MessageClassifierService` → `MessageParserService`), configurable classifier + extractor prompts, LangSmith tracing |
-| `SyncModule` | Scheduled sync orchestration, the event-sync **LangGraph** (`sync/graph/`), WhatsApp approval channel, **`MessageDeduplicationService` (semantic pre-filter)** |
-| `AuthModule` | Google OAuth 2.0 flows (Gmail + Calendar, dual account support) — see [GOOGLE-AUTH.md](GOOGLE-AUTH.md) |
-| `MonitorModule` | Analytics aggregation, charts data |
-| `HealthModule` | `/api/health` liveness + DB check, resolved app version |
-| `SystemModule` | Uninstall script generation (Linux/macOS/Windows), app-level system actions |
-| `SharedModule` | Common entities, config, utilities, crypto, logging |
-
-### Ports & Adapters (Dependency Injection)
-
-All external services are behind injection tokens so they can be swapped in tests:
-
-| Token | Interface | Production Adapter |
-|-------|-----------|-------------------|
-| `MESSAGE_REPOSITORY` | `IMessageRepository` | `TypeOrmMessageRepository` |
-| `GMAIL_SERVICE` | `IGmailService` | `GmailOAuth2Adapter` |
-| `GOOGLE_CALENDAR_SERVICE` | `IGoogleCalendarService` | `GoogleCalendarOAuth2Adapter` |
-| `EVENT_EXTRACTOR` | `IEventExtractor` | `ExtractionChain` (LangChain structured output) |
-| `RELEVANCE_CLASSIFIER` | `IRelevanceClassifier` | `ClassifierChain` |
-| `DUPLICATE_JUDGE` | `IDuplicateJudge` | `DuplicateJudgeChain` |
-| `EMBEDDING_SERVICE` | `IEmbeddingService` | `EmbeddingAdapter` (Gemini `gemini-embedding-001`, 3072 dims) |
-| `SETTINGS_REPOSITORY` | `ISettingsRepository` | `TypeOrmSettingsRepository` |
-| `NEGATIVE_EXAMPLE_REPOSITORY` | `INegativeExampleRepository` | `TypeOrmNegativeExampleRepository` |
-| `DISMISSAL_REPOSITORY` | `IDismissalRepository` | `TypeOrmDismissalRepository` |
-
-Tests swap these with mocks via `Test.createTestingModule().overrideProvider()`.
-
-#### Why the AI ports are task-shaped
-
-The three AI ports name a capability ("extract the events from these
-messages") rather than a mechanism ("send these strings to a model"). They
-replaced a single `ILLMService.callLLM(messages): Promise<string>`.
-
-That distinction is not stylistic. A port returning a `string` forces every
-caller to re-derive meaning from text, which is why ~180 lines of JSON repair —
-markdown-fence stripping, brace matching, batch-key heuristics — had grown
-inside `MessageParserService`. Ports that return `ParsedEvent[]` and typed
-verdicts leave nowhere for that code to live, and the provider's structured-
-output mode enforces the shape instead.
-
-`src/llm/architecture.spec.ts` enforces the boundary: nothing outside
-`llm/adapters/`, `llm/observability/` and `sync/graph/` may import
-`@langchain/*`.
-
-See [LANGCHAIN-LANGGRAPH.md](LANGCHAIN-LANGGRAPH.md) for the chains behind
-these ports, the event-sync graph, and the constraints that shaped both.
-
-## Frontend Architecture
-
-React + TypeScript + Vite. No state management library — just React state + API calls.
-
-| Layer | What |
-|-------|------|
-| **Pages** | `DashboardPage`, `CalendarPage`, `MonitorPage`, `SettingsPage` |
-| **Components** | `WhatsAppQRModal`, monitor charts, `Icon` (inline SVG icon system) |
-| **Services** | API client (`services/api.ts`) — typed wrappers around fetch |
-| **Styling** | SCSS with 7-1 architecture (`scss/abstracts`, `scss/base`, `scss/components`, `scss/pages`, `scss/layout`) |
-
-## Data Flow
-
-### Message Sync Flow
-
-```
-1. Cron triggers SyncService at configured hours
-2. SyncService calls WhatsAppService → scrapes messages from configured channels
-3. SyncService calls GmailService → fetches emails from teacher addresses
-4. Messages stored in SQLite via MessageRepository
-5. SyncService groups messages by channel + proximity.
-   `MessageDeduplicationService` filters groups already-seen via SHA-256 hash
-   or embedding similarity (default threshold 0.92, Gemini
-   `gemini-embedding-001`). Duplicate groups are marked parsed and skip
-   steps 6–8 entirely.
-6. SyncService sends fresh groups to MessageParserService.
-   **Stage 1 — Classifier**: each text-only group is first passed to
-   `MessageClassifierService.classify()`. A short YES/NO prompt
-   (default ~3 KB, user-overridable) decides whether the message
-   describes an event at all. Most messages get NO and short-circuit
-   to `[]` — saves the cost of the extractor entirely.
-   **Stage 2 — Extractor**: groups the classifier kept (or any group
-   with an image attachment — the classifier is text-only) go to the
-   extractor LLM call (Gemini by default; user-overridable extractor
-   prompt; deterministic — no longer mutated by 😢 history).
-   Cache key folds in both prompt-version hashes.
-7. **Single-gathering collapse** (in `MessageParserService`, before any
-   DB write) — same parse batch, same `(title, date, location, description)`
-   but different times → keep one entry, preferring the one with both
-   `time` and `endTime`. Deterministic, no LLM, can't fail open.
-8. Events stored in CalendarEventRepository (status: pending_approval)
-9. **Multi-layer duplicate suppression** (each layer catches what the
-   previous one misses):
-   1. **Message dedup** (step 5 above, before LLM) — semantic skip of
-      forwarded flyers across groups
-   2. **Exact event dedup** — for each newly-parsed event, look up an
-      existing row by (title, date, time, child_id) and skip if present
-   3. **LLM event dedup** — for each new event sharing a date+time slot
-      with a sibling, ask the LLM whether they refer to the same
-      gathering. If yes → mark REJECTED, skip approval message.
-      *Provisional; counter `metric.event_dedup_llm_fires` tracks hit rate
-      for a 4-week review.*
-   4. **Calendar overlap dedup** — for each event surviving Layer 3, fetch
-      Google Calendar entries in a ±60-minute window, embed each summary,
-      and compare against the proposed event's title + location. If max
-      cosine similarity ≥ `calendar_dedup_threshold` (default 0.88) →
-      mark REJECTED, link the matched `googleEventId`, skip the approval
-      message. Fail-open: any error returns null and approval proceeds.
-      Counter: `metric.calendar_dedup_fires`.
-10. If approval channel configured:
-    a. Event sent to WhatsApp group with ICS attachment (and an `endTime`
-       in the body when the source message specified one)
-    b. User reacts 👍 (approve), 😢 (reject), or removes either reaction
-       (undo). The same can be done in-app via the Dashboard.
-    c. 👍 → sync event to Google Calendar
-    d. 😢 → mark REJECTED + capture source message + wrong title as a
-       NegativeExample
-    e. Removing 👍 → unsync from Google Calendar, back to PENDING
-    f. Removing 😢 → delete the matching NegativeExample, back to PENDING
-11. If no approval channel: events sync directly to Google Calendar
-12. Blocking failures along the way emit `app.error` events through
-    AppErrorEmitterService → SSE → frontend ErrorModal
-```
-
-See `docs/semantic-dedup.md` for the design details and threshold-tuning
-guidance.
-
-### OAuth Flow
-
-```
-1. User clicks "Sign in with Google" in Settings
-2. Frontend redirects to backend: GET /api/auth/google/{purpose}
-3. Backend generates OAuth URL with PKCE, sets state cookie
-4. Browser redirects to Google consent screen
-5. Google redirects back to: GET /api/auth/google/callback
-6. Backend exchanges code for tokens, stores encrypted in SQLite
-7. Backend redirects to frontend: /settings?auth=success
-```
-
-## Electron Integration
-
-The Electron main process (`electron/main.ts`):
-
-- **Backend**: Forked as a child process via `fork()`. Communicates via IPC. Gets assigned a random available port.
-- **Frontend**: Loaded via `file://` in production, `http://localhost:5173` in dev.
-- **Static serving**: Backend also serves frontend static files (for OAuth redirect landing).
-- **Data directory**: All persistent data in `app.getPath('userData')`:
-  - `parentsync.db` — SQLite database (WAL mode; incremental auto-vacuum; daily retention sweep + VACUUM at 04:00)
-  - `whatsapp-session/` — WhatsApp Web session
-  - `logs/` — Application logs
-  - `.encryption_key` — OAuth token encryption key
-  - `app-config.json` — Window bounds, first-run flag
-
-## Android Client
-
-Full detail in [ANDROID.md](ANDROID.md); this is the shape of it and how it maps
-onto the desktop design above.
+## How it fits together
 
 ```
   ┌──────────────────────────────────────────────────────────────┐
@@ -253,14 +23,15 @@ onto the desktop design above.
   │    every notification on the device)   │ requestSoon()       │
   │                                        v                     │
   │                                   SyncScheduler              │
-  │                                   (WorkManager,              │
-  │                                    45s coalesce)             │
+  │                                   (WorkManager: 45 s         │
+  │                                    coalesce + chosen hours)  │
   │                                        │                     │
   │                                        v                     │
   │   Compose UI  <────────────────>   SyncWorker                │
-  │   (approvals,                      ├─> GeminiClient (REST)   │
-  │    upcoming,                       ├─> ApprovalManager       │
-  │    settings)                       │     (local notification)│
+  │   (Approvals, Messages,            ├─> MessageDedupService   │
+  │    Upcoming, Settings)             ├─> GeminiClient (REST)   │
+  │                                    ├─> ApprovalManager       │
+  │                                    │     (local notification)│
   │                                    └─> DeviceCalendarRepo    │
   └──────────────────────────────────────────┬───────────────────┘
                                              │
@@ -275,66 +46,197 @@ onto the desktop design above.
                 └───────────┘     └─────────────┘  └──────────┘
 ```
 
-### Layer mapping
+## Components
 
-| Desktop | Android | Note |
+| Package | Component | Responsibility |
 |---|---|---|
-| `SyncService` + cron (hourly, 09:00–21:00) | `SyncWorker` + `SyncScheduler` | Inverted: messages arrive by push, so a pass runs ~45 s after one lands. The periodic pass (6 h) is only a safety net |
-| `WhatsAppService` (Puppeteer) | `ParentSyncNotificationListener` + `WhatsAppNotificationParser` | The parser is pure Kotlin and unit-tested; only the thin `StatusBarNotification` → `NotificationPayload` lift touches Android |
-| `GoogleCalendarService` + `AuthModule` | `DeviceCalendarRepository` | The whole OAuth path disappears |
-| `ApprovalService` (WhatsApp channel + reactions) | `ApprovalManager` + `ApprovalActionReceiver` | Had to be replaced, not ported — there is no way to send to an arbitrary chat |
-| `LlmModule` (LangChain chains, `ChainRunner`) | `GeminiClient` (plain REST) | WorkManager already supplies the retry/backoff ladder `ChainRunner` exists to give a long-lived process |
-| NestJS DI | `AppContainer` (lazy singletons) | A dozen singletons, no scopes — Hilt would add codegen to express `by lazy` |
-| TypeORM entities | Room entities | Schema differs where storage had to change; see below |
+| root | `ParentSyncApp`, `AppContainer`, `ParentSyncWorkerFactory` | Process start: notification channels, arm the scheduled sync, re-bind the listener. `AppContainer` is a dozen lazy singletons; the factory lets WorkManager build `SyncWorker` with them |
+| `ingest/` | `ParentSyncNotificationListener` | Bound by the OS; lifts each `StatusBarNotification` into a plain `NotificationPayload`. Catches up on notifications still showing when it connects; tracks whether it is really bound and forces a rebind when the OS drops it |
+| `ingest/` | `WhatsAppNotificationParser` | Pure Kotlin: MessagingStyle → InboxStyle → plain text, sender, timestamp, truncation flag, `sourceKey`; strips WhatsApp's "(2 messages)" title suffix; drops summaries and media placeholders |
+| `data/` | `MessageIngestor` | The keep-or-drop gate: own notifications, source package, watched / child-assigned groups. Stores rows and calls `requestSoon()` |
+| `data/` | `ParentSyncDatabase` (Room, v2) | `messages`, `events`, `children`, `sync_logs`; WAL, `synchronous = NORMAL`, 4 MB journal limit |
+| `data/` | `SettingsStore`, `RecentGroups`, `ChildChannels`, `WrittenMessages` | Settings in SharedPreferences (read synchronously on the notification path); recently active groups; child ↔ group matching and `"Name: title"` prefixing; messages the parent types in the app |
+| `data/` | `EmbeddingCodec`, `ImageStore` | int8-quantised embedding blobs scored without allocating; image files under `filesDir/message-images` |
+| `llm/` | `GeminiClient`, `ExtractionPrompt` | One REST call per message with a `responseSchema` inside Gemini's accepted subset; distinguishes quota exhaustion and "no key" |
+| `llm/` | `GeminiEmbeddingClient` | `gemini-embedding-001` at 768 dimensions |
+| `sync/` | `SyncWorker` | One pass: write approved events, dedup + extract, create PENDING events, retention, sync log |
+| `sync/` | `SyncScheduler`, `SyncSchedule` | Coalesced "soon" pass, manual pass, and a chain of one-time passes at the user's hours |
+| `sync/` | `MessageDeduplicationService` | Pre-LLM dedup: SHA-256, then embedding similarity. Never throws |
+| `sync/` | `ApprovalManager`, `ApprovalActionReceiver`, `ApprovalText` | Approval notifications and their Approve / Reject actions |
+| `sync/` | `Notifications`, `AlertNotifier`, `BootCompletedReceiver` | Channel definitions and `OWN_CHANNELS`; "sync is broken" alerts; re-arm after boot / update |
+| `calendar/` | `DeviceCalendarRepository`, `CalendarChoice`, `ChildColors` | `CalendarContract` reads and inserts; default-calendar choice that keeps phone-only calendars last; Google's eleven event colours |
+| `system/` | `BackgroundAccess` | Reads HyperOS Autostart and battery-optimisation state; opens the screens that change them |
+| `ui/` | `MainActivity`, `MainViewModel` | Compose: Approvals, Messages, Upcoming, Settings |
 
-### Storage differences, and why
+The rule throughout: **logic in pure Kotlin, Android types only at the edges**.
+The parser, ingest gate, schedule arithmetic, child matching, recent-group
+bookkeeping, codec and text builders take plain values and are unit-tested on
+the JVM; only thin adapters touch `StatusBarNotification`, `ContentResolver` or
+WorkManager.
 
-Measured on the live desktop database — **40 MB holding 100 messages** — three
-things that are acceptable on a laptop and not on a phone:
+## Data flow
 
-| | Desktop | Android |
+```
+ 1. WhatsApp posts a notification.
+ 2. ParentSyncNotificationListener.onNotificationPosted → NotificationPayload.
+ 3. MessageIngestor:
+      - drop if on one of Notifications.OWN_CHANNELS (never overridable)
+      - drop if not a WhatsApp source package
+      - parse; remember the group as recently seen
+      - keep only groups assigned to a child, on the watch list, or
+        "Capture every chat"; tag with the child if the group is assigned
+      - mark a truncated body with " […truncated by WhatsApp]"
+      - insert, IGNORE on duplicate sourceKey (WhatsApp re-posts the whole
+        conversation each time it grows)
+      - stored > 0 → SyncScheduler.requestSoon()
+ 4. ~45 s later (KEEP, so a burst becomes one pass) SyncWorker runs:
+    a. Approved events not yet on the calendar are written first, so an
+       approval reaches the calendar even when the LLM is down or out of quota.
+       Skipped if the same title is already on that date in the calendar.
+    b. Up to 25 unparsed messages:
+         - no Gemini key → leave them queued, post an alert, stop
+         - MessageDeduplicationService.check → duplicate: mark parsed, no LLM
+         - GeminiClient.extractEvents (today = the message's own date)
+         - per event: drop if no date or date in the past; child = the
+           group's child, else the extractor's guess; dedupeKey
+           (title + date + child) already known → skip; else insert PENDING
+           with the original message as description and post the approval
+           notification
+         - quota exhausted → stop and Result.retry() (WorkManager backoff)
+         - any other failure on one message → logged, left unparsed, next
+    c. Retention, sync-log row, prune sync log to 200.
+    d. A scheduled pass queues the next chosen hour, whatever the outcome.
+ 5. Parent taps Approve (notification or Approvals tab) → APPROVED, and a sync
+    is requested; the next pass writes it via CalendarContract with the
+    child's colour and a 60-minute reminder. Google's sync adapter uploads it.
+```
+
+`Messages → Write message` inserts a `MANUAL` message (WhatsApp never notifies
+for the phone's own messages) and requests a sync; from there it follows the
+same path.
+
+## Approval
+
+Approval is a local notification on channel `approvals_v2`
+(`CATEGORY_REMINDER`, high importance, vibrates) with Approve / Reject actions,
+plus the in-app Approvals list. It cannot be a WhatsApp message: there is no API
+to send to an arbitrary chat, `RemoteInput` only replies to a live notification
+and carries text only, and reactions do not arrive reliably as notifications.
+
+The `PENDING` row is the durable record; the notification is only a view of it,
+so dismissing it decides nothing. Approval works only on the phone running the
+app.
+
+## Calendar
+
+`CalendarContract` is a local ContentProvider over calendars already synced on
+the phone, so `READ_CALENDAR` / `WRITE_CALENDAR` and an insert replace an entire
+OAuth flow — no token exists to leak or expire. The trade: writes are
+unacknowledged. The provider returns a local row id (stored as
+`calendarEventId`); whether Google accepted it is never reported back.
+
+`CalendarChoice` picks the default calendar (Google primary, then other Google,
+then other accounts, phone-only `LOCAL` last) and Settings warns while a
+phone-only calendar is selected, because an insert there succeeds and never
+reaches Google.
+
+Each child's colour (`ChildColors`, Google Calendar's eleven event colours) is
+written as `EVENT_COLOR_KEY` when the calendar's account publishes that key, so
+it syncs to every device; otherwise as a raw `EVENT_COLOR`.
+
+## Duplicate suppression
+
+| Layer | Where | Catches |
 |---|---|---|
-| Embeddings | 3072-dim as JSON text, **~39 KB/row**; a dedup pass parses up to 1000 of them | Quantised int8 blob, **3 076 bytes**, compared without allocating (`EmbeddingCodec`) |
-| Images | base64 JSON inline in `messages` — **10.6 MB for 22 rows** | Files under `filesDir/message-images`; the row keeps a filename |
-| `sync_logs` | **2934 rows**, unbounded | Capped at 200, pruned every pass |
-| Messages | kept forever | 45-day retention; **events are kept** — the calendar entry is the product, the message only the evidence |
+| `sourceKey` unique index | ingest | The same message re-delivered as its conversation's notification grows |
+| SHA-256 of the content | `MessageDeduplicationService`, before the LLM | A byte-identical forward into another group. No network call |
+| Embedding similarity (≥ 0.92 by default, 14-day lookback, ≤ 500 candidates) | same | A forward with an added "FYI 👆" line. One embedding call, scored locally |
+| `dedupeKey` (title + date + child) | event creation | The LLM producing the same event twice across passes |
+| Same title on the same date in the calendar | calendar write | An event the parent already added by hand |
 
-A test pins the quantised similarity within **0.001** of exact cosine, so the
-12.7× size win cannot move a score across the dedup threshold.
+Dedup fails open: if candidates cannot be read or the embedding call fails, the
+message is treated as fresh. An occasional duplicate is a nuisance; a dropped
+event is a missed school trip. Hash and vector are stored on every message,
+duplicates included, so each becomes a candidate for the next.
 
-### What the platform took away
+Embeddings are 768-dim (Matryoshka-truncated `gemini-embedding-001`), stored as
+int8 blobs of one float scale plus one byte per dimension. `EmbeddingCodecTest`
+pins quantised similarity within 0.001 of exact cosine, and the codec refuses to
+compare vectors of different length.
 
-Worth stating plainly, because these are capability losses rather than design
-choices:
+## Scheduling
 
-- **No message history.** A notification exists only for a message that arrived
-  while the listener was running. There is no backfill.
-- **Long messages arrive truncated** — and the long ones are exactly the ones
-  carrying events. The marker `[…truncated by WhatsApp]` is appended and the
-  extractor is instructed to return an empty date rather than guess.
-- **Muted chats never notify**, so they are never captured.
-- **Approval is phone-local.** No approving from another device signed into
-  WhatsApp.
-- **Calendar writes are unacknowledged.** The provider returns a local row id;
-  whether Google accepted it is never reported back.
+- **Soon** — `requestSoon()`: unique work `sync-soon`, 45 s initial delay, KEEP
+  (REPLACE would let a busy group starve the pass), network required,
+  exponential backoff.
+- **Manual** — `requestNow()`: expedited, REPLACE.
+- **Chosen hours** — Settings → Sync schedule (default `9,14,18`).
+  `ensureScheduledSync()` queues one OneTimeWork for the next chosen hour under a
+  per-target name (`sync-at-<epochMs>`, KEEP); the worker queues its successor
+  from its own target time when it finishes. Re-armed on process start, boot and
+  package update; changing the hours cancels the `parentsync-sync-scheduled` tag
+  and re-queues. `SyncSchedule` holds the pure hour arithmetic (midnight wrap,
+  DST).
 
-## Key Design Decisions
+The UI's "syncing" state counts only a RUNNING pass or a waiting manual one —
+the scheduled pass is always enqueued, and counting it made the spinner spin
+forever.
+
+## Storage and retention
+
+| | Choice | Why |
+|---|---|---|
+| Embeddings | int8 blob, ~0.8 KB at 768 dims | JSON text is ~39 KB per 3072-dim row; a dedup pass reads hundreds |
+| Images | files under `filesDir/message-images`, row keeps filenames | Base64 inline measured 10.6 MB for 22 rows |
+| Messages | processed rows kept **1 day**; unprocessed up to **14 days** | The event's description already carries the text; an unparsed message must survive a missing key or an outage |
+| Events | kept | The calendar entry is the product |
+| `sync_logs` | capped at 200 rows; error text capped at 500 chars | A failing pass would otherwise store a response body every time |
+| SQLite | WAL, `synchronous = NORMAL`, `journal_size_limit` 4 MB | Many small writes per pass; bounded WAL |
+| Backup | `allowBackup="false"` + backup rules | The message database must not leave the device |
+
+Retention runs at the end of every pass, failed ones included. Schema changes
+are additive migrations tested by `MigrationTest`; there is no destructive
+fallback, because captured messages cannot be re-read.
+
+## Running in the background
+
+Both WorkManager and the notification listener run with the app closed only if
+the OS allows it. On HyperOS with Autostart off the process is killed soon after
+the app leaves the screen, taking every WorkManager job with it, and nothing in
+the app can restart it. So:
+
+- Settings has a **Running in the background** card (`BackgroundAccess`) that
+  reads Autostart (HyperOS app-op 10008) and battery optimisation, and opens the
+  screens to change them.
+- `ParentSyncApp.onCreate` and `BootCompletedReceiver` re-arm the schedule and
+  call `ParentSyncNotificationListener.ensureBound`, which requests a rebind
+  when access is granted but the service is not bound, and if that is ignored
+  disables and re-enables the listener component.
+- On connect the listener feeds notifications still in the shade through the
+  ingestor, so messages that arrived while unbound are not lost if still shown.
+
+## What the platform takes away
+
+- **No message history.** A message exists only if its notification fired while
+  the listener was running.
+- **Long messages arrive truncated.** The marker is appended and the extractor is
+  told to return an empty date rather than guess.
+- **Muted chats never notify**, and a message read elsewhere first may not.
+- **The phone's own messages are never notified** — hence *Write message*.
+- **Approval is phone-local**, and **calendar writes are unacknowledged**.
+
+## Key design decisions
 
 | Decision | Why |
-|----------|-----|
-| Fork backend as child process (not in-process) | Isolation — backend crash doesn't kill the UI |
-| SQLite (not PostgreSQL) | Single-user desktop app, no external DB needed. WAL mode + `synchronous=NORMAL` for safe concurrent reads. `auto_vacuum=INCREMENTAL` + daily `DbHygieneService` cron keeps the file bounded (steady-state ~15 MB). |
-| `synchronize: true` always | No dev/prod split, private-use app |
-| OAuth tokens encrypted at rest | Protect Google API tokens if device is compromised |
-| whatsapp-web.js (not direct API) | No official WhatsApp API for personal accounts. It drives a headless Chromium against WhatsApp Web's internal modules, which change without notice — `WhatsAppService` carries page-level compatibility patches and dead-session recovery for that. See `docs/WHATSAPP-RESILIENCE.md`. |
-| LLM behind a port (Gemini implementation; mock adapter for tests) | Tests inject a mock without touching the real API |
-| Two-stage parse pipeline (classifier → extractor) with separately editable prompts | Most messages are not events; gating them on a cheap classifier saves ~70% of LLM cost vs single-stage. Each prompt is independently editable from Settings; cache keys fold in both prompt-version hashes. The 😢-driven negative-example feedback loop was retired in v1.4.0 — the LLM ignored the appended block, it broke cache hit rate, and it bloated every parse. Rejections are still logged for the user's reference. |
-| Multi-layer duplicate suppression (semantic message dedup → in-memory single-gathering collapse → exact event dedup → LLM event dedup → calendar overlap dedup) | Five orthogonal stages — embeddings catch byte- and paraphrase-level forwards before the LLM; the in-memory collapse catches the LLM violating its own single-gathering rule (deterministic, can't fail open like Layer 3); exact dedup catches LLM nondeterminism across syncs; the LLM tiebreaker catches "same gathering, different framing"; the calendar overlap layer catches events the user pre-added manually or synced from another source. See `docs/semantic-dedup.md`. |
-| Exhausted LLM quota fails fast, transient 429 retries | Google returns 429/`RESOURCE_EXHAUSTED` for both a per-minute rate limit and a depleted prepaid balance, but only the first clears on its own. `isQuotaExhaustedError` (`llm/errors/llm-quota-exhausted.error.ts`) separates them: a depleted account throws `LlmQuotaExhaustedError` on the first attempt, emits `LLM_QUOTA_EXHAUSTED`, and aborts the parse pass with the messages left unparsed for the next sync. Previously one dead account cost 8 retries per message plus the batch parser's per-message fallback — hours of guaranteed-failing traffic — and the swallowed error marked those messages parsed with no events, losing them for good. |
-| `messagesParsed` counts only completed groups | A failed group is counted in `messagesFailed` and named in the completion log. It is still marked parsed so a poison message cannot loop forever, but it is never reported as a successful parse. |
-| Event sync coalesces concurrent passes | `syncAll()` emits `sync.completed`, whose `@OnEvent` handler runs `syncEvents()` without being awaited, and the Dashboard calls `POST /api/sync/events` immediately after `POST /api/sync/manual`. Two passes started ~90ms apart, both called `findUnparsed()` before either marked anything parsed, and both created events — near-identical duplicates from a single source message that no dedup layer catches, because they are built concurrently from the same input. `syncEvents()` now returns the in-flight pass to any second caller instead of starting a rival one. `syncAll()`'s `SyncLockService` never covered this path. |
-| Centralised AppErrorEmitterService with per-code dedupe | One source of truth for what bubbles up to the frontend ErrorModal; retry loops can't flood the modal |
-| Inline SVG icon system | Zero dependencies, type-safe, no icon font overhead |
-| Two native clients rather than one shared codebase (or a webview wrapping the desktop UI) | A webview would need the backend reachable from the phone, and `whatsapp-web.js` cannot run on Android at all — so the "shared" core would have been everything except the two parts that actually differ. The platforms disagree on how messages arrive, whether OAuth is needed, and whether a WhatsApp message can be sent at all; sharing code across that would mean an abstraction whose two implementations have nothing in common. What is shared is the design: same pipeline shape, same approve-before-publish guarantee, same dedup layering. See [ANDROID.md](ANDROID.md) |
-| Android never ingests its own notifications | The app's own notifications are notifications. Without a guard, the alert saying "N captured messages cannot be read" is itself read as a message, which raises N, which re-posts the alert. Observed on the emulator: one real message became 100 rows, and with a key configured each would have cost an LLM call. `MessageIngestor` drops anything on `Notifications.OWN_CHANNELS` *before* the source check, and deliberately not overridable — a watch list is the user's business, reading our own output never is |
-| Android ships no `default_filter_types` on the listener | Declaring it narrows what the OS delivers, and a WhatsApp notification is not reliably classified as a "conversation" (that needs a shortcut id). With the filter present the service binds, reports connected, and then receives **nothing** — indistinguishable from the user never having granted access. Filtering by package in `onNotificationPosted` costs nothing and cannot silently drop the one notification the app exists to read |
+|---|---|
+| Push, not poll | Messages arrive as notifications; a pass runs ~45 s after one lands. The chosen hours are a safety net for messages left unparsed |
+| Approved events written before parsing | An approval reaches the calendar even when the LLM is unavailable or out of quota |
+| Quota exhaustion retries the pass, not the call | Retrying inside a pass burns the remaining quota against the same wall; WorkManager's backoff is the place to wait |
+| Gemini REST directly, no LangChain | The unit of work is one WorkManager job that WorkManager retries; an agent framework would add megabytes to re-implement that |
+| `AppContainer`, no Hilt | A dozen unscoped singletons; Hilt would add codegen to express `by lazy` |
+| SharedPreferences for settings | Read on every notification; must not suspend |
+| Never ingest our own notifications | The "N messages cannot be read" alert, ingested, raised N and re-posted itself — one real message became 100 rows on the emulator, each a potential LLM call. `MessageIngestor` drops anything on `Notifications.OWN_CHANNELS` before the source check, deliberately not overridable. Every new channel goes in that set |
+| No `default_filter_types` on the listener | Declaring it narrows delivery, and a WhatsApp notification is not reliably a "conversation"; the service binds and receives nothing, indistinguishable from access not granted. Filtering by package in the callback is free |
+| Watch list empty by default | A personal phone carries far more chat traffic than school groups; every extra chat is LLM spend |
+| Group's child beats the extractor's guess | The parent assigned the group; a group shared by several children is tagged to none so the extractor decides |
+| Description stored at event creation | Approval can come after the source message has been pruned |

@@ -229,9 +229,8 @@ class SyncWorker(
     /**
      * Stores an extracted event as PENDING and posts its approval card.
      *
-     * Events without a usable date are dropped rather than stored: the desktop
-     * build does the same, because an event with no day cannot be put on a
-     * calendar and asking the parent to approve one is asking them to approve
+     * Events without a usable date are dropped rather than stored, because an
+     * event with no day cannot be put on a calendar and asking the parent to approve one is asking them to approve
      * nothing.
      */
     private suspend fun createEvent(
@@ -243,7 +242,7 @@ class SyncWorker(
             Log.i(TAG, "dropping \"${extracted.title}\": no usable date (${extracted.date})")
             return false
         }
-        // Events already in the past are dropped at creation, matching desktop:
+        // Events already in the past are dropped at creation:
         // a flyer read late should not resurrect last month's trip.
         if (date.isBefore(LocalDate.now(ZoneId.systemDefault()))) {
             Log.i(TAG, "dropping \"${extracted.title}\": ${date} is in the past")
@@ -357,9 +356,8 @@ class SyncWorker(
      * Drops old message rows and the image files they referenced.
      *
      * Events are kept regardless of age — the calendar entry is the product and
-     * the message is only the evidence for it. On desktop nothing was ever
-     * dropped, which is how that database reached 40 MB; a phone cannot afford
-     * the same.
+     * the message is only the evidence for it. Without this the message table
+     * grows without bound, which a phone cannot afford.
      */
     private suspend fun runRetention() {
         val now = System.currentTimeMillis()
@@ -401,7 +399,7 @@ class SyncWorker(
         private val ISO_DATE: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
         private val ISO_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-        /** title + date + child, the same identity desktop uses for a duplicate. */
+        /** title + date + child: what makes two extracted events the same event. */
         fun dedupeKey(title: String, date: String, childId: String?): String {
             val material = "${title.trim().lowercase()}|$date|${childId.orEmpty()}"
             val digest = MessageDigest.getInstance("SHA-256").digest(material.toByteArray())

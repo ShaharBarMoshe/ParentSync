@@ -9,11 +9,9 @@ import kotlin.math.sqrt
  * Packs an embedding into bytes for storage, and scores similarity without
  * unpacking it.
  *
- * The desktop build stores `number[]` as a JSON column. Measured on the live
- * database that is ~39 KB per row for a 3072-dim vector, and a dedup pass reads
- * up to 1000 candidates — roughly 39 MB of JSON parsed per check. That is
- * tolerable on a laptop and not on a phone, so rows here hold a quantised blob
- * instead.
+ * Stored as a JSON array, a 3072-dim vector is ~39 KB per row (measured), and a
+ * dedup pass over 1000 candidates would parse roughly 39 MB of JSON per check.
+ * That is not affordable on a phone, so rows hold a quantised blob instead.
  *
  * The format is int8 symmetric quantisation: one float scale, then one signed
  * byte per dimension. 3072 dims costs 3076 bytes instead of ~39 000, and
@@ -72,8 +70,7 @@ object EmbeddingCodec {
      *
      * Returns null rather than a score when either side is unreadable or the
      * dimensions disagree — a mismatch means the embedding model changed, and
-     * scoring across models would silently compare noise. The desktop build
-     * skips such rows the same way.
+     * scoring across models would silently compare noise.
      */
     fun similarity(a: ByteArray?, b: ByteArray?): Float? {
         val dimsA = dimensions(a)

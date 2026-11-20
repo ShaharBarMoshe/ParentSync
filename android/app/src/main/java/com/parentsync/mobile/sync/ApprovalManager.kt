@@ -17,8 +17,8 @@ import com.parentsync.mobile.data.db.EventEntity
 /**
  * Asks the parent to confirm an event, and records the answer.
  *
- * This replaces the desktop approval loop, which posted a card with an .ics
- * attachment to a WhatsApp group and watched for a 👍 reaction. None of that is
+ * A local notification rather than a WhatsApp message (e.g. a card with an .ics
+ * attachment posted to a group, approved with a 👍 reaction). None of that is
  * reachable from an Android app: there is no API to send a message to an
  * arbitrary chat, `RemoteInput` carries text only so the .ics cannot go, and
  * reaction events do not arrive reliably as notifications. See docs/ANDROID.md.
@@ -28,7 +28,7 @@ import com.parentsync.mobile.data.db.EventEntity
  * muted chat — and worse on another: approving is only possible on the phone
  * holding the app, not from any device signed into WhatsApp.
  *
- * The PENDING row remains the durable record, exactly as on desktop. The
+ * The PENDING row is the durable record. The
  * notification is a view onto it, so dismissing the notification does not decide
  * anything and the in-app list still shows the event.
  */

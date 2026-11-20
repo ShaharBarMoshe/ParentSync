@@ -4,8 +4,7 @@ import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.settings.SettingsStore
 
 /**
- * Which child a WhatsApp group belongs to — the Android side of the desktop
- * per-child `channelNames` setting.
+ * Which child a WhatsApp group belongs to, from each child's `channelNames`.
  *
  * Pure Kotlin, no Android types, so the matching rules are unit-tested on the
  * JVM. Names are compared after [SettingsStore.normaliseChannel], the same
@@ -14,7 +13,7 @@ import com.parentsync.mobile.data.settings.SettingsStore
  */
 object ChildChannels {
 
-    /** Newline-separated, like desktop, so a group name may contain a comma. */
+    /** Newline-separated, so a group name may contain a comma. */
     fun encode(channels: Collection<String>): String =
         channels.map { it.trim() }
             .filter { it.isNotEmpty() }
@@ -48,7 +47,7 @@ object ChildChannels {
         childrenFor(channel, children).isNotEmpty()
 
     /**
-     * Desktop titles a child's event "Name: title". Not applied twice, so an
+     * A child's event is titled "Name: title". Not applied twice, so an
      * extractor that already prefixed the name does not produce "Yoni: Yoni: …".
      */
     fun prefixTitle(title: String, childName: String?): String {

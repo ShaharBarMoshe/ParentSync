@@ -676,7 +676,7 @@ private fun SettingsScreen(
 }
 
 /**
- * Per-child WhatsApp groups, as on desktop. Each child owns a list of groups;
+ * Per-child WhatsApp groups. Each child owns a list of groups;
  * a message from one of them is captured and tagged with that child, and its
  * events are titled "Name: …".
  */

@@ -35,4 +35,22 @@ class BackgroundAccessTextTest {
         assertThat(BackgroundAccessText.needsBattery(s)).isTrue()
         assertThat(BackgroundAccessText.describe(s)).contains("Battery optimisation")
     }
+
+    @Test
+    fun `autostart off and battery limits together ask for both fixes`() {
+        val s = status(battery = false, autostart = false)
+        assertThat(BackgroundAccessText.describe(s)).contains("Turn Autostart on and remove battery limits.")
+
+        val unknown = status(battery = false, autostart = null)
+        assertThat(BackgroundAccessText.describe(unknown))
+            .contains("Make sure Autostart is on and battery use is unrestricted")
+    }
+
+    @Test
+    fun `nothing is asked of a phone that already allows background work`() {
+        val s = status(battery = true, autostart = true)
+        assertThat(BackgroundAccessText.needsAutostart(s)).isFalse()
+        assertThat(BackgroundAccessText.needsBattery(s)).isFalse()
+        assertThat(BackgroundAccessText.describe(s)).startsWith("ParentSync runs in the background")
+    }
 }

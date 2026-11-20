@@ -151,9 +151,8 @@ class GeminiClientTest {
         val body = Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
         val system = body["systemInstruction"]!!.jsonObject["parts"]!!
             .jsonArray[0].jsonObject["text"]!!.jsonPrimitive.content
-        // The desktop suite asserts on this phrase to tell the extractor call
-        // apart from the relevance classifier; keeping it lets the same
-        // assertion mean the same thing here.
+        // Tests and logs tell the extractor call apart from any other Gemini
+        // call by this phrase, so it must reach the request unchanged.
         assertThat(system).contains("calendar event extractor")
     }
 

@@ -1,212 +1,162 @@
 # ParentSync
 
-> Watches your WhatsApp parent groups and Gmail, uses an LLM to pull out the actual events (field trips, deadlines, doctor visits), routes each one through an approval step, and syncs the survivors to a family Google Calendar.
->
-> Two clients: a cross-platform **Electron desktop app** (primary), and a native **Android app** that reads WhatsApp through `NotificationListenerService` and writes the calendar already signed in on the phone.
+> An Android app that reads your school WhatsApp groups, uses Google Gemini to
+> pull out the actual events (field trips, deadlines, parent meetings), asks you
+> to approve each one, and puts the approved ones on the family Google Calendar
+> already on your phone.
 
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-D97757)](https://claude.com/claude-code)
-[![Docs site](https://img.shields.io/badge/docs-shaharbarmoshe.github.io%2FParentSync-2563eb)](https://shaharbarmoshe.github.io/ParentSync/)
-![Electron](https://img.shields.io/badge/Electron-35-47848F?logo=electron&logoColor=white)
-![NestJS](https://img.shields.io/badge/NestJS-10-E0234E?logo=nestjs&logoColor=white)
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-TypeORM-003B57?logo=sqlite&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.2-7F52FF?logo=kotlin&logoColor=white)
+![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-4285F4?logo=jetpackcompose&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-16%20(API%2036)-3DDC84?logo=android&logoColor=white)
-
-📊 **[View the interactive presentation →](https://shaharbarmoshe.github.io/ParentSync/presentation.html)** · [PDF](https://shaharbarmoshe.github.io/ParentSync/ParentSync-Presentation.pdf) · [Message pipeline →](https://shaharbarmoshe.github.io/ParentSync/message-pipeline.html) · [Docs site](https://shaharbarmoshe.github.io/ParentSync/)
-
-### Download v1.1.2
-
-| 🍎 macOS — [Apple Silicon](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2-arm64.dmg) · [Intel](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.dmg) | 🪟 [Windows](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-Setup-1.1.2.exe) | 🐧 Linux — [AppImage](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/ParentSync-1.1.2.AppImage) · [.deb](https://github.com/ShaharBarMoshe/ParentSync/releases/download/v1.1.2/parentsync_1.1.2_amd64.deb) |
-|---|---|---|
-
-Run instructions per platform: see the [User Guide](docs/USER-GUIDE.md#download) or the [Quick Start slides](https://shaharbarmoshe.github.io/ParentSync/presentation.html#21). Mac/Win builds are unsigned — first launch needs right-click → Open (Mac) / "Run anyway" (SmartScreen).
-
-| Dashboard | Calendar | Settings |
-|---|---|---|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Calendar](docs/screenshots/calendar.png) | ![Settings](docs/screenshots/settings.png) |
+![SQLite](https://img.shields.io/badge/SQLite-Room-003B57?logo=sqlite&logoColor=white)
 
 ---
 
-## Why This Project
+## Why this project
 
-Two parents, four WhatsApp class groups, two school inboxes, one shared calendar — and somehow always one missed permission slip. ParentSync is the system that reads everything, decides what's actually an event, asks you before publishing, and keeps the family calendar honest.
+Two parents, four WhatsApp class groups, one shared calendar — and somehow
+always one missed permission slip. ParentSync reads the groups, decides what is
+actually an event, asks before publishing, and keeps the family calendar honest.
+It runs entirely on the phone that already has WhatsApp and the Google account
+on it: no server, no OAuth, no second device.
 
-It's also a deliberately end-to-end engineering exercise: a real Electron app with a real backend, real OAuth, real LLM cost controls, and a real test pyramid — built to be readable from the top down.
+## What it does
 
-## Highlights
+1. **Reads WhatsApp group messages** through Android's
+   `NotificationListenerService`. Only the groups you choose (or assign to a
+   child) are captured; every other notification on the phone is ignored.
+2. **Extracts events with Google Gemini.** Shortly after a message arrives
+   (~45 s, so a burst of messages becomes one batch) and at the hours you pick,
+   a background pass sends new messages to Gemini, which returns title, date,
+   time, end time and location — in the message's own language (Hebrew and
+   English both work).
+3. **Suppresses duplicates before paying for them.** The same flyer forwarded
+   into three groups is recognised by content hash or embedding similarity and
+   sent to the LLM once.
+4. **Asks you to approve.** Each event becomes a local notification with
+   **Approve** / **Reject** buttons, and is listed in the app's Approvals tab.
+   Nothing reaches the calendar without your tap.
+5. **Writes approved events to your Google Calendar** through `CalendarContract`
+   — the calendar provider already synced on the phone. No OAuth, no tokens;
+   Google's own sync adapter uploads the event.
+6. **One colour per child.** Each child has a list of WhatsApp groups and a
+   Google Calendar colour; their events are titled `"Name: …"` and coloured to
+   match, on every device that shows the calendar.
 
-- **End-to-end Electron desktop app** — single AppImage / `.exe` / `.dmg`. Backend, frontend, and Chromium are all packaged together; SQLite lives in the OS user-data directory.
-- **Clean Architecture + Hexagonal (Ports & Adapters)** on NestJS. Every external dependency (Gmail, Google Calendar, the LLM, WhatsApp) sits behind an injection token with a swappable mock adapter.
-- **LLM-driven extraction with cost controls** — batched parsing, prompt-engineered for Hebrew + English, structured output validated by class-validator DTOs. Powered by Google Gemini (multimodal: text + image, via `@google/genai`).
-- **Cancellation & delay detection** — the parser doesn't just create events; it recognizes "המפגש בוטל" / "נדחה ל-…" and updates or removes the existing calendar entry. ([docs](docs/EVENT-DISMISSAL.md))
-- **You're in control of the AI** — two complementary ways to steer extraction: (a) **edit the system prompt** directly in Settings (textarea, Reset-to-default escape hatch), and (b) **react to suggestions** — 👍 to publish, 😢 to drop and capture the source as a *learned exclusion* the LLM sees on every parse. Reactions are reversible (take back a 👍 → unsync from Google; take back a 😢 → drop the exclusion). Both paths land in the same LLM call; changes take effect on the next sync. ([docs](docs/PROMPT-CUSTOMIZATION.md))
-- **WhatsApp approval channel + in-app approval** — every extracted event is posted to a dedicated chat with an ICS attachment, *and* shown on the Dashboard with inline Approve / Reject buttons. ([docs](docs/USER-GUIDE.md))
-- **Multi-layer duplicate suppression** — (1) **semantic message dedup** with Gemini embeddings catches forwarded flyers before the LLM ever sees them (SHA-256 hash fast-path; cosine-similarity fallback, default threshold 0.92); (2) **exact event dedup** skips creating rows that already exist; (3) **LLM event dedup** asks the LLM whether two same-slot events refer to the same gathering — catches "same gathering, different framing." ([docs](docs/semantic-dedup.md))
-- **OAuth 2.0 done properly** — PKCE, CSRF state, encrypted token storage at rest, refresh-on-expiry. ([writeup](docs/ARCHITECTURE.md))
-- **80%+ test coverage** — unit tests via NestJS `Test.createTestingModule()`, Supertest e2e, Vitest on the frontend, real Puppeteer browser tests for the desktop UI.
-- **Native Android client** — the same pipeline on a phone, where the platform forbids half of it: no WhatsApp message history (notifications are forward-only and truncate long messages), no way to send to an arbitrary chat, and so no approval card — replaced by a local notification with Approve/Reject. The calendar, conversely, gets *simpler*: `CalendarContract` writes to the account already on the device, deleting the entire OAuth path. Storage was rebuilt for a phone after measuring the desktop DB at 40 MB for 100 messages — embeddings went from ~39 KB of JSON per row to a 3 KB quantised blob. ([docs](docs/ANDROID.md))
-- **Built with [Claude Code](https://claude.com/claude-code)** — this repo is also a case study in agentic development: see the phased implementation plan under [`plan/`](plan/) and the reusable skills/rules in [`.agents/skills/`](.agents/skills/).
+What a notification-based reader cannot do, stated plainly: there is no message
+history (only messages that arrive while the app is installed and running), long
+messages arrive truncated by WhatsApp, muted chats never notify, and messages you
+send yourself are not seen (use **Messages → Write message** for those). See
+[docs/ANDROID.md](docs/ANDROID.md).
 
-## Architecture at a glance
+## Requirements
 
+- An Android phone running **Android 10 (API 29) or later**, with WhatsApp and a
+  Google account whose calendar is synced.
+- A **Gemini API key** ([Google AI Studio](https://aistudio.google.com/app/apikey)).
+  Optional for capture — without it messages are stored but not parsed.
+- To build: **JDK 21** and the **Android SDK** (platform 36). The Gradle wrapper
+  (Gradle 8.14.3, AGP 8.13.2) is checked in.
+
+## Build and install
+
+```bash
+# 1. Gemini key — android/secrets.properties is gitignored. Never commit it.
+cp android/secrets.properties.example android/secrets.properties
+# edit it and set:  geminiApiKey=<your key>
+
+# 2. Build the debug APK
+cd android
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew :app:assembleDebug
+
+# 3. Install on a phone connected over USB (USB debugging on)
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
-┌──────────────────────────────  Electron main  ──────────────────────────────┐
-│                                                                              │
-│   ┌──────────── React (Vite) ────────────┐    ┌──────── NestJS ──────────┐   │
-│   │  Dashboard · Calendar · Settings ·   │ ←→ │  Settings · Messages ·   │   │
-│   │  Monitor · WhatsApp QR · OAuth flow  │    │  Calendar · LLM · Sync · │   │
-│   └──────────────────────────────────────┘    │  Auth · Monitor          │   │
-│                                                └────┬────────────┬────────┘   │
-│                                                     │            │            │
-│                                          ┌──────────┴──┐   ┌────┴─────────┐  │
-│                                          │  TypeORM /  │   │  Ports &     │  │
-│                                          │  SQLite     │   │  Adapters    │  │
-│                                          └─────────────┘   └──┬───────────┘  │
-└─────────────────────────────────────────────────────────────────│────────────┘
-                                                                  │
-                       ┌──────────────────────────────────────────┼──────────┐
-                       ▼                  ▼                       ▼          ▼
-                  Gmail API       Google Calendar API         Gemini   WhatsApp Web
-                                                              (LLM)   (whatsapp-web.js)
+
+The key is compiled into `BuildConfig`, so anyone holding the APK can extract
+it. Use a Gemini project with a spend cap.
+
+On Xiaomi / HyperOS phones, `adb install` fails with
+`INSTALL_FAILED_USER_RESTRICTED` unless **Install via USB** and **USB debugging
+(Security settings)** are enabled in Developer options.
+
+## First-run setup on the phone
+
+1. **Notification access** — the app deep-links to Settings → Notifications →
+   Device & app notifications → *Notification access*. Turn it on for
+   ParentSync. (Android does not allow this to be a runtime dialog.)
+2. **Calendar and notification permissions** — grant both when asked.
+3. **Choose the calendar** — Settings → **Choose calendar**. Pick a Google
+   calendar; a "Phone calendar — On this phone only" entry never syncs to Google
+   and is flagged in red.
+4. **Add children** — Settings → **Children**: name, colour, and the WhatsApp
+   groups that belong to each child. Groups with a message in the last two weeks
+   are offered; any other group can be typed by name.
+5. **Pick watched groups** — any other group to capture. The watch list starts
+   empty and **nothing is captured until you choose** (or turn on *Capture every
+   chat*).
+6. **Sync schedule** — the hours the app wakes up (default 9 · 14 · 18). New
+   messages are processed within about a minute regardless.
+7. **Let it run in the background.** Settings shows a *Running in the
+   background* card. On **Xiaomi / Redmi / POCO (HyperOS / MIUI)** turn on
+   **Autostart** and set battery use to **No restrictions** — without Autostart
+   HyperOS kills the app when it leaves the screen, and with it every scheduled
+   sync and the notification listener. On other phones, remove battery
+   optimisation for ParentSync.
+
+A message must come from someone else to be captured — WhatsApp posts no
+notification for messages sent from the same phone.
+
+## Running the tests
+
+```bash
+cd android
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 ./gradlew :app:testDebugUnitTest
 ```
 
-Each NestJS feature module owns its domain (entities, repositories, services, controllers). External services are accessed only through interfaces — `IGmailService`, `IGoogleCalendarService`, `ILLMService`, `IMessageRepository`, `ISettingsRepository` — wired via DI tokens, so tests swap in mocks with `Test.createTestingModule().overrideProvider()`.
+JVM unit tests cover the WhatsApp notification parser, the ingest gate, the Room
+DAOs against in-memory SQLite, the Gemini contract against MockWebServer,
+dedup, the embedding codec, scheduling arithmetic and more.
 
-The Android client is the same pipeline against different primitives:
-
-```
-NotificationListenerService ─> MessageIngestor ─> Room ─> SyncWorker ─> CalendarContract
-   (WhatsApp, read-only)                         (+files   (WorkManager,   (on-device
-                                                 for images) 45s coalesce)  Google account)
-                                                                 │
-                                                                 └─> ApprovalManager
-                                                                     (local notification)
-```
-
-Full writeup: **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**; the Android
-differences and their reasons: **[`docs/ANDROID.md`](docs/ANDROID.md)**.
-
-## Tech Stack
-
-| Layer | Choice |
-|---|---|
-| Desktop shell | Electron 35, electron-builder (NSIS / DMG / AppImage + deb) |
-| Frontend | React 19 + TypeScript + Vite, SCSS (7-1 architecture) |
-| Backend | NestJS 10 + TypeScript, class-validator, `@nestjs/config` (Joi) |
-| Persistence | SQLite via TypeORM, stored in OS user-data dir |
-| AI | Google Gemini (multimodal), prompt-engineered extraction with structured DTOs |
-| WhatsApp | `whatsapp-web.js` with in-app QR onboarding, persisted session |
-| Email & Calendar | Gmail API & Google Calendar API (OAuth 2.0 + PKCE) |
-| Testing | Jest, Supertest, Vitest, Puppeteer |
-| Android | Kotlin 2.2 + Jetpack Compose (Material 3), Room, WorkManager, Gradle 8.14 / AGP 8.13, `compileSdk` 36 / `minSdk` 29 |
+On-device testing uses an emulator started with `-memory 4096` and a debug-only
+harness that posts WhatsApp-shaped notifications (a real notification's package
+cannot be spoofed). Commands are in
+[docs/ANDROID.md](docs/ANDROID.md#testing-on-the-emulator).
 
 ## Documentation
 
-| Doc | What's inside |
+| Doc | What's in it |
 |---|---|
-| [Architecture](docs/ARCHITECTURE.md) | Module boundaries, ports & adapters, sync orchestration, and how the two clients relate |
-| [Android client](docs/ANDROID.md) | The native port: notification ingestion, no-OAuth calendar, storage rebuilt for a phone, and what the platform makes impossible |
-| [User Guide](docs/USER-GUIDE.md) | What the app actually does, end-user perspective |
-| [Onboarding](docs/ONBOARDING.md) | First-run flow: OAuth, WhatsApp QR, settings |
-| [Prompt Customization](docs/PROMPT-CUSTOMIZATION.md) | Editing the LLM prompt, the 😢-feedback loop, cache behavior |
-| [Event Dismissal](docs/EVENT-DISMISSAL.md) | Cancel / delay detection design |
-| [Event Reminders](docs/EVENT-REMINDERS.md) | The 24h-before-event reminder pipeline |
-| [Google Tasks](docs/GOOGLE-TASKS.md) | Timed events vs. date-only tasks |
-| [Semantic dedup](docs/semantic-dedup.md) | Embedding pre-filter and the five duplicate-suppression layers |
-| [WhatsApp resilience](docs/WHATSAPP-RESILIENCE.md) | Every WhatsApp Web breakage so far and the page-level patch for each |
-| [Google auth](docs/GOOGLE-AUTH.md) | Two accounts, the 7-day refresh expiry, connection states |
-| [LangChain & LangGraph](docs/LANGCHAIN-LANGGRAPH.md) | The AI ports, the chains behind them, and the event-sync graph |
-| [Observability](docs/OBSERVABILITY.md) | Reading a sync trace, and what leaves the machine with tracing on |
-| [Production smoke test](docs/PRODUCTION-SMOKE-TEST.md) | The end-to-end self-test that runs on deploy and daily |
-| [Message pipeline](https://shaharbarmoshe.github.io/ParentSync/message-pipeline.html) | End-to-end sync flow: ingest → dedup → LLM parse → approval → calendar |
-| [Implementation plan](plan/README.md) | The phased plan that drove development |
+| [Architecture](docs/ARCHITECTURE.md) | The pipeline, components, storage, dedup, scheduling, retention, background running |
+| [Android details](docs/ANDROID.md) | Platform constraints, every feature in depth, the debug harness, what is and is not verified on a device |
+| [CLAUDE.md](CLAUDE.md) | Project instructions for Claude Code |
 
-## Getting Started
-
-> Single-user app — no app-level auth, no dev/prod split. Built once, runs as a standalone executable.
-
-### Prerequisites
-- Node.js 18+
-- npm
-- Google Chrome (used by `whatsapp-web.js`)
-
-### Setup
-
-```bash
-./setup.sh   # idempotent: deps + .env scaffold + build
-```
-
-You'll then need:
-
-| What | How |
-|---|---|
-| **Gemini API key** (required for parsing) | Settings UI → `gemini_api_key` ([get one](https://aistudio.google.com/app/apikey)) |
-| **Google OAuth client** (Gmail + Calendar) | Settings UI → `google_client_id` / `google_client_secret` ([Cloud Console](https://console.cloud.google.com/apis/credentials)) |
-
-### Run
-
-```bash
-# Hot-reload dev (Electron + Vite + Nest)
-npm run electron:dev
-
-# Or browser-only dev
-cd backend  && npm run start:dev   # → :41932
-cd frontend && npm run dev         # → :5173
-
-# Package
-npm run package:linux    # AppImage + .deb
-npm run package:win      # NSIS .exe
-npm run package:mac      # .dmg
-
-# Android
-cp android/secrets.properties.example android/secrets.properties   # add geminiApiKey
-cd android && ./gradlew :app:assembleDebug
-```
-
-### Test
-
-```bash
-npm test                      # backend unit + e2e + frontend
-cd backend  && npm test       # backend unit tests
-cd backend  && npm run test:e2e
-cd frontend && npm test       # vitest
-
-cd android && ./gradlew :app:testDebugUnitTest   # Android JVM unit tests
-```
-
-Verifying Android on an emulator needs `-memory 4096` and a debug harness to
-stand in for WhatsApp (a notification's package cannot be spoofed). Both are
-covered in [`docs/ANDROID.md`](docs/ANDROID.md#testing-on-the-emulator).
-
-## Project Layout
+## Project layout
 
 ```
-parentsync/
-├── electron/         Electron main process (window, tray, backend embedding)
-├── backend/          NestJS API — feature modules (settings, messages,
-│                     calendar, llm, sync, auth, monitor, shared)
-├── frontend/         React + Vite UI (pages, components, services)
-├── android/          Native Android client — Kotlin + Compose, Room,
-│                     WorkManager (independent of backend/ and frontend/)
-├── assets/           App icons (.ico / .icns / .png)
-├── docs/             Architecture, user guide, feature designs, screenshots
-├── plan/             Phased implementation plan (used to drive Claude Code)
-├── scripts/          Packaging, tests, install-as-systemd-service
-└── .agents/skills/   Reusable Claude Code skills (NestJS rules, OAuth2,
-                      Clean Architecture, SCSS, UI/UX) used during development
+android/
+  app/src/main/java/com/parentsync/mobile/
+    ingest/      NotificationListenerService + pure WhatsApp parser
+    data/        Room database, MessageIngestor, EmbeddingCodec, ImageStore, SettingsStore
+    calendar/    DeviceCalendarRepository (CalendarContract), calendar choice, child colours
+    llm/         GeminiClient, embedding client, extraction prompt
+    sync/        SyncWorker, SyncScheduler, ApprovalManager, dedup, notifications, receivers
+    system/      Background-running checks (Autostart, battery optimisation)
+    ui/          Compose screens + MainViewModel
+  app/src/debug/ adb-drivable test harness (debug builds only)
+  app/src/test/  JVM unit tests
+docs/            Architecture and Android documentation
 ```
 
 ## About Claude Code
 
-This project was built end-to-end with **[Claude Code](https://claude.com/claude-code)**, Anthropic's coding agent. The repo intentionally preserves the artifacts of that workflow:
+This project was built with **[Claude Code](https://claude.com/claude-code)**,
+Anthropic's coding agent. [`CLAUDE.md`](CLAUDE.md) holds the project-level
+guidance the agent reads on every session.
 
-- **[`plan/`](plan/)** — phased implementation plan with explicit acceptance criteria, used as the source of truth Claude worked against.
-- **[`.agents/skills/`](.agents/skills/)** — distilled, reusable rule sets (NestJS best practices, OAuth 2.0, Clean Architecture, SCSS, UI/UX) the agent loaded on demand.
-- **[`CLAUDE.md`](CLAUDE.md)** — project-level guidance the agent reads on every session.
-
-The result is production-quality code with explicit architectural intent, full test coverage, and human-readable docs — the engineering decisions are the human's; the typing was the agent's.
+ParentSync started as an Electron desktop app; that client was removed when the
+project became Android-only and remains in the git history.
 
 ## License
 

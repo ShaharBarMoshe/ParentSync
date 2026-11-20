@@ -30,9 +30,9 @@ class EmbeddingCodecTest {
     fun `a 3072-dim vector costs about 3KB instead of about 39KB`() {
         val blob = EmbeddingCodec.encode(randomVector(1))
 
-        // The whole reason this class exists. The desktop build stores the same
-        // vector as a JSON array, measured at ~39 200 bytes on the live
-        // database; a dedup pass reads up to 1000 of them.
+        // The whole reason this class exists. The same vector stored as a JSON
+        // array of floats is ~39 000 bytes, and a dedup pass reads up to 1000
+        // of them.
         assertThat(blob.size).isEqualTo(3072 + 8)
         assertThat(blob.size).isLessThan(4_000)
     }

@@ -347,8 +347,8 @@ class ParentSyncDaoTest {
 
         val removed = syncLogs.prune(keep = 5)
 
-        // The desktop table reached 2934 rows with no retention; on a phone that
-        // is a slow leak nobody notices until storage is gone.
+        // Without retention the sync log grows by a row per run forever; on a
+        // phone that is a slow leak nobody notices until storage is gone.
         assertThat(removed).isEqualTo(15)
     }
 

@@ -8,9 +8,8 @@ import java.util.UUID
 /**
  * Holds message images as files, not database rows.
  *
- * The desktop build stores them as base64 inside a `simple-json` column: 10.6 MB
- * for 22 messages in the live database, and every read of those rows pays for
- * it. Here the row keeps a filename and the bytes live under
+ * Stored as base64 inside a JSON column they measured 10.6 MB for 22 messages,
+ * and every read of those rows would pay for it. Instead the row keeps a filename and the bytes live under
  * `filesDir/message-images`, so a query that does not need the picture does not
  * load it.
  *
@@ -87,7 +86,7 @@ class ImageStore(context: Context) {
 
     companion object {
         const val DIR_NAME = "message-images"
-        /** Matches the desktop cap so the LLM call behaves the same. */
+        /** Upper bound on an image sent to the LLM. */
         const val MAX_BYTES = 4 * 1024 * 1024
         private const val TAG = "ImageStore"
     }

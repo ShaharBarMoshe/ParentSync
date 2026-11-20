@@ -55,7 +55,7 @@ class SyncScheduleTest {
     }
 
     @Test
-    fun `stored hours round-trip in the desktop format`() {
+    fun `stored hours round-trip as a sorted comma-separated list`() {
         assertThat(SyncSchedule.format(setOf(18, 9, 14))).isEqualTo("9,14,18")
         assertThat(SyncSchedule.parse("9, 14,18")).containsExactly(9, 14, 18).inOrder()
     }

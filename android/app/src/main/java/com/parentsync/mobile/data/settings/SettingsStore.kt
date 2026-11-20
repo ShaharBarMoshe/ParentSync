@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.map
 
 /**
- * App settings, replacing the desktop `user_settings` table.
+ * App settings.
  *
  * Settings are read on the notification path, which runs for every notification
  * on the device, so they have to be readable without suspending — hence
@@ -18,11 +18,11 @@ import kotlinx.coroutines.flow.map
  * either block or hop threads before it can decide whether a notification is
  * even interesting.
  *
- * What is deliberately *not* here, compared with desktop:
+ * What is deliberately *not* here:
  *
- *  - `approval_channel` — approvals are local notifications now, so there is no
+ *  - an approval channel — approvals are local notifications, so there is no
  *    WhatsApp group to send to.
- *  - the Google OAuth token rows — calendar goes through CalendarContract with
+ *  - Google OAuth tokens — calendar goes through CalendarContract with
  *    no token at all, and Gmail's token is held by Play Services under the
  *    account already on the device.
  */
@@ -156,8 +156,8 @@ class SettingsStore(context: Context) {
         }
 
     /**
-     * Hours of the day (0–23) the app wakes up and syncs. Stored as "9,14,18",
-     * the desktop `check_schedule` format. Never empty: clearing every hour
+     * Hours of the day (0–23) the app wakes up and syncs. Stored as "9,14,18".
+     * Never empty: clearing every hour
      * would mean the app never wakes, so an empty write keeps the default.
      */
     var syncHours: Set<Int>
@@ -244,9 +244,9 @@ class SettingsStore(context: Context) {
 
         /**
          * Channel names arrive from a notification title, which carries
-         * whatever WhatsApp rendered — including the Hebrew gershayim and RTL
-         * marks the desktop build already had to strip. Same normalisation, so a
-         * channel configured on one side matches on the other.
+         * whatever WhatsApp rendered — including Hebrew gershayim and RTL
+         * marks. Normalised so a channel typed by hand matches the name
+         * WhatsApp shows.
          */
         fun normaliseChannel(value: String): String = value
             .replace('״', '"')

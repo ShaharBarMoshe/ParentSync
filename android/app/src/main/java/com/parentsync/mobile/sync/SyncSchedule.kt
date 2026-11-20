@@ -4,15 +4,14 @@ import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 
 /**
- * The hours of the day the app wakes up and runs a sync — the Android side of
- * the desktop `check_schedule` setting, stored the same way ("9,14,18").
+ * The hours of the day the app wakes up and runs a sync, stored as "9,14,18".
  *
  * Pure java.time, no Android types, so the arithmetic (midnight wrap, DST,
  * "now is exactly on the hour") is unit-tested on the JVM.
  */
 object SyncSchedule {
 
-    /** Desktop's default, so both clients wake at the same times out of the box. */
+    /** Morning, after school, early evening. */
     val DEFAULT_HOURS: Set<Int> = setOf(9, 14, 18)
 
     val EVERY_HOUR: Set<Int> = (0..23).toSet()
@@ -31,7 +30,7 @@ object SyncSchedule {
      *
      * Strictly after, so a pass that finishes at 09:00:00.4 schedules 14:00, not
      * 09:00 again. An empty set falls back to [DEFAULT_HOURS] rather than never
-     * waking — the same choice desktop makes with an empty schedule.
+     * waking.
      */
     fun nextRun(now: ZonedDateTime, hours: Set<Int>): ZonedDateTime {
         val wanted = hours.filter { it in 0..23 }.ifEmpty { DEFAULT_HOURS.toList() }.toSet()

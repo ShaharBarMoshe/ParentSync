@@ -68,7 +68,7 @@ class ChildChannelsTest {
     }
 
     @Test
-    fun `the title gets the child's name once, like desktop`() {
+    fun `the title gets the child's name prefixed exactly once`() {
         assertThat(ChildChannels.prefixTitle("Trip", "Yoni")).isEqualTo("Yoni: Trip")
         assertThat(ChildChannels.prefixTitle("Yoni: Trip", "Yoni")).isEqualTo("Yoni: Trip")
         assertThat(ChildChannels.prefixTitle("Trip", null)).isEqualTo("Trip")

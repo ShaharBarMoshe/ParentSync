@@ -126,16 +126,12 @@ interface MessageDao {
     fun channelsFlow(): Flow<List<String>>
 
     /**
-     * Drops message bodies past the retention window. Events already created
-     * from them are kept — the calendar is the product, the message is only the
-     * evidence. Returns the image refs of deleted rows so their files can go
-     * too; the DB has no way to cascade into the filesystem.
-     */
-    /**
-     * Retention selects processed messages older than [before], and any message
-     * older than [unparsedBefore] — an unprocessed one is kept past the normal
-     * cutoff so a missing key or a Gemini outage cannot delete it unread, but
-     * not forever.
+     * Retention: the image refs of the rows [deleteBefore] is about to drop, read
+     * first because the DB cannot cascade into the filesystem. It selects
+     * processed messages older than [before], and any message older than
+     * [unparsedBefore] — an unprocessed one is kept past the normal cutoff so a
+     * missing key or a Gemini outage cannot delete it unread, but not forever.
+     * Events created from deleted messages are kept.
      */
     @Query(
         "SELECT imageRefs FROM messages WHERE imageRefs IS NOT NULL AND " +
@@ -231,8 +227,8 @@ interface SyncLogDao {
 
     /**
      * Keeps the newest [keep] rows and drops the rest. Called at the end of
-     * every pass: the desktop table grew to 2934 rows unbounded, and on a phone
-     * that is storage spent on history nobody reads.
+     * every pass: unbounded, a log like this grows by thousands of rows, and on
+     * a phone that is storage spent on history nobody reads.
      */
     @Query(
         """

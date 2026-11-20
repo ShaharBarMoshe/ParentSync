@@ -27,8 +27,7 @@ import java.security.MessageDigest
  * **Fail-open contract: this never throws.** If the embedding call fails, the
  * message is treated as fresh and goes to the LLM. Getting a duplicate event
  * occasionally is a nuisance; dropping a real event because an embedding
- * request timed out is a missed school trip. Same contract as the desktop
- * service, for the same reason.
+ * request timed out is a missed school trip.
  */
 class MessageDeduplicationService(
     private val messages: MessageDao,

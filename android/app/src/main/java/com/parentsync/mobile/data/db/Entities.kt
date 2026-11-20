@@ -14,14 +14,12 @@ enum class ApprovalStatus { NONE, PENDING, APPROVED, REJECTED }
 /**
  * A captured WhatsApp notification or Gmail message.
  *
- * Differences from the desktop `messages` table, both forced by running on a
- * phone:
+ * Two storage choices, both forced by running on a phone:
  *
  *  - `embedding` is a quantised blob (see EmbeddingCodec), not JSON. ~3 KB a row
  *    instead of ~39 KB, and comparable without allocating.
- *  - images are not here at all. The desktop table holds base64 JSON inline,
- *    which is 10.6 MB for 22 rows in the live database and the main reason it
- *    reached 40 MB. `imageRefs` holds filenames under the app's
+ *  - images are not here at all. Held inline as base64 JSON they measured
+ *    10.6 MB for 22 rows, enough to dominate the database. `imageRefs` holds filenames under the app's
  *    `message-images` dir instead; see ImageStore.
  *
  * `sourceKey` is the dedup identity for ingestion: the same notification can be
@@ -92,8 +90,8 @@ data class MessageEntity(
  * An event extracted from a message, before or after it reaches the device
  * calendar.
  *
- * `calendarEventId` is the row id CalendarContract hands back on insert. It
- * replaces the desktop `googleEventId`: writes go through the provider, and the
+ * `calendarEventId` is the row id CalendarContract hands back on insert, not a
+ * Google event id: writes go through the provider, and the
  * Google sync adapter pushes them up, so the app never holds a Google id.
  */
 @Entity(
@@ -141,9 +139,8 @@ data class ChildEntity(
     /** Calendar colour key understood by CalendarContract, or null for default. */
     val colorKey: String? = null,
     /**
-     * The WhatsApp groups that belong to this child, newline-separated — the
-     * same encoding as the desktop `children.channelNames`, so a group name
-     * containing a comma survives. Read and written through
+     * The WhatsApp groups that belong to this child, newline-separated so a
+     * group name containing a comma survives. Read and written through
      * [com.parentsync.mobile.data.ChildChannels], never split by hand.
      *
      * A group listed here is captured even when it is not on the global watch
@@ -156,8 +153,8 @@ data class ChildEntity(
 /**
  * One line per sync pass, for the diagnostics screen.
  *
- * Capped by [com.parentsync.mobile.data.db.SyncLogDao.prune]: the desktop table
- * had 2934 rows and no retention, which is a slow leak on a phone.
+ * Capped by [com.parentsync.mobile.data.db.SyncLogDao.prune]: without retention
+ * this table is a slow leak on a phone.
  */
 @Entity(tableName = "sync_logs", indices = [Index(value = ["startedAt"])])
 data class SyncLogEntity(

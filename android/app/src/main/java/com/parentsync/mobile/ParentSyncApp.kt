@@ -27,9 +27,8 @@ import com.parentsync.mobile.sync.SyncWorker
  *
  * No Hilt on purpose. The graph is a dozen singletons with no scopes and no
  * variants, and Hilt would add an annotation processor and a build-time code-gen
- * step to express `val x by lazy`. The desktop build needs NestJS DI because it
- * swaps adapters per environment and in tests; here the tests construct what they
- * need directly.
+ * step to express `val x by lazy`. Nothing is swapped per environment, and the
+ * tests construct what they need directly.
  *
  * Everything is lazy: the notification listener starts with the process and only
  * touches [messageIngestor], so opening the app should not be what pays to build

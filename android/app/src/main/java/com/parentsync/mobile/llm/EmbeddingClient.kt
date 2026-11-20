@@ -31,7 +31,7 @@ fun interface EmbeddingClient {
 /**
  * Gemini `gemini-embedding-001` over REST.
  *
- * Asks for **768 dimensions**, not the 3072 the desktop build stores. The model
+ * Asks for **768 dimensions**, not the model's full 3072. The model
  * is Matryoshka-trained, so a truncated vector is still a usable vector, and on
  * a phone the difference is 4× less to store and 4× less to score per candidate.
  * The dedup threshold is unaffected because both sides of every comparison come

@@ -32,11 +32,10 @@ fun interface SyncTrigger {
 /**
  * Decides when a sync pass runs.
  *
- * The desktop build syncs hourly on a cron between 09:00 and 21:00, because it
- * had to poll WhatsApp Web for messages it might have missed. Here messages
- * arrive by push, so the schedule inverts: a pass runs shortly after a message
- * lands, and the periodic pass is only a safety net for anything left unparsed
- * because the network or the LLM was down.
+ * Messages arrive by push, so there is nothing to poll: a pass runs shortly
+ * after a message lands. The passes at the hours the user picks
+ * ([ensureScheduledSync]) are a safety net for anything left unparsed because
+ * the network or the LLM was down.
  *
  * [requestSoon] exists to coalesce. A WhatsApp group going quiet-to-busy delivers
  * a dozen notifications in seconds, and one LLM pass over a dozen messages is

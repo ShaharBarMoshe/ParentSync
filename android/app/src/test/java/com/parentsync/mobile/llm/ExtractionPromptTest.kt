@@ -7,7 +7,7 @@ import org.junit.Test
 class ExtractionPromptTest {
 
     @Test
-    fun `the prompt keeps the phrase the desktop tests key on`() {
+    fun `the prompt identifies itself as the calendar event extractor`() {
         assertThat(ExtractionPrompt.SYSTEM).contains("calendar event extractor")
     }
 

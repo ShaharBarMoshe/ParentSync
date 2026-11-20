@@ -1,35 +1,29 @@
-# Dependencies
-node_modules/
+# Android build output
+android/.gradle/
+android/build/
+android/app/build/
+android/.kotlin/
+android/app/release/
+*.apk
+*.aab
+.cxx/
 
-# Build output
-dist/
-electron/dist/
-release/
-
-# Environment & secrets
+# Machine-local and secret (the Gemini key lives in secrets.properties)
+android/local.properties
+android/secrets.properties
 .env
 .env.local
-*.sqlite
-client_secret.json
-.encryption_key
 
-# WhatsApp Web session & cache
-backend/.wwebjs_auth/
-backend/.wwebjs_cache/
-
-# Coverage reports
-backend/coverage/
-
-# Logs
-backend/logs/
-
-# Test reports
+# Leftovers of the removed desktop app, still on disk in old checkouts
+node_modules/
+release/
 test-reports/
+backend/
+frontend/
 
 # IDE
 .idea/
 .vscode/
-backend/.vscode/
 *.swp
 *.swo
 
@@ -39,21 +33,6 @@ backend/.vscode/
 .junie/
 skills-lock.json
 
-# Local build state
-.last-packaged-sha
-
 # OS
 .DS_Store
 Thumbs.db
-
-# Android
-android/.gradle/
-android/build/
-android/app/build/
-android/local.properties
-android/secrets.properties
-android/.kotlin/
-android/app/release/
-*.apk
-*.aab
-.cxx/

@@ -17,10 +17,9 @@ import java.time.ZoneId
 /**
  * Reads and writes the Google calendar already synced on the phone.
  *
- * This is the part of the port that comes out simpler than the desktop build.
- * Desktop needs an OAuth client, a consent flow, encrypted refresh tokens and a
- * token-refresh path — about a thousand lines across `AuthModule` and
- * `GoogleCalendarService`. Here the account is already signed in, the Google
+ * No OAuth client, consent flow, encrypted refresh tokens or token-refresh path
+ * is needed, which is what the Calendar REST API would demand. The account is
+ * already signed in, the Google
  * sync adapter already owns the uplink, and `CalendarContract` is a local
  * ContentProvider: insert a row, and the adapter pushes it. No tokens exist to
  * leak or expire.
