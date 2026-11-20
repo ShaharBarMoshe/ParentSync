@@ -154,6 +154,27 @@ longest-silent. Groups seen before this was added are stamped once as seen
 "now" on first read, so they stay offered for two weeks after the update and
 then age out unless they post. The "Watched groups" card still lists every group seen.
 
+**Scanning when Settings opens.** Settings (and the child editor, each time it
+opens, or on "Scan again") runs `MainViewModel.scanGroups`, which:
+
+1. asks the bound listener to re-read the WhatsApp notifications showing now
+   (`ParentSyncNotificationListener.rescanActiveNotifications`, the same
+   catch-up that runs on connect); the ingestor records their groups as usual;
+2. reads each WhatsApp group's newest stored message from the last 2 weeks
+   (`MessageDao.channelActivitySince`) and folds it in with
+   `SettingsStore.mergeSeenChannelTimes` → `RecentGroups.merge`, which keeps
+   the newer time per group and writes nothing when nothing changed.
+
+That is as far as a scan can reach: Android gives a notification listener no
+access to WhatsApp's chat list or history, only to its notifications. A
+**muted group never notifies**, and one read on another device first is often
+cleared before the phone shows it, so neither can be found. Messages that
+arrived while the listener was unbound and whose notification is gone are lost
+too. When the list is empty, the editor says this (`GroupScanText`) and offers
+the type-a-name field; unmuting the group makes it appear with its next message.
+WhatsApp's own notification titles ("WhatsApp", "WhatsApp Business", e.g. on
+backup notifications) are never offered as groups (`RecentGroups.isGroupName`).
+
 Schema v2 adds the column with an additive migration (`MIGRATION_1_2`);
 `MigrationTest` runs it against the exported v1 schema. There is no destructive
 fallback: captured messages cannot be re-read once WhatsApp's notification is
@@ -170,7 +191,17 @@ Nothing the app logs grows without bound:
   store it every time.
 - **Logcat** lines go to Android's shared in-memory ring buffer, not to app
   storage; Android rotates it. The app writes no log files.
-- **Captured messages** are dropped after the retention period, the SQLite
+- **Captured messages** are kept **1 day** once processed
+  (`DEFAULT_RETENTION_DAYS`). The row is clutter after that: an event's
+  description already carries the message text, and an irrelevant message has
+  nothing left to give. A message **not yet processed** is kept past the cutoff
+  so a missing Gemini key or an outage cannot delete it unread, up to
+  `SyncWorker.UNPARSED_RETENTION_DAYS` (14), when it goes anyway
+  (`MessageDao.deleteBefore(before, unparsedBefore)`). The group picker does not
+  read stored messages for its 2-week list, so it is unaffected; and the
+  message-level dedup pre-filter can now only match against the last day's
+  messages — a flyer re-forwarded days later is caught by event dedup instead.
+  The SQLite
   write-ahead log is limited to 4 MB (`journal_size_limit`), and WorkManager
   prunes its own finished-work records.
 
@@ -212,6 +243,45 @@ adb shell dumpsys jobscheduler | grep "JOB androidx.work.*parentsync"   # job id
 adb shell cmd jobscheduler run -f -n androidx.work.systemjobscheduler \
   com.parentsync.mobile.debug <id>
 ```
+
+## Running in the background (HyperOS Autostart)
+
+Background work is WorkManager, plus the notification listener — both run
+with the app closed **only if the phone allows it**. On the HyperOS test phone
+(Nov 2026), Autostart was off (`cmd appops get <pkg> 10008` → `ignore`).
+HyperOS then killed the process soon after the app left the screen and
+removed every WorkManager job with it: `dumpsys jobscheduler` held no job for
+the app, the 23:00 sync was the last one until the app was opened at 06:22,
+and messages were only saved when something happened to start the process
+(the listener is unbound while the process is dead). No code inside the app
+survives that; the schedule is re-armed on every process start
+(`ParentSyncApp`), but nothing starts the process.
+
+Settings therefore has a **"Running in the background"** card
+(`BackgroundAccess`, text in `BackgroundAccessText`), re-read on every resume:
+
+- **Autostart** (Xiaomi/Redmi/POCO only) is read through the hidden
+  `AppOpsManager.checkOpNoThrow(int, int, String)` with HyperOS's op 10008 —
+  the only way to read it; Android 16 allows the call (`api=unsupported`,
+  logged as allowed). If it cannot be read the card still asks the user to
+  check. "Allow autostart" opens
+  `com.miui.securitycenter/com.miui.permcenter.autostart.AutoStartManagementActivity`,
+  falling back to the app's info page.
+- **Battery limits**: `PowerManager.isIgnoringBatteryOptimizations`; "Remove
+  battery limits" shows the system dialog
+  (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, declared in the manifest — the app
+  is sideloaded, so Play's policy on it does not apply).
+
+For the test phone it can also be set over adb:
+
+```bash
+adb shell cmd appops set com.parentsync.mobile.debug 10008 allow
+adb shell dumpsys deviceidle whitelist +com.parentsync.mobile.debug
+```
+
+Verified on the phone: with 10008 `ignore` the card reads Autostart off, with
+`allow` it reads on, and after a force-stop and restart the scheduled job is
+back in `dumpsys jobscheduler`.
 
 ## Writing a message in the app
 
@@ -273,7 +343,7 @@ causes, all of which matter more on a phone:
 | Embeddings as JSON text | **~39 KB per row**, 3072 dims; a dedup pass reads up to 1000 of them (~39 MB of JSON parsed per check) | Quantised int8 blob, **3 076 bytes** — 12.7× smaller, and compared without allocating. `EmbeddingCodec` |
 | Images as base64 JSON inline in `messages` | **10.6 MB for 22 rows** | Files under `filesDir/message-images`; the row keeps a filename. `ImageStore` |
 | `sync_logs` unbounded | **2934 rows**, no retention | Capped at 200, pruned every pass |
-| No message retention at all | — | Rows older than 45 days deleted; **events are kept** — the calendar entry is the product, the message is only the evidence |
+| No message retention at all | — | Processed rows older than 1 day deleted (unprocessed kept up to 14); **events are kept** — the calendar entry is the product, the message is only the evidence |
 
 `EmbeddingCodecTest` asserts the quantised similarity stays within **0.001** of
 exact cosine, so the size win costs nothing that could move a score across the
@@ -373,6 +443,14 @@ default and nothing is captured until you pick** — a personal phone carries fa
 more chat traffic than a scraper aimed at school groups, and every extra chat is
 LLM spend.
 
+A group is captured when it is assigned to a child, when it is on the watch
+list, or when **Capture every chat** is on. That switch captures every chat even
+when the watch list is not empty; it used to apply only while the list was
+empty, so the switch showed on while one watched group silently dropped every
+other chat (seen on the phone: one test group watched, every real group missing
+from the Messages tab). Only messages that arrive after capture applies are
+stored; earlier ones were never kept.
+
 ---
 
 ## Testing on the emulator
@@ -469,7 +547,7 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-**169 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+**183 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
 a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
 the dedup service (15), the embedding codec (8), and the own-notification guard
 (2).

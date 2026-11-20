@@ -39,4 +39,12 @@ class SettingsStoreRecentTest {
         val later = System.currentTimeMillis() + RecentGroups.WINDOW_MILLIS + 60_000
         assertThat(store.recentChannels(later)).isEmpty()
     }
+
+    @Test
+    fun `groups found among stored messages are offered`() {
+        val store = SettingsStore(context)
+        val now = System.currentTimeMillis()
+        store.mergeSeenChannelTimes(mapOf("School group" to now - 60_000, "Ancient" to now - 2 * RecentGroups.WINDOW_MILLIS))
+        assertThat(store.recentChannels(now)).containsExactly("School group")
+    }
 }

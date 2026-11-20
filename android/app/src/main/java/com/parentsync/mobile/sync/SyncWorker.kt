@@ -362,14 +362,16 @@ class SyncWorker(
      * the same.
      */
     private suspend fun runRetention() {
-        val cutoff = System.currentTimeMillis() -
-            container.settings.messageRetentionDays * DAY_MILLIS
+        val now = System.currentTimeMillis()
+        val cutoff = now - container.settings.messageRetentionDays * DAY_MILLIS
+        // Never sooner than the normal cutoff, even if retention is set longer.
+        val unparsedCutoff = minOf(cutoff, now - UNPARSED_RETENTION_DAYS * DAY_MILLIS)
 
-        val doomedRefs = container.db.messages().imageRefsBefore(cutoff)
+        val doomedRefs = container.db.messages().imageRefsBefore(cutoff, unparsedCutoff)
             .flatMap { it.split(',') }
             .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
 
-        val deleted = container.db.messages().deleteBefore(cutoff)
+        val deleted = container.db.messages().deleteBefore(cutoff, unparsedCutoff)
         if (doomedRefs.isNotEmpty()) container.images.delete(doomedRefs)
         if (deleted > 0) Log.i(TAG, "retention dropped $deleted message row(s)")
     }
@@ -388,6 +390,9 @@ class SyncWorker(
     companion object {
         private const val TAG = "SyncWorker"
         private const val MESSAGE_BATCH = 25
+
+        /** How long a message that was never processed is kept before it goes anyway. */
+        const val UNPARSED_RETENTION_DAYS = 14L
         private const val CALENDAR_BATCH = 50
         private const val MAX_ATTEMPTS = 4
         private const val SYNC_LOG_RETENTION = 200

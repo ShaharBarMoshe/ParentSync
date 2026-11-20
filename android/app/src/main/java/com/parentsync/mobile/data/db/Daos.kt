@@ -24,8 +24,19 @@ data class EmbeddingCandidate(
     override fun hashCode(): Int = 31 * id.hashCode() + (embedding?.contentHashCode() ?: 0)
 }
 
+/** A group and when its newest stored message was sent. */
+data class ChannelActivity(val channel: String, val lastAt: Long)
+
 @Dao
 interface MessageDao {
+
+    /** Groups with a stored message since [since], for the child editor's list. */
+    @Query(
+        "SELECT channel, MAX(timestamp) AS lastAt FROM messages " +
+            "WHERE source = 'WHATSAPP' AND timestamp >= :since AND channel != '' " +
+            "GROUP BY channel",
+    )
+    suspend fun channelActivitySince(since: Long): List<ChannelActivity>
 
     /**
      * IGNORE, not REPLACE. WhatsApp re-posts a MessagingStyle notification
@@ -120,11 +131,23 @@ interface MessageDao {
      * evidence. Returns the image refs of deleted rows so their files can go
      * too; the DB has no way to cascade into the filesystem.
      */
-    @Query("SELECT imageRefs FROM messages WHERE timestamp < :before AND imageRefs IS NOT NULL")
-    suspend fun imageRefsBefore(before: Long): List<String>
+    /**
+     * Retention selects processed messages older than [before], and any message
+     * older than [unparsedBefore] — an unprocessed one is kept past the normal
+     * cutoff so a missing key or a Gemini outage cannot delete it unread, but
+     * not forever.
+     */
+    @Query(
+        "SELECT imageRefs FROM messages WHERE imageRefs IS NOT NULL AND " +
+            "((parsed = 1 AND timestamp < :before) OR timestamp < :unparsedBefore)",
+    )
+    suspend fun imageRefsBefore(before: Long, unparsedBefore: Long): List<String>
 
-    @Query("DELETE FROM messages WHERE timestamp < :before")
-    suspend fun deleteBefore(before: Long): Int
+    @Query(
+        "DELETE FROM messages WHERE " +
+            "(parsed = 1 AND timestamp < :before) OR timestamp < :unparsedBefore",
+    )
+    suspend fun deleteBefore(before: Long, unparsedBefore: Long): Int
 }
 
 @Dao

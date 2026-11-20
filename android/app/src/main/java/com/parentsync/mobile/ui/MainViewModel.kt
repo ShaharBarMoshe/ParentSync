@@ -26,6 +26,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.parentsync.mobile.calendar.ChildColors
 import com.parentsync.mobile.ingest.ParentSyncNotificationListener
+import com.parentsync.mobile.data.settings.RecentGroups
+import com.parentsync.mobile.system.BackgroundAccess
+import kotlinx.coroutines.Dispatchers
 import java.time.LocalDate
 import java.util.UUID
 
@@ -126,6 +129,32 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    private val _groupScan = MutableStateFlow<GroupScan?>(null)
+    val groupScan: StateFlow<GroupScan?> = _groupScan
+
+    /**
+     * Looks for recently active WhatsApp groups, so the child editor offers
+     * them. Reads the WhatsApp notifications showing now (the ingestor then
+     * remembers their groups) and the groups of messages already stored —
+     * the listener cannot see further into WhatsApp than that.
+     */
+    fun scanGroups() = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val read = ParentSyncNotificationListener.rescanActiveNotifications()
+            val since = System.currentTimeMillis() - RecentGroups.WINDOW_MILLIS
+            val found = container.db.messages().channelActivitySince(since)
+                .groupBy { WhatsAppNotificationParser.stripTitleCount(it.channel) }
+                .mapValues { (_, rows) -> rows.maxOf { it.lastAt } }
+                .filterKeys { it.isNotEmpty() }
+            container.settings.mergeSeenChannelTimes(found)
+            _groupScan.value = GroupScan(notificationsRead = read, groupsFromMessages = found.size)
+            Log.i(TAG, "group scan: notifications=${read ?: "listener not bound"} storedGroups=${found.size}")
+        } catch (e: Exception) {
+            Log.e(TAG, "group scan failed", e)
+            _groupScan.value = GroupScan(notificationsRead = null, groupsFromMessages = 0)
+        }
+    }
+
     /** Events already created for the child keep their title; only the link goes. */
     fun deleteChild(id: String) = viewModelScope.launch { container.db.children().delete(id) }
 
@@ -146,7 +175,7 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
                 // otherwise stay in the list as separate groups.
                 seenChannels = s.seenChannels
                     .map(WhatsAppNotificationParser::stripTitleCount)
-                    .filter { it.isNotEmpty() }
+                    .filter(RecentGroups::isGroupName)
                     .distinct()
                     .sorted(),
                 recentChannels = s.recentChannels()
@@ -249,6 +278,18 @@ class MainViewModel(private val container: AppContainer) : ViewModel() {
     fun setCaptureAll(enabled: Boolean) { container.settings.captureAllChannels = enabled }
 
     fun setRetentionDays(days: Int) { container.settings.messageRetentionDays = days }
+
+    private val _background = MutableStateFlow<BackgroundAccess.Status?>(null)
+
+    /** Whether the phone lets the app run while closed; re-read on every resume. */
+    val background: StateFlow<BackgroundAccess.Status?> = _background
+
+    fun refreshBackground(status: BackgroundAccess.Status) {
+        if (status != _background.value) {
+            Log.i(TAG, "background access: $status")
+        }
+        _background.value = status
+    }
 
     private val _listenerGranted = MutableStateFlow(false)
 

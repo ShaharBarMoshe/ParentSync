@@ -45,9 +45,16 @@ class SettingsStore(context: Context) {
             prefs.edit().putStringSet(KEY_WATCHED_CHANNELS, value).commit()
         }
 
+    /**
+     * "Capture every chat" means every chat, watch list or not. It used to
+     * apply only while the watch list was empty, so the switch showed on while
+     * one watched group silently dropped every other chat — on the phone that
+     * hid every real group from the Messages tab.
+     */
     fun isChannelWatched(channel: String): Boolean {
+        if (captureAllChannels) return true
         val watched = watchedChannels
-        if (watched.isEmpty()) return captureAllChannels
+        if (watched.isEmpty()) return false
         return watched.any { it.equalsNormalised(channel) }
     }
 
@@ -100,6 +107,13 @@ class SettingsStore(context: Context) {
     /** Groups that notified in the last two weeks, most recently active first. */
     fun recentChannels(now: Long = System.currentTimeMillis()): List<String> =
         RecentGroups.recent(seenChannelTimes, now)
+
+    /** Records last-activity times found by a scan; older times never win. */
+    fun mergeSeenChannelTimes(found: Map<String, Long>) {
+        RecentGroups.merge(seenChannelTimes, found)?.let {
+            prefs.edit().putStringSet(KEY_SEEN_CHANNEL_TIMES, RecentGroups.encode(it)).commit()
+        }
+    }
 
     fun rememberSeenChannel(channel: String, now: Long = System.currentTimeMillis()) {
         RecentGroups.touch(seenChannelTimes, channel, now)?.let {
@@ -157,6 +171,13 @@ class SettingsStore(context: Context) {
         }
 
     /** Days of message rows to keep. Events outlive their messages. */
+    /**
+     * Days a *processed* message is kept. One: once a message has become an
+     * event (whose description carries the message text) or been judged
+     * irrelevant, the row is only clutter. A message not yet processed is kept
+     * past this — see `SyncWorker.runRetention`. The group picker does not
+     * depend on stored messages; it keeps two weeks of group activity itself.
+     */
     var messageRetentionDays: Int
         get() = prefs.getInt(KEY_RETENTION_DAYS, DEFAULT_RETENTION_DAYS)
         set(value) {
@@ -241,7 +262,7 @@ class SettingsStore(context: Context) {
             .lowercase()
 
         const val DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
-        const val DEFAULT_RETENTION_DAYS = 45
+        const val DEFAULT_RETENTION_DAYS = 1
         const val DEFAULT_DEDUPE_DAYS = 14
         const val DEFAULT_DEDUPE_THRESHOLD = 0.92f
         private const val MAX_SEEN_CHANNELS = 200

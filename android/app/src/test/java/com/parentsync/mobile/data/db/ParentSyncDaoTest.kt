@@ -195,7 +195,7 @@ class ParentSyncDaoTest {
 
     @Test
     fun `retention deletes old rows and reports the image refs first`() = runTest {
-        val old = message(content = "old", timestamp = NOW - 60L * DAY)
+        val old = message(content = "old", timestamp = NOW - 60L * DAY, parsed = true)
             .copy(imageRefs = "a.jpg,b.jpg")
         val fresh = message(content = "fresh", timestamp = NOW)
         messages.insertIgnoringDuplicates(old)
@@ -204,13 +204,30 @@ class ParentSyncDaoTest {
 
         // Read before delete — the database cannot cascade into the filesystem,
         // so the refs have to come out while the rows still exist.
-        val refs = messages.imageRefsBefore(cutoff)
-        val deleted = messages.deleteBefore(cutoff)
+        val refs = messages.imageRefsBefore(cutoff, cutoff)
+        val deleted = messages.deleteBefore(cutoff, cutoff)
 
         assertThat(refs).containsExactly("a.jpg,b.jpg")
         assertThat(deleted).isEqualTo(1)
         assertThat(messages.byId(fresh.id)).isNotNull()
         assertThat(messages.byId(old.id)).isNull()
+    }
+
+    @Test
+    fun `retention keeps a message nobody has processed yet, but not forever`() = runTest {
+        val processed = message(content = "processed", timestamp = NOW - 2 * DAY, parsed = true)
+        val waiting = message(content = "waiting", timestamp = NOW - 2 * DAY, parsed = false)
+        val stuck = message(content = "stuck", timestamp = NOW - 20 * DAY, parsed = false)
+            .copy(imageRefs = "stuck.jpg")
+        listOf(processed, waiting, stuck).forEach { messages.insertIgnoringDuplicates(it) }
+        val cutoff = NOW - DAY
+        val unparsedCutoff = NOW - 14 * DAY
+
+        assertThat(messages.imageRefsBefore(cutoff, unparsedCutoff)).containsExactly("stuck.jpg")
+        assertThat(messages.deleteBefore(cutoff, unparsedCutoff)).isEqualTo(2)
+        assertThat(messages.byId(waiting.id)).isNotNull()
+        assertThat(messages.byId(processed.id)).isNull()
+        assertThat(messages.byId(stuck.id)).isNull()
     }
 
     // --------------------------------------------------------------- events
@@ -356,6 +373,18 @@ class ParentSyncDaoTest {
         assertThat(queued).hasSize(2)
         assertThat(queued.map { it.source }).containsExactly(MessageSource.MANUAL, MessageSource.MANUAL)
         assertThat(queued.map { it.childId }).containsExactly("c1", "c1")
+    }
+
+    @Test
+    fun `channel activity gives each WhatsApp group its newest message since the cutoff`() = runTest {
+        messages.insertIgnoringDuplicates(message(channel = "Class 2 parents", timestamp = NOW - 5_000))
+        messages.insertIgnoringDuplicates(message(channel = "Class 2 parents", timestamp = NOW - 1_000))
+        messages.insertIgnoringDuplicates(message(channel = "Football", timestamp = NOW - 100_000))
+        messages.insertIgnoringDuplicates(message(channel = "Written in ParentSync", timestamp = NOW).copy(source = MessageSource.MANUAL))
+
+        val found = messages.channelActivitySince(NOW - 10_000)
+
+        assertThat(found).containsExactly(ChannelActivity("Class 2 parents", NOW - 1_000))
     }
 
     companion object {

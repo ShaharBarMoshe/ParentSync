@@ -54,14 +54,15 @@ class MessageDeduplicationServiceTest {
         override suspend fun bySourceKey(sourceKey: String): MessageEntity? = null
         override suspend fun unparsed(limit: Int): List<MessageEntity> = emptyList()
         override suspend fun markParsed(ids: List<String>) = Unit
+        override suspend fun channelActivitySince(since: Long) = emptyList<com.parentsync.mobile.data.db.ChannelActivity>()
         override suspend fun setEmbedding(id: String, embedding: ByteArray?, contentHash: String?) = Unit
         override fun countFlow(): Flow<Int> = throw UnsupportedOperationException()
         override fun recentFlow(limit: Int): Flow<List<MessageEntity>> = throw UnsupportedOperationException()
         override fun recentInChannelFlow(channel: String, limit: Int): Flow<List<MessageEntity>> =
             throw UnsupportedOperationException()
         override fun channelsFlow(): Flow<List<String>> = throw UnsupportedOperationException()
-        override suspend fun imageRefsBefore(before: Long): List<String> = emptyList()
-        override suspend fun deleteBefore(before: Long): Int = 0
+        override suspend fun imageRefsBefore(before: Long, unparsedBefore: Long): List<String> = emptyList()
+        override suspend fun deleteBefore(before: Long, unparsedBefore: Long): Int = 0
     }
 
     /** Deterministic stand-in for the embedding model. */

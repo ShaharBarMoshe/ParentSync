@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import com.parentsync.mobile.system.BackgroundAccess
+import com.parentsync.mobile.system.BackgroundAccessText
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -123,6 +125,9 @@ class MainActivity : ComponentActivity() {
             bound = ParentSyncNotificationListener.isBound,
         )
         viewModel.refreshCalendars()
+        // Autostart and battery limits are changed in system screens, so the
+        // card has to be re-read when the user comes back from one.
+        viewModel.refreshBackground(BackgroundAccess.read(this))
     }
 
     private fun requestRuntimePermissions() {
@@ -486,7 +491,11 @@ private fun SettingsScreen(
     val messages by viewModel.messageCount.collectAsStateWithLifecycle()
     val children by viewModel.children.collectAsStateWithLifecycle()
 
+    val groupScan by viewModel.groupScan.collectAsStateWithLifecycle()
+
     LaunchedEffect(Unit) { viewModel.refreshCalendars() }
+    // Every time Settings opens, so the child editor's group list is current.
+    LaunchedEffect(Unit) { viewModel.scanGroups() }
 
     LazyColumn(
         Modifier.fillMaxSize().padding(16.dp),
@@ -518,6 +527,10 @@ private fun SettingsScreen(
         }
 
         item {
+            BackgroundCard(viewModel)
+        }
+
+        item {
             CalendarCard(
                 calendars = calendars,
                 selectedId = state.calendarId,
@@ -530,6 +543,8 @@ private fun SettingsScreen(
             ChildrenCard(
                 children = children,
                 recentChannels = state.recentChannels,
+                groupScan = groupScan,
+                onScan = viewModel::scanGroups,
                 onSave = viewModel::saveChild,
                 onDelete = viewModel::deleteChild,
             )
@@ -652,8 +667,7 @@ private fun SettingsScreen(
             SettingsCard("Storage") {
                 Text("Captured messages: $messages", style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "Messages older than ${state.retentionDays} days are deleted. " +
-                        "Events stay on the calendar.",
+                    StorageText.retention(state.retentionDays),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -670,6 +684,8 @@ private fun SettingsScreen(
 private fun ChildrenCard(
     children: List<ChildEntity>,
     recentChannels: List<String>,
+    groupScan: GroupScan?,
+    onScan: () -> Unit,
     onSave: (id: String?, name: String, channels: List<String>, colorKey: String?) -> Unit,
     onDelete: (id: String) -> Unit,
 ) {
@@ -712,6 +728,8 @@ private fun ChildrenCard(
         ChildDialog(
             child = child,
             recentChannels = recentChannels,
+            groupScan = groupScan,
+            onScan = onScan,
             onDismiss = { editing = null },
             onSave = { name, channels, colorKey ->
                 onSave(child.id.ifBlank { null }, name, channels, colorKey)
@@ -844,6 +862,8 @@ private fun CalendarPickerDialog(
 private fun ChildDialog(
     child: ChildEntity,
     recentChannels: List<String>,
+    groupScan: GroupScan?,
+    onScan: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (name: String, channels: List<String>, colorKey: String?) -> Unit,
     onDelete: (() -> Unit)?,
@@ -863,6 +883,8 @@ private fun ChildDialog(
     // it on screen to tick again rather than vanishing.
     val initial = remember(child.id) { ChildChannels.decode(child.channelNames) }
     val assignedQuiet = (initial + selected).distinct().filter { it !in recentChannels }
+    // Again on opening: a WhatsApp notification may have arrived since Settings did.
+    LaunchedEffect(child.id) { onScan() }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -882,15 +904,11 @@ private fun ChildDialog(
                 Spacer(Modifier.height(12.dp))
                 Text("WhatsApp groups", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    if (recentChannels.isEmpty()) {
-                        "No group has had a message in the last 2 weeks. Type a group's name " +
-                            "exactly as it appears in WhatsApp."
-                    } else {
-                        "Groups with messages in the last 2 weeks. Not listed? Type its name below."
-                    },
+                    GroupScanText.describe(groupScan, recentChannels.size),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                TextButton(onClick = onScan) { Text("Scan again") }
                 (recentChannels + assignedQuiet).forEach { channel ->
                     Row(
                         Modifier.fillMaxWidth(),
@@ -989,5 +1007,32 @@ private fun EmptyState(title: String, body: String) {
         Text(title, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(body, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/**
+ * Autostart and battery limits. Without Autostart, HyperOS kills the app soon
+ * after it leaves the screen and drops every scheduled sync with it — see
+ * [BackgroundAccess].
+ */
+@Composable
+private fun BackgroundCard(viewModel: MainViewModel) {
+    val status by viewModel.background.collectAsStateWithLifecycle()
+    val current = status ?: return
+    val context = LocalContext.current
+    SettingsCard("Running in the background") {
+        Text(BackgroundAccessText.describe(current), style = MaterialTheme.typography.bodyMedium)
+        if (BackgroundAccessText.needsAutostart(current)) {
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = { BackgroundAccess.openAutostartSettings(context) }) {
+                Text("Allow autostart")
+            }
+        }
+        if (BackgroundAccessText.needsBattery(current)) {
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = { BackgroundAccess.requestUnrestrictedBattery(context) }) {
+                Text("Remove battery limits")
+            }
+        }
     }
 }

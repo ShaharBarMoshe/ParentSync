@@ -52,6 +52,7 @@ class MessageIngestorTest {
         override suspend fun bySourceKey(sourceKey: String): MessageEntity? = null
         override suspend fun unparsed(limit: Int): List<MessageEntity> = emptyList()
         override suspend fun markParsed(ids: List<String>) = Unit
+        override suspend fun channelActivitySince(since: Long) = emptyList<com.parentsync.mobile.data.db.ChannelActivity>()
         override suspend fun setEmbedding(id: String, embedding: ByteArray?, contentHash: String?) = Unit
         override suspend fun embeddingCandidates(since: Long, limit: Int): List<EmbeddingCandidate> = emptyList()
         override fun countFlow(): Flow<Int> = throw UnsupportedOperationException()
@@ -59,8 +60,8 @@ class MessageIngestorTest {
         override fun recentInChannelFlow(channel: String, limit: Int): Flow<List<MessageEntity>> =
             throw UnsupportedOperationException()
         override fun channelsFlow(): Flow<List<String>> = throw UnsupportedOperationException()
-        override suspend fun imageRefsBefore(before: Long): List<String> = emptyList()
-        override suspend fun deleteBefore(before: Long): Int = 0
+        override suspend fun imageRefsBefore(before: Long, unparsedBefore: Long): List<String> = emptyList()
+        override suspend fun deleteBefore(before: Long, unparsedBefore: Long): Int = 0
     }
 
     private class CountingTrigger : SyncTrigger {
@@ -212,10 +213,18 @@ class MessageIngestorTest {
     }
 
     @Test
-    fun `an explicit watch list wins over captureAll`() = runTest {
-        // Otherwise turning captureAll on would silently widen a deliberate
-        // selection the user already made.
+    fun `capture every chat also captures groups outside the watch list`() = runTest {
+        // The switch says every chat; a watched group must not narrow it.
         settings.captureAllChannels = true
+        settings.watchedChannels = setOf("Only this group")
+
+        assertThat(ingestor.onNotification(whatsApp(group = "Class 2 parents")).stored).isEqualTo(1)
+        assertThat(ingestor.onNotification(whatsApp(group = "Only this group")).stored).isEqualTo(1)
+    }
+
+    @Test
+    fun `with capture every chat off only watched groups are captured`() = runTest {
+        settings.captureAllChannels = false
         settings.watchedChannels = setOf("Only this group")
 
         assertThat(ingestor.onNotification(whatsApp(group = "Class 2 parents")).stored).isEqualTo(0)

@@ -46,19 +46,54 @@ object RecentGroups {
      * writing (seen within [REFRESH_MILLIS] already). Oldest entries are
      * dropped past [MAX_ENTRIES].
      */
+    /**
+     * Titles WhatsApp uses for notifications that are not a chat — "WhatsApp"
+     * on a backup or "3 messages from 2 chats" notification. Offering one as a
+     * group to assign would capture nothing.
+     */
+    private val NOT_A_GROUP = setOf("whatsapp", "whatsapp business")
+
+    fun isGroupName(name: String): Boolean =
+        name.isNotBlank() && name.trim().lowercase() !in NOT_A_GROUP
+
     fun touch(times: Map<String, Long>, channel: String, now: Long): Map<String, Long>? {
-        if (channel.isBlank()) return null
+        if (!isGroupName(channel)) return null
         val last = times[channel]
         if (last != null && now - last in 0 until REFRESH_MILLIS) return null
         val next = times + (channel to now)
         if (next.size <= MAX_ENTRIES) return next
-        return next.entries.sortedByDescending { it.value }.take(MAX_ENTRIES).associate { it.key to it.value }
+        return cap(next)
     }
+
+    /**
+     * Folds in last-activity times found elsewhere (the stored messages),
+     * keeping the newer time per group. Null when nothing would change, so a
+     * scan that finds nothing new writes nothing.
+     */
+    fun merge(times: Map<String, Long>, found: Map<String, Long>): Map<String, Long>? {
+        val next = times.toMutableMap()
+        var changed = false
+        for ((name, at) in found) {
+            if (!isGroupName(name)) continue
+            if ((next[name] ?: Long.MIN_VALUE) < at) {
+                next[name] = at
+                changed = true
+            }
+        }
+        return if (changed) cap(next) else null
+    }
+
+    private fun cap(times: Map<String, Long>): Map<String, Long> =
+        if (times.size <= MAX_ENTRIES) {
+            times
+        } else {
+            times.entries.sortedByDescending { it.value }.take(MAX_ENTRIES).associate { it.key to it.value }
+        }
 
     /** Groups seen within [window] of [now], most recently active first. */
     fun recent(times: Map<String, Long>, now: Long, window: Long = WINDOW_MILLIS): List<String> =
         times.entries
-            .filter { now - it.value <= window }
+            .filter { now - it.value <= window && isGroupName(it.key) }
             .sortedWith(compareByDescending<Map.Entry<String, Long>> { it.value }.thenBy { it.key })
             .map { it.key }
 }

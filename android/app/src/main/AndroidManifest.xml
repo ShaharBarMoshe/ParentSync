@@ -47,6 +47,9 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Lets Settings show the system "remove battery limits" dialog for this
+         app; see BackgroundAccess. Sideloaded, so Play's policy on it does not apply. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!--
       WhatsApp is queried for its launch intent (to deep-link a chat) and to

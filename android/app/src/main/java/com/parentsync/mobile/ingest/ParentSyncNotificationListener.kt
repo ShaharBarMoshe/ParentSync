@@ -45,6 +45,7 @@ class ParentSyncNotificationListener : NotificationListenerService() {
         super.onListenerConnected()
         Log.i(TAG, "notification listener connected")
         isBound = true
+        instance = this
         (applicationContext as ParentSyncApp).container.settings.setListenerConnected(true)
         catchUpOnActiveNotifications()
     }
@@ -58,18 +59,19 @@ class ParentSyncNotificationListener : NotificationListenerService() {
      * Re-delivery is harmless: the ingestor dedupes on each message's source
      * key, so a notification already stored is skipped.
      */
-    private fun catchUpOnActiveNotifications() {
+    private fun catchUpOnActiveNotifications(): Int {
         val active = try {
             activeNotifications.orEmpty()
         } catch (e: Exception) {
             Log.e(TAG, "could not read active notifications", e)
-            return
+            return 0
         }
         val candidates = active.filter { it.packageName == WHATSAPP_PACKAGE ||
             it.packageName in (applicationContext as ParentSyncApp).container.settings.extraSourcePackages }
-        if (candidates.isEmpty()) return
+        if (candidates.isEmpty()) return 0
         Log.i(TAG, "catching up on ${candidates.size} notification(s) already showing")
         candidates.forEach(::onNotificationPosted)
+        return candidates.size
     }
 
     override fun onListenerDisconnected() {
@@ -78,6 +80,7 @@ class ParentSyncNotificationListener : NotificationListenerService() {
         // stopped seeing messages", and there is no other signal for it.
         Log.w(TAG, "notification listener disconnected; asking the system to rebind")
         isBound = false
+        instance = null
         // Without this a disconnect is permanent until the user toggles access
         // off and on — the app keeps saying "connected" and captures nothing.
         requestRebindSafely(this)
@@ -152,6 +155,11 @@ class ParentSyncNotificationListener : NotificationListenerService() {
     /** Nothing to do: a dismissed notification does not un-send its message. */
     override fun onNotificationRemoved(sbn: StatusBarNotification?) = Unit
 
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        super.onDestroy()
+    }
+
     private fun toPayload(sbn: StatusBarNotification): NotificationPayload {
         val n = sbn.notification
         val extras: Bundle = n.extras
@@ -217,6 +225,17 @@ class ParentSyncNotificationListener : NotificationListenerService() {
         @Volatile
         var isBound: Boolean = false
             private set
+
+        /** The bound service, so the app can ask it to look at the shade again. */
+        @Volatile
+        private var instance: ParentSyncNotificationListener? = null
+
+        /**
+         * Reads the WhatsApp notifications showing right now, the only part of
+         * WhatsApp a notification listener can see. Returns how many there were,
+         * or null when the listener is not bound and nothing could be read.
+         */
+        fun rescanActiveNotifications(): Int? = instance?.catchUpOnActiveNotifications()
 
         /**
          * Asks the system to bind the listener if access is granted but it is not

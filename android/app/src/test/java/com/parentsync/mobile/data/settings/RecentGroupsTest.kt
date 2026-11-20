@@ -52,4 +52,19 @@ class RecentGroupsTest {
         assertThat(next).containsKey("newcomer")
         assertThat(next).doesNotContainKey("g${RecentGroups.MAX_ENTRIES}")
     }
+
+    @Test
+    fun `WhatsApp's own titles are not offered as groups`() {
+        assertThat(RecentGroups.touch(emptyMap(), "WhatsApp", 1_000L)).isNull()
+        val times = mapOf("WhatsApp" to 1_000L, "Class 2" to 1_000L)
+        assertThat(RecentGroups.recent(times, 2_000L)).containsExactly("Class 2")
+    }
+
+    @Test
+    fun `a scan keeps the newer time and reports no change when nothing is newer`() {
+        val times = mapOf("Class 2" to 5_000L)
+        val merged = RecentGroups.merge(times, mapOf("Class 2" to 1_000L, "Football" to 3_000L))
+        assertThat(merged).containsExactly("Class 2", 5_000L, "Football", 3_000L)
+        assertThat(RecentGroups.merge(merged!!, mapOf("Class 2" to 4_000L))).isNull()
+    }
 }
