@@ -167,3 +167,36 @@ data class SyncLogEntity(
     val ok: Boolean = true,
     val error: String? = null,
 )
+
+/**
+ * What duplicate suppression needs from a processed message: its content hash
+ * and vector, and when it was sent. Kept for the dedup lookback (14 days)
+ * after the message itself is deleted (1 day after processing), so a flyer
+ * forwarded again days later is still recognised without keeping its text.
+ *
+ * Written the moment a message is settled, not at the end of the pass, so the
+ * next message in the same pass is compared against it: three forwards of one
+ * flyer usually arrive within a minute and are processed together.
+ */
+@Entity(
+    tableName = "message_fingerprints",
+    indices = [Index(value = ["timestamp"])],
+)
+data class MessageFingerprintEntity(
+    @PrimaryKey val messageId: String,
+    val contentHash: String,
+    @ColumnInfo(typeAffinity = ColumnInfo.BLOB)
+    val embedding: ByteArray?,
+    /** The message's own send time, the same clock the lookback is measured on. */
+    val timestamp: Long,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (other !is MessageFingerprintEntity) return false
+        return messageId == other.messageId &&
+            contentHash == other.contentHash &&
+            timestamp == other.timestamp &&
+            (embedding?.contentEquals(other.embedding) ?: (other.embedding == null))
+    }
+
+    override fun hashCode(): Int = 31 * messageId.hashCode() + (embedding?.contentHashCode() ?: 0)
+}

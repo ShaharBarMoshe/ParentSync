@@ -160,37 +160,56 @@ class ParentSyncDaoTest {
         assertThat(EmbeddingCodec.similarity(read.embedding, blob)!!).isWithin(0.001f).of(1f)
     }
 
+    private fun fingerprint(id: String, hash: String, timestamp: Long = NOW, blob: ByteArray? = null) =
+        MessageFingerprintEntity(messageId = id, contentHash = hash, embedding = blob, timestamp = timestamp)
+
     @Test
-    fun `dedup candidates exclude unparsed rows, embedding-less rows and old rows`() = runTest {
+    fun `dedup candidates are settled fingerprints inside the lookback`() = runTest {
         val blob = EmbeddingCodec.encode(FloatArray(768) { 0.5f })
-        val old = message(content = "old", timestamp = NOW - 30L * DAY, parsed = true)
-        val unparsed = message(content = "unparsed", parsed = false)
-        val noEmbedding = message(content = "no-embedding", parsed = true)
-        val good = message(content = "good", parsed = true)
-        listOf(old, unparsed, noEmbedding, good).forEach { messages.insertIgnoringDuplicates(it) }
-        messages.setEmbedding(old.id, blob, "h-old")
-        messages.setEmbedding(unparsed.id, blob, "h-unparsed")
-        messages.setEmbedding(good.id, blob, "h-good")
+        messages.insertFingerprint(fingerprint("old", "h-old", NOW - 30L * DAY, blob))
+        messages.insertFingerprint(fingerprint("good", "h-good", NOW, blob))
+        messages.insertFingerprint(fingerprint("hash-only", "h-hash"))
+        // An unsettled message has a row but no fingerprint, so it is no target.
+        messages.insertIgnoringDuplicates(message(content = "unparsed", parsed = false))
 
         val candidates = messages.embeddingCandidates(since = NOW - 14L * DAY, limit = 100)
 
-        // Only a parsed, embedded, in-window row can be a duplicate target.
-        assertThat(candidates.map { it.id }).containsExactly(good.id)
+        assertThat(candidates.map { it.id }).containsExactly("good", "hash-only")
+        assertThat(candidates.first { it.id == "hash-only" }.embedding).isNull()
     }
 
     @Test
     fun `the candidate limit is enforced and takes the newest`() = runTest {
         val blob = EmbeddingCodec.encode(FloatArray(768) { 0.25f })
-        repeat(10) { i ->
-            val m = message(content = "m$i", timestamp = NOW + i * 1000L, parsed = true)
-            messages.insertIgnoringDuplicates(m)
-            messages.setEmbedding(m.id, blob, "h$i")
-        }
+        repeat(10) { i -> messages.insertFingerprint(fingerprint("m$i", "h$i", NOW + i * 1000L, blob)) }
 
         val candidates = messages.embeddingCandidates(since = NOW - DAY, limit = 3)
 
         // Bounded work per check, and the newest are the likeliest duplicates.
-        assertThat(candidates).hasSize(3)
+        assertThat(candidates.map { it.id }).containsExactly("m9", "m8", "m7").inOrder()
+    }
+
+    @Test
+    fun `a fingerprint outlives its message and expires on its own cutoff`() = runTest {
+        val m = message(content = "flyer", timestamp = NOW - 3 * DAY, parsed = true)
+        messages.insertIgnoringDuplicates(m)
+        messages.insertFingerprint(fingerprint(m.id, "h-flyer", m.timestamp))
+        messages.insertFingerprint(fingerprint("ancient", "h-old", NOW - 20 * DAY))
+
+        messages.deleteBefore(before = NOW - DAY, unparsedBefore = NOW - 14 * DAY)
+        assertThat(messages.byId(m.id)).isNull()
+        assertThat(messages.embeddingCandidates(NOW - 14 * DAY, 10).map { it.id }).containsExactly(m.id)
+
+        assertThat(messages.deleteFingerprintsBefore(NOW - 14 * DAY)).isEqualTo(1)
+        assertThat(messages.embeddingCandidates(NOW - 30 * DAY, 10).map { it.id }).containsExactly(m.id)
+    }
+
+    @Test
+    fun `settling a message twice keeps one fingerprint`() = runTest {
+        messages.insertFingerprint(fingerprint("m", "h1"))
+        messages.insertFingerprint(fingerprint("m", "h2"))
+
+        assertThat(messages.embeddingCandidates(NOW - DAY, 10).map { it.contentHash }).containsExactly("h2")
     }
 
     @Test

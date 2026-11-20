@@ -151,8 +151,15 @@ it syncs to every device; otherwise as a raw `EVENT_COLOR`.
 | `sourceKey` unique index | ingest | The same message re-delivered as its conversation's notification grows |
 | SHA-256 of the content | `MessageDeduplicationService`, before the LLM | A byte-identical forward into another group. No network call |
 | Embedding similarity (≥ 0.92 by default, 14-day lookback, ≤ 500 candidates) | same | A forward with an added "FYI 👆" line. One embedding call, scored locally |
+| Single-gathering merge (`SingleGathering`) | after extraction, per message | One gathering returned as two events with different times; keeps the fullest time |
 | `dedupeKey` (title + date + child) | event creation | The LLM producing the same event twice across passes |
 | Same title on the same date in the calendar | calendar write | An event the parent already added by hand |
+
+Both pre-LLM checks compare against `message_fingerprints` (hash, vector, send
+time), written as each message is settled — so a forward later in the same pass
+is caught — and kept for the 14-day lookback, after the 1-day message retention
+has deleted the message itself. A message whose extraction failed has no
+fingerprint and is never a target.
 
 Dedup fails open: if candidates cannot be read or the embedding call fails, the
 message is treated as fresh. An occasional duplicate is a nuisance; a dropped
@@ -189,6 +196,7 @@ forever.
 | Embeddings | int8 blob, ~0.8 KB at 768 dims | JSON text is ~39 KB per 3072-dim row; a dedup pass reads hundreds |
 | Images | files under `filesDir/message-images`, row keeps filenames | Base64 inline measured 10.6 MB for 22 rows |
 | Messages | processed rows kept **1 day**; unprocessed up to **14 days** | The event's description already carries the text; an unparsed message must survive a missing key or an outage |
+| Dedup fingerprints | hash + int8 vector per settled message, kept **14 days** | The dedup lookback outlives the message text |
 | Events | kept | The calendar entry is the product |
 | `sync_logs` | capped at 200 rows; error text capped at 500 chars | A failing pass would otherwise store a response body every time |
 | SQLite | WAL, `synchronous = NORMAL`, `journal_size_limit` 4 MB | Many small writes per pass; bounded WAL |

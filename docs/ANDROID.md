@@ -354,7 +354,7 @@ dedup threshold.
 
 ### Duplicate suppression
 
-Two layers, and the first is the one that pays for itself. The same school flyer
+Several layers, and the pre-LLM ones are what pay for themselves. The same school flyer
 forwarded into three class groups arrives as three separate notifications with
 three different `sourceKey`s, so without a pre-LLM check each copy is its own
 paid extraction.
@@ -364,7 +364,30 @@ paid extraction.
 | `sourceKey` unique index | ingest | The same message **re-delivered**. WhatsApp re-posts a whole conversation each time it grows, so this fires constantly |
 | SHA-256 of the content | `MessageDeduplicationService`, before the LLM | A byte-identical forward. **No network call at all** |
 | Embedding similarity | same, before the LLM | A forward that gained a "FYI 👆" line. One embedding call, scored against a bounded pool |
+| Single-gathering merge (`SingleGathering`) | right after extraction, per message | One gathering the LLM returned twice ("arrive 17:00, party 17:30–18:00"): same title, date, location and child → keep the one with the fullest time. No LLM call, cannot fail open |
 | `dedupeKey` (title+date+child) | event creation | The LLM producing the same event twice across passes |
+| Same title on the same date | calendar write | An event the parent already added by hand |
+
+**What a message is compared against: fingerprints.** Candidates come from the
+`message_fingerprints` table (schema v3), not from `messages`. A fingerprint —
+the message id, content hash, int8 vector and send time — is written by
+`SyncWorker.rememberFingerprint` **the moment a message is settled** (extracted,
+or judged a duplicate), not at the end of the pass. Two things follow:
+
+- **Forwards inside one pass are caught.** Three forwards of a flyer usually
+  arrive within a minute and are coalesced into one pass; before v3 candidates
+  had to be `parsed = 1`, which happens only at the end of the pass, so all
+  three went to Gemini.
+- **The dedup window survives message retention.** Processed messages are
+  deleted after 1 day, fingerprints after the 14-day lookback
+  (`deleteFingerprintsBefore` in retention), so a flyer re-sent days later is
+  still recognised without keeping its text.
+
+A message whose extraction failed gets no fingerprint, so neither its retry nor
+a later copy is skipped. `MIGRATION_2_3` creates the table and backfills it from
+processed messages that have a hash (on the test phone: 42 of 42).
+`FingerprintDedupTest` drives the service against a real database the way the
+worker does.
 
 `MessageDeduplicationService` **never throws**. If the embedding call fails the
 message is treated as fresh and goes to the LLM — an occasional duplicate event
@@ -379,7 +402,7 @@ across dimensionalities.
 Other things done for the sake of a phone:
 
 - **Bounded queries.** The dedup candidate pool is limited by both a time window
-  and a row cap, served by a `(parsed, timestamp)` index.
+  and a row cap (500), served by the fingerprints' `timestamp` index.
 - **WAL + `synchronous = NORMAL`.** A pass writes many small rows and the default
   per-commit fsync dominates it. (Set with `query`, not `execSQL` — Android
   rejects a PRAGMA assignment through `execSQL`, and a throw in Room's `onOpen`
@@ -549,7 +572,7 @@ Through the real listener and the unmodified production path:
 - with no API key the worker reports "no Gemini key is configured" and leaves
   messages queued rather than discarding them.
 
-**191 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
+**201 unit tests pass** — the parser (20), the ingest gate (18), the DAOs against
 a real in-memory SQLite (16), the Gemini contract against a MockWebServer (15),
 the dedup service (15), the embedding codec (8), the embedding client (6), and the own-notification guard
 (2).

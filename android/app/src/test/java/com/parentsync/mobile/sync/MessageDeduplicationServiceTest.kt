@@ -63,6 +63,8 @@ class MessageDeduplicationServiceTest {
         override fun channelsFlow(): Flow<List<String>> = throw UnsupportedOperationException()
         override suspend fun imageRefsBefore(before: Long, unparsedBefore: Long): List<String> = emptyList()
         override suspend fun deleteBefore(before: Long, unparsedBefore: Long): Int = 0
+        override suspend fun insertFingerprint(fingerprint: com.parentsync.mobile.data.db.MessageFingerprintEntity) = Unit
+        override suspend fun deleteFingerprintsBefore(before: Long): Int = 0
     }
 
     /** Deterministic stand-in for the embedding model. */

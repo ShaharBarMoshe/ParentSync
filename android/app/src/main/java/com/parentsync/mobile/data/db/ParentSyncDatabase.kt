@@ -28,8 +28,9 @@ class Converters {
         EventEntity::class,
         ChildEntity::class,
         SyncLogEntity::class,
+        MessageFingerprintEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -69,7 +70,31 @@ abstract class ParentSyncDatabase : RoomDatabase() {
             }
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2)
+        /**
+         * v3: dedup fingerprints in their own table, so they outlive the
+         * 1-day message retention. Backfilled from processed messages that
+         * already have a hash, so dedup keeps its memory across the update.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `message_fingerprints` (`messageId` TEXT NOT NULL, " +
+                        "`contentHash` TEXT NOT NULL, `embedding` BLOB, `timestamp` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`messageId`))",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_message_fingerprints_timestamp` " +
+                        "ON `message_fingerprints` (`timestamp`)",
+                )
+                db.execSQL(
+                    "INSERT OR IGNORE INTO `message_fingerprints` (messageId, contentHash, embedding, timestamp) " +
+                        "SELECT id, contentHash, embedding, timestamp FROM messages " +
+                        "WHERE parsed = 1 AND contentHash IS NOT NULL",
+                )
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 
         fun build(context: Context): ParentSyncDatabase =
             Room.databaseBuilder(context, ParentSyncDatabase::class.java, NAME)

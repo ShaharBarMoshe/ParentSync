@@ -80,24 +80,28 @@ interface MessageDao {
     suspend fun setEmbedding(id: String, embedding: ByteArray?, contentHash: String?)
 
     /**
-     * Dedup candidate pool, newest first.
-     *
-     * Both bounds matter on a phone: `since` keeps the scan inside the window
-     * where a forward could plausibly be a duplicate, and `limit` caps the work
-     * even if the window is misconfigured. The index on (parsed, timestamp)
-     * serves the filter and the ordering.
+     * Duplicate targets: fingerprints of messages already settled, newest
+     * first. Read from `message_fingerprints`, not `messages`, so a candidate
+     * outlives its message's 1-day retention, and a message settled earlier in
+     * the same pass is already one. An unsettled message is never a target: if
+     * its extraction failed, a later copy must still reach the LLM.
      */
     @Query(
         """
-        SELECT id, contentHash, embedding FROM messages
-        WHERE parsed = 1
-          AND embedding IS NOT NULL
-          AND timestamp >= :since
+        SELECT messageId AS id, contentHash, embedding FROM message_fingerprints
+        WHERE timestamp >= :since
         ORDER BY timestamp DESC
         LIMIT :limit
         """,
     )
     suspend fun embeddingCandidates(since: Long, limit: Int): List<EmbeddingCandidate>
+
+    /** REPLACE: a message settled again after a crashed pass keeps one fingerprint. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFingerprint(fingerprint: MessageFingerprintEntity)
+
+    @Query("DELETE FROM message_fingerprints WHERE timestamp < :before")
+    suspend fun deleteFingerprintsBefore(before: Long): Int
 
     @Query("SELECT COUNT(*) FROM messages")
     fun countFlow(): Flow<Int>

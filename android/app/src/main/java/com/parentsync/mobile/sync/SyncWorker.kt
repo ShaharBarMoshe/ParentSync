@@ -15,6 +15,7 @@ import com.parentsync.mobile.data.db.ChildEntity
 import com.parentsync.mobile.data.db.ApprovalStatus
 import com.parentsync.mobile.data.db.EventEntity
 import com.parentsync.mobile.data.db.MessageEntity
+import com.parentsync.mobile.data.db.MessageFingerprintEntity
 import com.parentsync.mobile.data.db.SyncLogEntity
 import com.parentsync.mobile.llm.ExtractedEvent
 import com.parentsync.mobile.llm.LlmNotConfiguredException
@@ -191,6 +192,7 @@ class SyncWorker(
                 // Marked parsed so it is not reconsidered every pass. No event
                 // is created — the original already produced one.
                 settled += message.id
+                rememberFingerprint(message, decision)
                 continue
             }
 
@@ -214,16 +216,43 @@ class SyncWorker(
                 continue
             }
 
-            for (event in extracted) {
+            // One gathering described twice ("arrive 17:00, party 17:30") comes
+            // back as two events; keep one before anything is stored or sent
+            // for approval.
+            val events = SingleGathering.collapse(extracted)
+            if (events.size < extracted.size) {
+                Log.i(TAG, "message ${message.id}: merged ${extracted.size} events into ${events.size}")
+            }
+            for (event in events) {
                 if (createEvent(message, event, children)) {
                     createdCount++
                 }
             }
             settled += message.id
+            rememberFingerprint(message, decision)
         }
 
         if (settled.isNotEmpty()) container.db.messages().markParsed(settled)
         return ParseOutcome(settled.size, createdCount, false)
+    }
+
+    /**
+     * Makes a settled message a duplicate target straight away — for the next
+     * message in this same pass, and for the dedup lookback after the message
+     * row is gone. Only settled messages: a failed one must stay comparable
+     * to nothing, or its retry and every later copy would be skipped.
+     */
+    private suspend fun rememberFingerprint(message: MessageEntity, decision: MessageDeduplicationService.Decision) {
+        runCatching {
+            container.db.messages().insertFingerprint(
+                MessageFingerprintEntity(
+                    messageId = message.id,
+                    contentHash = decision.contentHash,
+                    embedding = decision.embedding,
+                    timestamp = message.timestamp,
+                ),
+            )
+        }.onFailure { Log.w(TAG, "could not store the dedup fingerprint of ${message.id}", it) }
     }
 
     /**
@@ -372,6 +401,11 @@ class SyncWorker(
         val deleted = container.db.messages().deleteBefore(cutoff, unparsedCutoff)
         if (doomedRefs.isNotEmpty()) container.images.delete(doomedRefs)
         if (deleted > 0) Log.i(TAG, "retention dropped $deleted message row(s)")
+
+        // Fingerprints live for the dedup lookback, not the message retention.
+        val fingerprintCutoff = now - container.settings.dedupeLookbackDays * DAY_MILLIS
+        val dropped = container.db.messages().deleteFingerprintsBefore(fingerprintCutoff)
+        if (dropped > 0) Log.i(TAG, "retention dropped $dropped dedup fingerprint(s)")
     }
 
     // ------------------------------------------------------------------ utils
